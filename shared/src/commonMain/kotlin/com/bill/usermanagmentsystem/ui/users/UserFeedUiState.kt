@@ -2,6 +2,7 @@ package com.bill.usermanagmentsystem.ui.users
 
 import com.bill.usermanagmentsystem.domain.model.Gender
 import com.bill.usermanagmentsystem.domain.model.UserStatus
+import kotlin.time.Instant
 
 data class UserFeedUiState(
     val users: List<UserItemUiModel> = emptyList(),
@@ -11,6 +12,9 @@ data class UserFeedUiState(
     val banner: UserFeedBanner? = null,
     val message: UserFeedMessage? = null,
     val addUserForm: AddUserFormUiState? = null,
+    val deleteConfirmation: UserItemUiModel? = null,
+    val deleteInProgress: Boolean = false,
+    val undoSnackbar: DeleteUndoUiModel? = null,
 )
 
 data class AddUserFormUiState(
@@ -74,4 +78,10 @@ sealed interface UserFeedBanner {
 data class UserFeedMessage(
     val id: Long,
     val text: String,
+)
+
+data class DeleteUndoUiModel(
+    val localId: String,
+    val userName: String,
+    val deadline: Instant,
 )

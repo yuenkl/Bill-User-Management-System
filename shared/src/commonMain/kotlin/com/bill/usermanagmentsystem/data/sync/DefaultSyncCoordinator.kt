@@ -202,7 +202,11 @@ internal class DefaultSyncCoordinator(
             }
 
             is RemoteResult.RetryableFailure -> scheduleRetry(mutation, result)
-            RemoteResult.AuthenticationFailure -> blockForAuthentication(mutation)
+            RemoteResult.AuthenticationFailure -> restorePermanentDeleteFailure(
+                mutation = mutation,
+                reason = "Authentication is required before deletion can continue.",
+                error = UserDataError.AuthenticationRequired,
+            )
             is RemoteResult.ValidationFailure -> restorePermanentDeleteFailure(mutation, result.reason)
             is RemoteResult.PermanentFailure -> restorePermanentDeleteFailure(mutation, result.reason)
         }
@@ -246,6 +250,7 @@ internal class DefaultSyncCoordinator(
     private suspend fun restorePermanentDeleteFailure(
         mutation: DueMutation,
         reason: String,
+        error: UserDataError = UserDataError.RemoteContract(reason),
     ): MutationResult {
         localDataSource.restoreAfterPermanentDeleteFailure(
             mutationId = mutation.mutation.mutationId,
@@ -253,7 +258,7 @@ internal class DefaultSyncCoordinator(
             reason = reason,
         )
         return MutationResult.CompletedWithFailure(
-            UserDataException(UserDataError.RemoteContract(reason)),
+            UserDataException(error),
         )
     }
 

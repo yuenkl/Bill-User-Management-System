@@ -9,6 +9,7 @@ import com.bill.usermanagmentsystem.domain.model.SyncState
 import com.bill.usermanagmentsystem.domain.model.UserDataError
 import com.bill.usermanagmentsystem.domain.model.UserDataException
 import com.bill.usermanagmentsystem.domain.model.UserRecord
+import com.bill.usermanagmentsystem.domain.model.UndoableDeletion
 import com.bill.usermanagmentsystem.domain.repository.UserRepository
 import com.bill.usermanagmentsystem.platform.TimeProvider
 import kotlinx.coroutines.CancellationException
@@ -27,6 +28,9 @@ internal class OfflineFirstUserRepository(
     override fun observeUsers(): Flow<List<UserRecord>> = localDataSource.observeVisibleUsers()
 
     override fun observeSyncState(): Flow<SyncState> = syncCoordinator.state
+
+    override fun observeUndoableDeletions(): Flow<List<UndoableDeletion>> =
+        localDataSource.observeUndoableUsers()
 
     override suspend fun refresh(): Result<Unit> = syncCoordinator.sync()
 
@@ -54,6 +58,16 @@ internal class OfflineFirstUserRepository(
 
     override suspend fun undoDelete(localId: String): Result<Unit> = durableOperation {
         localDataSource.undoDelete(localId, timeProvider.now())
+    }
+
+    override suspend fun finalizeExpiredDeletions(): Result<Int> {
+        val result = durableOperation {
+            localDataSource.finalizeExpiredDeletes(timeProvider.now())
+        }
+        if (result.getOrNull()?.let { it > 0 } == true) {
+            triggerSyncAfter(result)
+        }
+        return result
     }
 
     override suspend fun retryCreate(localId: String): Result<Unit> {

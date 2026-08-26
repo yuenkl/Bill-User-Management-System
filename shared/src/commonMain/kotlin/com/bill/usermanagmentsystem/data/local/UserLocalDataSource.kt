@@ -2,11 +2,14 @@ package com.bill.usermanagmentsystem.data.local
 
 import com.bill.usermanagmentsystem.domain.model.AddUserInput
 import com.bill.usermanagmentsystem.domain.model.UserRecord
+import com.bill.usermanagmentsystem.domain.model.UndoableDeletion
 import kotlinx.coroutines.flow.Flow
 import kotlin.time.Instant
 
 internal interface UserLocalDataSource {
     fun observeVisibleUsers(): Flow<List<UserRecord>>
+
+    fun observeUndoableUsers(): Flow<List<UndoableDeletion>>
 
     suspend fun getUser(localId: String): StoredUser?
 

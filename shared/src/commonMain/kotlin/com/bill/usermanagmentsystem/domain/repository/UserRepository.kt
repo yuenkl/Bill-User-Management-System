@@ -2,6 +2,7 @@ package com.bill.usermanagmentsystem.domain.repository
 
 import com.bill.usermanagmentsystem.domain.model.AddUserInput
 import com.bill.usermanagmentsystem.domain.model.SyncState
+import com.bill.usermanagmentsystem.domain.model.UndoableDeletion
 import com.bill.usermanagmentsystem.domain.model.UserRecord
 import kotlinx.coroutines.flow.Flow
 import kotlin.time.Instant
@@ -10,6 +11,8 @@ interface UserRepository {
     fun observeUsers(): Flow<List<UserRecord>>
 
     fun observeSyncState(): Flow<SyncState>
+
+    fun observeUndoableDeletions(): Flow<List<UndoableDeletion>>
 
     suspend fun refresh(): Result<Unit>
 
@@ -21,6 +24,8 @@ interface UserRepository {
     ): Result<Unit>
 
     suspend fun undoDelete(localId: String): Result<Unit>
+
+    suspend fun finalizeExpiredDeletions(): Result<Int>
 
     suspend fun retryCreate(localId: String): Result<Unit>
 

@@ -16,6 +16,7 @@ import com.bill.usermanagmentsystem.data.sync.SyncCoordinator
 import com.bill.usermanagmentsystem.domain.model.AddUserInput
 import com.bill.usermanagmentsystem.domain.model.SyncState
 import com.bill.usermanagmentsystem.domain.model.UserRecord
+import com.bill.usermanagmentsystem.domain.model.UndoableDeletion
 import com.bill.usermanagmentsystem.platform.ConnectivityObserver
 import com.bill.usermanagmentsystem.platform.ConnectivityStatus
 import com.bill.usermanagmentsystem.platform.TimeProvider
@@ -26,6 +27,7 @@ import kotlin.time.Instant
 
 internal class FakeUserLocalDataSource : UserLocalDataSource {
     val visibleUsers = MutableStateFlow<List<UserRecord>>(emptyList())
+    val undoableUsers = MutableStateFlow<List<UndoableDeletion>>(emptyList())
     val storedUsers = mutableMapOf<String, StoredUser>()
     val storedMutations = mutableListOf<StoredMutation>()
     val dueMutations = mutableListOf<DueMutation>()
@@ -41,9 +43,12 @@ internal class FakeUserLocalDataSource : UserLocalDataSource {
     val undoRequests = mutableListOf<Pair<String, Instant>>()
     val retriedBlockedMutations = mutableListOf<String>()
     var finalizedDeleteCalls = 0
+    var finalizedDeleteResult = 0
     var insertFailure: Throwable? = null
 
     override fun observeVisibleUsers(): Flow<List<UserRecord>> = visibleUsers
+
+    override fun observeUndoableUsers(): Flow<List<UndoableDeletion>> = undoableUsers
 
     override suspend fun getUser(localId: String): StoredUser? = storedUsers[localId]
 
@@ -69,7 +74,7 @@ internal class FakeUserLocalDataSource : UserLocalDataSource {
 
     override suspend fun finalizeExpiredDeletes(now: Instant): Int {
         finalizedDeleteCalls += 1
-        return 0
+        return finalizedDeleteResult
     }
 
     override suspend fun getDueMutations(now: Instant): List<DueMutation> = dueMutations.toList()
