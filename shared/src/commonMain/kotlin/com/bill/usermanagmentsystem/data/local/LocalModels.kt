@@ -63,5 +63,5 @@ internal data class SnapshotUser(
     val email: String,
     val gender: Gender,
     val status: UserStatus,
-    val serverPosition: Long,
+    val serverPosition: Long?,
 )

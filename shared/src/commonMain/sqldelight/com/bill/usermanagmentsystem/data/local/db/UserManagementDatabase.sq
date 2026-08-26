@@ -151,8 +151,7 @@ SET
     email = ?,
     gender = ?,
     status = ?,
-    server_position = ?,
-    last_sync_error = NULL
+    server_position = ?
 WHERE remote_id = ? AND sync_status = 'SYNCED';
 
 completeCreate:

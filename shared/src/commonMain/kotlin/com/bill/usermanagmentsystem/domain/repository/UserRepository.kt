@@ -22,5 +22,9 @@ interface UserRepository {
 
     suspend fun undoDelete(localId: String): Result<Unit>
 
+    suspend fun retryCreate(localId: String): Result<Unit>
+
+    suspend fun retryBlockedSynchronization(): Result<Unit>
+
     suspend fun syncPending(): Result<Unit>
 }

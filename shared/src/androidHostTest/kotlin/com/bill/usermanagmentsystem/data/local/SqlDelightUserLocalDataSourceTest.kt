@@ -215,6 +215,72 @@ class SqlDelightUserLocalDataSourceTest {
     }
 
     @Test
+    fun retryableMutationBecomesDueAtPersistedTimeAfterReopen() = runTest {
+        withFixture("retry-reopen") {
+            source.insertPendingCreate(
+                localId = "retry-user",
+                mutationId = "retry-mutation",
+                input = input(),
+                observedAt = instant(1_000),
+            )
+            source.markMutationRetryable(
+                mutationId = "retry-mutation",
+                retryAt = instant(5_000),
+                reason = "HTTP 503",
+            )
+
+            assertTrue(source.getDueMutations(instant(4_999)).isEmpty())
+            reopen()
+
+            val due = source.getDueMutations(instant(5_000)).single()
+            assertEquals("retry-mutation", due.mutation.mutationId)
+            assertEquals(1, due.mutation.attemptCount)
+            assertEquals(MutationState.RetryableWait, due.mutation.state)
+        }
+    }
+
+    @Test
+    fun blockedMutationRequiresExplicitRetryBeforeItIsDue() = runTest {
+        withFixture("blocked-retry") {
+            source.insertPendingCreate(
+                localId = "blocked-user",
+                mutationId = "blocked-mutation",
+                input = input(),
+                observedAt = instant(1_000),
+            )
+            source.markMutationBlocked("blocked-mutation", "Authentication required")
+
+            assertTrue(source.getDueMutations(instant(10_000)).isEmpty())
+
+            source.retryBlockedMutation("blocked-mutation")
+
+            assertEquals("blocked-mutation", source.getDueMutations(instant(10_000)).single().mutation.mutationId)
+        }
+    }
+
+    @Test
+    fun failedCreateRetryCreatesOneNewPendingMutation() = runTest {
+        withFixture("failed-create-retry") {
+            source.insertPendingCreate(
+                localId = "failed-user",
+                mutationId = "original-create",
+                input = input(),
+                observedAt = instant(1_000),
+            )
+            source.markCreateFailed("original-create", "failed-user", "Email is taken")
+
+            source.retryFailedCreate(
+                localId = "failed-user",
+                mutationId = "retried-create",
+                createdAt = instant(2_000),
+            )
+
+            assertEquals(StoredUserSyncStatus.PendingCreate, source.getUser("failed-user")?.synchronization)
+            assertEquals("retried-create", source.getAllMutations().single().mutationId)
+        }
+    }
+
+    @Test
     fun emptySnapshotRemovesSyncedRowsButPreservesFailedLocalCreate() = runTest {
         withFixture("empty-snapshot") {
             source.mergeSnapshot(listOf(snapshot(remoteId = 7)), instant(1_000))

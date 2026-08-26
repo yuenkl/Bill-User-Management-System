@@ -22,6 +22,14 @@ fun interface UndoUserDeletion {
     suspend operator fun invoke(localId: String): Result<Unit>
 }
 
+fun interface RetryUserCreation {
+    suspend operator fun invoke(localId: String): Result<Unit>
+}
+
+fun interface RetryBlockedSynchronization {
+    suspend operator fun invoke(): Result<Unit>
+}
+
 fun interface SyncPendingUsers {
     suspend operator fun invoke(): Result<Unit>
 }
