@@ -9,6 +9,10 @@ internal fun initKoin(
     platformModule: Module,
 ) {
     startKoin {
-        modules(commonModule(appConfig), platformModule)
+        modules(
+            commonModule(appConfig),
+            platformModule,
+            offlineDataModule(),
+        )
     }
 }
