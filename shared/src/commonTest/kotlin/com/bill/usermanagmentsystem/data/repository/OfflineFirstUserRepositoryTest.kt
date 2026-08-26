@@ -12,6 +12,7 @@ import com.bill.usermanagmentsystem.domain.model.Gender
 import com.bill.usermanagmentsystem.domain.model.UserDataError
 import com.bill.usermanagmentsystem.domain.model.UserStatus
 import com.bill.usermanagmentsystem.domain.model.userDataErrorOrNull
+import com.bill.usermanagmentsystem.domain.repository.PageLoadResult
 import com.bill.usermanagmentsystem.domain.usecase.DefaultDeleteUserWithUndo
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runCurrent
@@ -32,8 +33,8 @@ class OfflineFirstUserRepositoryTest {
         val result = repository.addUser(input())
         runCurrent()
 
-        assertEquals("local-id", result.getOrNull())
-        assertEquals("local-id", local.insertedCreates.single().localId)
+        assertEquals("1", result.getOrNull())
+        assertEquals("1", local.insertedCreates.single().localId)
         assertEquals("mutation-id", local.insertedCreates.single().mutationId)
         assertEquals(1, sync.syncCalls)
     }
@@ -47,7 +48,7 @@ class OfflineFirstUserRepositoryTest {
         val result = repository.addUser(input())
         runCurrent()
 
-        assertEquals("local-id", result.getOrNull())
+        assertEquals("1", result.getOrNull())
         assertEquals(1, local.insertedCreates.size)
         assertEquals(1, sync.syncCalls)
     }
@@ -126,7 +127,7 @@ class OfflineFirstUserRepositoryTest {
         runCurrent()
 
         val mutation = local.storedMutations.single()
-        assertEquals("local-id", mutation.mutationId)
+        assertEquals("mutation-id", mutation.mutationId)
         assertEquals("failed-user", mutation.userLocalId)
         assertEquals(1, sync.syncCalls)
     }
@@ -147,13 +148,26 @@ class OfflineFirstUserRepositoryTest {
         assertEquals(1, sync.syncCalls)
     }
 
+    @Test
+    fun pageLoadingDelegatesToTheSharedCoordinator() = runTest {
+        val sync = FakeSyncCoordinator().apply {
+            pageResult = Result.success(PageLoadResult(loadedCount = 20, hasMore = true))
+        }
+        val repository = repository(FakeUserLocalDataSource(), sync)
+
+        val result = repository.loadNextPage().getOrThrow()
+
+        assertEquals(PageLoadResult(loadedCount = 20, hasMore = true), result)
+        assertEquals(1, sync.pageCalls)
+    }
+
     private fun kotlinx.coroutines.test.TestScope.repository(
         local: FakeUserLocalDataSource,
         sync: FakeSyncCoordinator,
     ) = OfflineFirstUserRepository(
         localDataSource = local,
         syncCoordinator = sync,
-        idGenerator = QueueIdGenerator("local-id", "mutation-id"),
+        idGenerator = QueueIdGenerator("mutation-id"),
         timeProvider = FakeTimeProvider(instant(1_000)),
         applicationScope = backgroundScope,
     )

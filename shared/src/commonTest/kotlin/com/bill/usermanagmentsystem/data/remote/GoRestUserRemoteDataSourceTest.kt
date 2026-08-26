@@ -4,13 +4,16 @@ import com.bill.usermanagmentsystem.platform.AppConfig
 import com.bill.usermanagmentsystem.platform.TimeProvider
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.plugins.logging.Logger
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 
 class GoRestUserRemoteDataSourceTest {
     @Test
@@ -23,15 +26,17 @@ class GoRestUserRemoteDataSourceTest {
             },
         )
 
-        val users = assertIs<RemoteResult.Success<List<RemoteUser>>>(source.fetchLastPage()).value
+        val page = assertIs<RemoteResult.Success<RemotePage>>(source.fetchLastPage()).value
 
         assertEquals(listOf("1"), requests)
-        assertEquals(listOf(9L, 3L), users.map(RemoteUser::remoteId))
-        assertEquals(listOf(0L, 1L), users.map(RemoteUser::serverPosition))
+        assertEquals(1L, page.page)
+        assertEquals(1L, page.totalPages)
+        assertEquals(listOf(9L, 3L), page.users.map(RemoteUser::remoteId))
+        assertEquals(listOf(-20L, -19L), page.users.map(RemoteUser::serverPosition))
     }
 
     @Test
-    fun multiplePagesFetchesReportedLastPage() = runRemoteTest { requests ->
+    fun pageCountProbeFetchesAndReturnsTheLastPage() = runRemoteTest { requests ->
         val source = source(
             engine = engine { request ->
                 val page = request.url.parameters["page"].orEmpty()
@@ -39,15 +44,18 @@ class GoRestUserRemoteDataSourceTest {
                 if (page == "1") {
                     jsonResponse(usersJson(1), pageCount = "4")
                 } else {
-                    jsonResponse(usersJson(40, 41), pageCount = "4")
+                    jsonResponse(usersJson(40), pageCount = null)
                 }
             },
         )
 
-        val users = assertIs<RemoteResult.Success<List<RemoteUser>>>(source.fetchLastPage()).value
+        val page = assertIs<RemoteResult.Success<RemotePage>>(source.fetchLastPage()).value
 
         assertEquals(listOf("1", "4"), requests)
-        assertEquals(listOf(40L, 41L), users.map(RemoteUser::remoteId))
+        assertEquals(4L, page.page)
+        assertEquals(4L, page.totalPages)
+        assertEquals(listOf(40L), page.users.map(RemoteUser::remoteId))
+        assertEquals(listOf(-80L), page.users.map(RemoteUser::serverPosition))
     }
 
     @Test
@@ -65,7 +73,24 @@ class GoRestUserRemoteDataSourceTest {
     }
 
     @Test
-    fun changedPaginationMetadataAndEmptyLastPageCommitAnEmptySnapshot() = runRemoteTest { requests ->
+    fun requestedPageUsesItsNumberAndDoesNotRequirePaginationHeader() = runRemoteTest { requests ->
+        val source = source(
+            engine = engine { request ->
+                val page = request.url.parameters["page"].orEmpty()
+                requests += page
+                jsonResponse(usersJson(40, 41), pageCount = null)
+            },
+        )
+
+        val result = assertIs<RemoteResult.Success<List<RemoteUser>>>(source.fetchPage(3)).value
+
+        assertEquals(listOf("3"), requests)
+        assertEquals(listOf(40L, 41L), result.map(RemoteUser::remoteId))
+        assertEquals(listOf(-60L, -59L), result.map(RemoteUser::serverPosition))
+    }
+
+    @Test
+    fun changedPaginationMetadataCanReturnAnEmptyLastPage() = runRemoteTest { requests ->
         val source = source(
             engine = engine { request ->
                 val page = request.url.parameters["page"].orEmpty()
@@ -78,10 +103,11 @@ class GoRestUserRemoteDataSourceTest {
             },
         )
 
-        val result = assertIs<RemoteResult.Success<List<RemoteUser>>>(source.fetchLastPage())
+        val page = assertIs<RemoteResult.Success<RemotePage>>(source.fetchLastPage()).value
 
         assertEquals(listOf("1", "3"), requests)
-        assertTrue(result.value.isEmpty())
+        assertEquals(3L, page.page)
+        assertTrue(page.users.isEmpty())
     }
 
     @Test
@@ -112,6 +138,25 @@ class GoRestUserRemoteDataSourceTest {
             val source = source(engine { respond("{}", status) })
             assertTrue(expectedType.isInstance(source.fetchLastPage()))
         }
+    }
+
+    @Test
+    fun rateLimitFailureHonorsServerRetryAfterTiming() = runRemoteTest { _ ->
+        val source = source(
+            engine = engine {
+                respond(
+                    content = "{}",
+                    status = HttpStatusCode.TooManyRequests,
+                    headers = Headers.build {
+                        append(HttpHeaders.RetryAfter, "7")
+                    },
+                )
+            },
+        )
+
+        val result = assertIs<RemoteResult.RetryableFailure>(source.fetchLastPage())
+
+        assertEquals(Instant.fromEpochSeconds(1_007), result.serverRetryAt)
     }
 
     @Test
@@ -151,7 +196,7 @@ class GoRestUserRemoteDataSourceTest {
             apiToken = "",
         )
 
-        assertIs<RemoteResult.Success<List<RemoteUser>>>(source.fetchLastPage())
+        assertIs<RemoteResult.Success<RemotePage>>(source.fetchLastPage())
         assertEquals(
             RemoteResult.AuthenticationFailure,
             source.createUser(
@@ -166,11 +211,52 @@ class GoRestUserRemoteDataSourceTest {
         assertEquals(1, requestCount)
     }
 
+    @Test
+    fun apiLoggingRedactsAuthorizationAndExcludesRequestBodies() = runRemoteTest { _ ->
+        val logger = RecordingLogger()
+        val testToken = "test-api-token-not-for-logs"
+        val source = source(
+            engine = engine {
+                respond(
+                    content = userJson(7),
+                    status = HttpStatusCode.Created,
+                    headers = jsonHeaders(),
+                )
+            },
+            apiToken = testToken,
+            enableApiLogging = true,
+            logger = logger,
+        )
+
+        assertIs<RemoteResult.Success<RemoteUser>>(
+            source.createUser(
+                CreateUserRequest(
+                    name = "Ada Lovelace",
+                    email = "ada@example.com",
+                    gender = com.bill.usermanagmentsystem.domain.model.Gender.Female,
+                    status = com.bill.usermanagmentsystem.domain.model.UserStatus.Active,
+                ),
+            ),
+        )
+
+        val messages = logger.messages.joinToString(separator = "\n")
+        assertTrue(messages.contains("POST"))
+        assertTrue(messages.contains("Authorization: ***"))
+        assertFalse(messages.contains(testToken))
+        assertFalse(messages.contains("Ada Lovelace"))
+    }
+
     private fun source(
         engine: MockEngine,
         apiToken: String = "secret",
+        enableApiLogging: Boolean = false,
+        logger: Logger = NoOpLogger,
     ): GoRestUserRemoteDataSource = GoRestUserRemoteDataSource(
-        httpClient = createGoRestHttpClient(engine),
+        httpClient = createGoRestHttpClient(
+            engine = engine,
+            enableApiLogging = enableApiLogging,
+            logger = logger,
+        ),
         appConfig = AppConfig(apiToken = apiToken, baseUrl = "https://example.test/public/v2/"),
         timeProvider = object : TimeProvider {
             override fun now() = kotlin.time.Instant.fromEpochSeconds(1_000)
@@ -201,7 +287,22 @@ class GoRestUserRemoteDataSourceTest {
         prefix = "[",
         postfix = "]",
     ) { id ->
+        userJson(id)
+    }
+
+    private fun userJson(id: Long): String =
         """{"id":$id,"name":"User $id","email":"user$id@example.com","gender":"female","status":"active"}"""
+
+    private class RecordingLogger : Logger {
+        val messages = mutableListOf<String>()
+
+        override fun log(message: String) {
+            messages += message
+        }
+    }
+
+    private object NoOpLogger : Logger {
+        override fun log(message: String) = Unit
     }
 
     private fun runRemoteTest(block: suspend (MutableList<String>) -> Unit) =

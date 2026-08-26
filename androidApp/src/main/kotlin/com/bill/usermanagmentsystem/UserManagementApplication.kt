@@ -9,6 +9,7 @@ class UserManagementApplication : Application() {
         initKoinAndroid(
             application = this,
             apiToken = BuildConfig.GOREST_ACCESS_TOKEN,
+            enableApiLogging = BuildConfig.DEBUG,
         )
     }
 }

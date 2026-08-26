@@ -8,12 +8,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
@@ -23,6 +27,7 @@ import com.bill.usermanagmentsystem.ui.theme.UserManagementTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.math.abs
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -206,8 +211,171 @@ class UserFeedScreenTest {
 
     @Test
     fun adaptiveFormPresentationSwitchesAtSixHundredDp() {
-        assertEquals(AddUserFormPresentation.Sheet, addUserFormPresentation(599.dp))
-        assertEquals(AddUserFormPresentation.Dialog, addUserFormPresentation(600.dp))
+        assertEquals(AdaptiveLayoutMode.Compact, adaptiveLayoutMode(599.dp))
+        assertEquals(AdaptiveLayoutMode.Wide, adaptiveLayoutMode(600.dp))
+    }
+
+    @Test
+    @Config(qualifiers = "w800dp-h1000dp")
+    fun compactFeedUsesOneColumnBelowSixHundredDp() = runComposeUiTest {
+        setContent {
+            Box(Modifier.size(width = 599.dp, height = 800.dp)) {
+                screen(
+                    UserFeedUiState(
+                        users = threeUsers(),
+                        initialLoading = false,
+                    ),
+                )
+            }
+        }
+
+        val centers = threeUsers().map { item ->
+            onNodeWithContentDescription(item.accessibilityLabel()).fetchSemanticsNode().boundsInRoot.center
+        }
+        assertTrue(centers.all { center -> abs(center.x - centers.first().x) < 1f })
+        assertTrue(centers[1].y > centers[0].y)
+        assertTrue(centers[2].y > centers[1].y)
+    }
+
+    @Test
+    @Config(qualifiers = "w800dp-h1000dp")
+    fun wideFeedUsesExactlyTwoColumnsAtSixHundredDp() = runComposeUiTest {
+        setContent {
+            Box(Modifier.size(width = 600.dp, height = 800.dp)) {
+                screen(
+                    UserFeedUiState(
+                        users = threeUsers(),
+                        initialLoading = false,
+                    ),
+                )
+            }
+        }
+
+        val centers = threeUsers().map { item ->
+            onNodeWithContentDescription(item.accessibilityLabel()).fetchSemanticsNode().boundsInRoot.center
+        }
+        assertTrue(abs(centers[0].y - centers[1].y) < 1f)
+        assertTrue(centers[1].x > centers[0].x)
+        assertTrue(abs(centers[0].x - centers[2].x) < 1f)
+        assertTrue(centers[2].y > centers[0].y)
+    }
+
+    @Test
+    @Config(qualifiers = "w800dp-h1000dp")
+    fun formExposesValidationErrorAndDisabledSubmitSemantics() = runComposeUiTest {
+        setContent {
+            Box(Modifier.size(width = 500.dp, height = 800.dp)) {
+                screen(
+                    UserFeedUiState(
+                        initialLoading = false,
+                        addUserForm = AddUserFormUiState(
+                            name = "A",
+                            nameTouched = true,
+                            nameError = "Name must be at least 2 characters.",
+                        ),
+                    ),
+                )
+            }
+        }
+
+        onNode(
+            SemanticsMatcher.expectValue(
+                SemanticsProperties.Error,
+                "Name must be at least 2 characters.",
+            ),
+        ).fetchSemanticsNode()
+        onNodeWithContentDescription("Submit user").assertIsNotEnabled()
+    }
+
+    @Test
+    fun pendingAndFailedSyncStatesHaveReadableText() = runComposeUiTest {
+        setContent {
+            screen(
+                UserFeedUiState(
+                    users = listOf(
+                        user().copy(synchronization = UserItemSynchronization.Pending),
+                        user(localId = "local-2", name = "Grace Hopper").copy(
+                            synchronization = UserItemSynchronization.Failed("email: already exists"),
+                        ),
+                    ),
+                    initialLoading = false,
+                ),
+            )
+        }
+
+        onNodeWithText("Pending sync").fetchSemanticsNode()
+        onNodeWithText("Sync failed: email: already exists").fetchSemanticsNode()
+        onNodeWithText("Retry sync").fetchSemanticsNode()
+    }
+
+    @Test
+    @Config(qualifiers = "w500dp-h800dp")
+    fun reachingTheEndOfTheFeedRequestsTheNextPageOnce() = runComposeUiTest {
+        var pageCalls = 0
+        val users = users(20)
+        setContent {
+            screen(
+                state = UserFeedUiState(
+                    users = users,
+                    initialLoading = false,
+                    canLoadMore = true,
+                ),
+                onLoadNextPage = { pageCalls += 1 },
+            )
+        }
+
+        onNodeWithContentDescription("Users").performScrollToIndex(users.size)
+        waitForIdle()
+
+        assertEquals(1, pageCalls)
+    }
+
+    @Test
+    fun emptyReportedLastPageContinuesWithThePrecedingPage() = runComposeUiTest {
+        var pageCalls = 0
+        var state by mutableStateOf(
+            UserFeedUiState(
+                initialLoading = false,
+                canLoadMore = true,
+                emptyState = UserFeedEmptyState.Empty,
+            ),
+        )
+        setContent {
+            screen(
+                state = state,
+                onLoadNextPage = {
+                    pageCalls += 1
+                    if (pageCalls == 1) state = state.copy(loadingMore = true)
+                },
+            )
+        }
+
+        waitForIdle()
+        state = state.copy(loadingMore = false)
+        waitForIdle()
+
+        assertEquals(2, pageCalls)
+    }
+
+    @Test
+    fun pageFailureShowsAnExplicitRetryAction() = runComposeUiTest {
+        var retryCalls = 0
+        setContent {
+            screen(
+                state = UserFeedUiState(
+                    users = listOf(user()),
+                    initialLoading = false,
+                    canLoadMore = true,
+                    loadMoreError = "You're offline.",
+                ),
+                onRetryNextPage = { retryCalls += 1 },
+            )
+        }
+
+        onNodeWithText("Couldn't load more users").fetchSemanticsNode()
+        onNodeWithText("Retry").performClick()
+
+        assertEquals(1, retryCalls)
     }
 
     @Test
@@ -302,7 +470,11 @@ class UserFeedScreenTest {
     }
 
     @Composable
-    private fun screen(state: UserFeedUiState) {
+    private fun screen(
+        state: UserFeedUiState,
+        onLoadNextPage: () -> Unit = {},
+        onRetryNextPage: () -> Unit = {},
+    ) {
         UserManagementTheme {
             UserFeedScreen(
                 state = state,
@@ -317,17 +489,40 @@ class UserFeedScreenTest {
                 onAddUserSubmitted = {},
                 onRetryUserCreation = {},
                 onMessageConsumed = {},
+                onLoadNextPage = onLoadNextPage,
+                onRetryNextPage = onRetryNextPage,
             )
         }
     }
 
-    private fun user() = UserItemUiModel(
-        localId = "local-1",
-        name = "Ada Lovelace",
-        email = "ada@example.com",
+    private fun user(
+        localId: String = "local-1",
+        name: String = "Ada Lovelace",
+        email: String = "ada@example.com",
+    ) = UserItemUiModel(
+        localId = localId,
+        name = name,
+        email = email,
         gender = Gender.Female,
         status = UserStatus.Active,
         relativeTime = "2 minutes ago",
         synchronization = UserItemSynchronization.Synced,
     )
+
+    private fun threeUsers(): List<UserItemUiModel> = listOf(
+        user(),
+        user(localId = "local-2", name = "Grace Hopper", email = "grace@example.com"),
+        user(localId = "local-3", name = "Katherine Johnson", email = "katherine@example.com"),
+    )
+
+    private fun users(count: Int): List<UserItemUiModel> = (1..count).map { index ->
+        user(
+            localId = "local-$index",
+            name = "User $index",
+            email = "user$index@example.com",
+        )
+    }
+
+    private fun UserItemUiModel.accessibilityLabel(): String =
+        "$name, $email, $relativeTime"
 }

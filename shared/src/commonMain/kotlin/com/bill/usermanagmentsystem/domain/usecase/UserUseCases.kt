@@ -4,6 +4,7 @@ import com.bill.usermanagmentsystem.domain.model.AddUserInput
 import com.bill.usermanagmentsystem.domain.model.SyncState
 import com.bill.usermanagmentsystem.domain.model.UndoableDeletion
 import com.bill.usermanagmentsystem.domain.model.UserRecord
+import com.bill.usermanagmentsystem.domain.repository.PageLoadResult
 import com.bill.usermanagmentsystem.domain.repository.UserRepository
 import com.bill.usermanagmentsystem.platform.TimeProvider
 import kotlinx.coroutines.flow.Flow
@@ -25,6 +26,10 @@ fun interface ObserveUndoableDeletions {
 
 fun interface RefreshUsers {
     suspend operator fun invoke(): Result<Unit>
+}
+
+fun interface LoadNextUsersPage {
+    suspend operator fun invoke(): Result<PageLoadResult>
 }
 
 fun interface AddUser {

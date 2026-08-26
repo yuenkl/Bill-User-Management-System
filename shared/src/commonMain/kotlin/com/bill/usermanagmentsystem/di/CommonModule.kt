@@ -18,7 +18,12 @@ fun commonModule(appConfig: AppConfig): Module = module {
     single { appConfig }
     single<ConfigurationState> { appConfig.configurationState }
     single<TimeProvider> { SystemTimeProvider() }
-    single<HttpClient> { createGoRestHttpClient(get<NetworkEngineFactory>()) } onClose { client -> client?.close() }
+    single<HttpClient> {
+        createGoRestHttpClient(
+            engineFactory = get<NetworkEngineFactory>(),
+            enableApiLogging = appConfig.enableApiLogging,
+        )
+    } onClose { client -> client?.close() }
     single<UserRemoteDataSource> {
         GoRestUserRemoteDataSource(
             httpClient = get(),

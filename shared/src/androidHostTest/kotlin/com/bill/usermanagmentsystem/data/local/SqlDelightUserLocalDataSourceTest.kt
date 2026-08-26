@@ -39,7 +39,6 @@ class SqlDelightUserLocalDataSourceTest {
                 observedAt = instant(1_000),
             )
             source.insertPendingCreate(
-                localId = "local-pending",
                 mutationId = "create-pending",
                 input = input(name = "Pending"),
                 observedAt = instant(2_000),
@@ -63,8 +62,7 @@ class SqlDelightUserLocalDataSourceTest {
     @Test
     fun createAndOutboxInsertRollbackTogetherWhenMutationInsertFails() = runTest {
         withFixture("atomic-create") {
-            source.insertPendingCreate(
-                localId = "first-user",
+            val firstLocalId = source.insertPendingCreate(
                 mutationId = "duplicate-mutation",
                 input = input(name = "First"),
                 observedAt = instant(1_000),
@@ -72,23 +70,20 @@ class SqlDelightUserLocalDataSourceTest {
 
             assertFails {
                 source.insertPendingCreate(
-                    localId = "rolled-back-user",
                     mutationId = "duplicate-mutation",
                     input = input(name = "Must roll back"),
                     observedAt = instant(2_000),
                 )
             }
 
-            assertNull(source.getUser("rolled-back-user"))
-            assertEquals(listOf("first-user"), source.getAllMutations().map { it.userLocalId })
+            assertEquals(listOf(firstLocalId), source.getAllMutations().map { it.userLocalId })
         }
     }
 
     @Test
     fun createSuccessKeepsStableLocalIdentityAndObservedTime() = runTest {
         withFixture("create-success") {
-            source.insertPendingCreate(
-                localId = "stable-local-id",
+            val localId = source.insertPendingCreate(
                 mutationId = "create-id",
                 input = input(name = "Local name"),
                 observedAt = instant(1_000),
@@ -96,12 +91,12 @@ class SqlDelightUserLocalDataSourceTest {
 
             source.completeCreate(
                 mutationId = "create-id",
-                localId = "stable-local-id",
+                localId = localId,
                 remoteUser = snapshot(remoteId = 42, name = "Server name", position = 0),
             )
 
-            val user = source.getUser("stable-local-id")!!
-            assertEquals("stable-local-id", user.localId)
+            val user = source.getUser(localId)!!
+            assertEquals(localId, user.localId)
             assertEquals(42, user.remoteId)
             assertEquals("Server name", user.name)
             assertEquals(instant(1_000), user.observedAt)
@@ -111,10 +106,36 @@ class SqlDelightUserLocalDataSourceTest {
     }
 
     @Test
+    fun completedLocalCreateSurvivesALastPageSnapshotThatDoesNotContainIt() = runTest {
+        withFixture("completed-create-last-page") {
+            val localId = source.insertPendingCreate(
+                mutationId = "create-id",
+                input = input(name = "Created user"),
+                observedAt = instant(1_000),
+            )
+            source.completeCreate(
+                mutationId = "create-id",
+                localId = localId,
+                remoteUser = snapshot(remoteId = 42, name = "Created user", position = null),
+            )
+
+            source.mergeSnapshot(
+                users = listOf(snapshot(remoteId = 77, name = "Last page user", position = -40)),
+                observedAt = instant(2_000),
+            )
+
+            assertEquals(42, source.getUser(localId)?.remoteId)
+            assertEquals(
+                setOf("Created user", "Last page user"),
+                source.observeVisibleUsers().first().map { it.user.name }.toSet(),
+            )
+        }
+    }
+
+    @Test
     fun pendingCreateSurvivesDatabaseReopen() = runTest {
         withFixture("create-reopen") {
-            source.insertPendingCreate(
-                localId = "offline-user",
+            val localId = source.insertPendingCreate(
                 mutationId = "offline-create",
                 input = input(name = "Offline"),
                 observedAt = instant(1_000),
@@ -122,24 +143,107 @@ class SqlDelightUserLocalDataSourceTest {
 
             reopen()
 
-            assertEquals(StoredUserSyncStatus.PendingCreate, source.getUser("offline-user")?.synchronization)
+            assertEquals(StoredUserSyncStatus.PendingCreate, source.getUser(localId)?.synchronization)
             assertEquals("offline-create", source.getAllMutations().single().mutationId)
+        }
+    }
+
+    @Test
+    fun existingTextIdsMigrateToIncreasingDatabaseAssignedIds() = runTest {
+        val application = ApplicationProvider.getApplicationContext<Application>()
+        val databaseName = "user-management-numeric-id-migration.db"
+        application.deleteDatabase(databaseName)
+        val legacy = application.openOrCreateDatabase(databaseName, 0, null)
+        legacy.execSQL(
+            """
+            CREATE TABLE users (
+                local_id TEXT NOT NULL PRIMARY KEY,
+                remote_id INTEGER UNIQUE,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                gender TEXT NOT NULL,
+                status TEXT NOT NULL,
+                observed_at_epoch_ms INTEGER NOT NULL,
+                server_position INTEGER,
+                sync_status TEXT NOT NULL CHECK (
+                    sync_status IN ('SYNCED', 'PENDING_CREATE', 'CREATE_FAILED', 'PENDING_DELETE')
+                ),
+                hidden INTEGER NOT NULL DEFAULT 0,
+                undo_deadline_epoch_ms INTEGER,
+                last_sync_error TEXT
+            )
+            """.trimIndent(),
+        )
+        legacy.execSQL(
+            """
+            CREATE TABLE pending_mutations (
+                mutation_id TEXT NOT NULL PRIMARY KEY,
+                user_local_id TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK (kind IN ('CREATE', 'DELETE')),
+                created_at_epoch_ms INTEGER NOT NULL,
+                attempt_count INTEGER NOT NULL DEFAULT 0,
+                state TEXT NOT NULL CHECK (state IN ('PENDING', 'RETRYABLE_WAIT', 'BLOCKED')),
+                retry_at_epoch_ms INTEGER,
+                last_error TEXT,
+                FOREIGN KEY (user_local_id) REFERENCES users(local_id) ON DELETE CASCADE,
+                UNIQUE (user_local_id, kind)
+            )
+            """.trimIndent(),
+        )
+        legacy.execSQL(
+            """
+            INSERT INTO users VALUES (
+                'legacy-id', 44, 'Legacy user', 'legacy@example.com', 'female', 'active',
+                1000, NULL, 'SYNCED', 0, NULL, NULL
+            )
+            """.trimIndent(),
+        )
+        legacy.execSQL(
+            """
+            INSERT INTO pending_mutations VALUES (
+                'legacy-create', 'legacy-id', 'CREATE', 1000, 0, 'PENDING', NULL, NULL
+            )
+            """.trimIndent(),
+        )
+        legacy.version = 1
+        legacy.close()
+
+        val driver = AndroidSqliteDriver(UserManagementDatabase.Schema, application, databaseName)
+        val source = SqlDelightUserLocalDataSource(
+            database = UserManagementDatabase(driver),
+            idGenerator = CountingIdGenerator(),
+            queryDispatcher = UnconfinedTestDispatcher(testScheduler),
+        )
+        try {
+            assertEquals(44, source.getUser("1")?.remoteId)
+            assertEquals("1", source.getAllMutations().single().userLocalId)
+
+            assertEquals(
+                "2",
+                source.insertPendingCreate(
+                    mutationId = "new-create",
+                    input = input(name = "New user"),
+                    observedAt = instant(2_000),
+                ),
+            )
+        } finally {
+            driver.close()
+            application.deleteDatabase(databaseName)
         }
     }
 
     @Test
     fun deletingPendingCreateCancelsCreateWithoutDeleteMutation() = runTest {
         withFixture("cancel-create") {
-            source.insertPendingCreate(
-                localId = "local-only",
+            val localId = source.insertPendingCreate(
                 mutationId = "create-local-only",
                 input = input(),
                 observedAt = instant(1_000),
             )
 
-            source.requestDelete("local-only", instant(6_000))
+            source.requestDelete(localId, instant(6_000))
 
-            assertNull(source.getUser("local-only"))
+            assertNull(source.getUser(localId))
             assertTrue(source.getAllMutations().isEmpty())
         }
     }
@@ -283,10 +387,29 @@ class SqlDelightUserLocalDataSourceTest {
     }
 
     @Test
+    fun pageMergeAppendsPrecedingPageWithoutRemovingTheLastPage() = runTest {
+        withFixture("page-merge") {
+            source.mergeSnapshot(
+                listOf(snapshot(remoteId = 41, name = "Page three", position = -60)),
+                instant(1_000),
+            )
+
+            source.mergePage(
+                listOf(snapshot(remoteId = 21, name = "Page two", position = -40)),
+                instant(2_000),
+            )
+
+            val visible = source.observeVisibleUsers().first()
+            assertEquals(listOf("Page three", "Page two"), visible.map { it.user.name })
+            assertEquals(instant(1_000), visible.first().user.observedAt)
+            assertEquals(instant(2_000), visible.last().user.observedAt)
+        }
+    }
+
+    @Test
     fun retryableMutationBecomesDueAtPersistedTimeAfterReopen() = runTest {
         withFixture("retry-reopen") {
             source.insertPendingCreate(
-                localId = "retry-user",
                 mutationId = "retry-mutation",
                 input = input(),
                 observedAt = instant(1_000),
@@ -311,7 +434,6 @@ class SqlDelightUserLocalDataSourceTest {
     fun blockedMutationRequiresExplicitRetryBeforeItIsDue() = runTest {
         withFixture("blocked-retry") {
             source.insertPendingCreate(
-                localId = "blocked-user",
                 mutationId = "blocked-mutation",
                 input = input(),
                 observedAt = instant(1_000),
@@ -327,23 +449,47 @@ class SqlDelightUserLocalDataSourceTest {
     }
 
     @Test
+    fun authenticationBlockedMutationsResumeWhenCredentialsAreUpdated() = runTest {
+        withFixture("authentication-retry") {
+            source.insertPendingCreate(
+                mutationId = "authentication-mutation",
+                input = input(),
+                observedAt = instant(1_000),
+            )
+            source.markMutationBlocked("authentication-mutation", "Authentication is required.")
+            source.insertPendingCreate(
+                mutationId = "permanent-mutation",
+                input = input(name = "Permanent user"),
+                observedAt = instant(2_000),
+            )
+            source.markMutationBlocked("permanent-mutation", "The endpoint is unavailable.")
+
+            source.retryAuthenticationBlockedMutations()
+
+            assertEquals(
+                listOf("authentication-mutation"),
+                source.getDueMutations(instant(10_000)).map { it.mutation.mutationId },
+            )
+        }
+    }
+
+    @Test
     fun failedCreateRetryCreatesOneNewPendingMutation() = runTest {
         withFixture("failed-create-retry") {
-            source.insertPendingCreate(
-                localId = "failed-user",
+            val localId = source.insertPendingCreate(
                 mutationId = "original-create",
                 input = input(),
                 observedAt = instant(1_000),
             )
-            source.markCreateFailed("original-create", "failed-user", "Email is taken")
+            source.markCreateFailed("original-create", localId, "Email is taken")
 
             source.retryFailedCreate(
-                localId = "failed-user",
+                localId = localId,
                 mutationId = "retried-create",
                 createdAt = instant(2_000),
             )
 
-            assertEquals(StoredUserSyncStatus.PendingCreate, source.getUser("failed-user")?.synchronization)
+            assertEquals(StoredUserSyncStatus.PendingCreate, source.getUser(localId)?.synchronization)
             assertEquals("retried-create", source.getAllMutations().single().mutationId)
         }
     }
@@ -352,19 +498,19 @@ class SqlDelightUserLocalDataSourceTest {
     fun emptySnapshotRemovesSyncedRowsButPreservesFailedLocalCreate() = runTest {
         withFixture("empty-snapshot") {
             source.mergeSnapshot(listOf(snapshot(remoteId = 7)), instant(1_000))
-            source.insertPendingCreate(
-                localId = "failed-local",
+            val remoteLocalId = source.observeVisibleUsers().first().single().user.localId
+            val localId = source.insertPendingCreate(
                 mutationId = "failed-create",
                 input = input(name = "Needs review"),
                 observedAt = instant(2_000),
             )
-            source.markCreateFailed("failed-create", "failed-local", "Email is taken")
+            source.markCreateFailed("failed-create", localId, "Email is taken")
 
             source.mergeSnapshot(emptyList(), instant(3_000))
 
-            assertNull(source.getUser(sourceIds.remoteLocalId))
+            assertNull(source.getUser(remoteLocalId))
             val visible = source.observeVisibleUsers().first().single()
-            assertEquals("failed-local", visible.user.localId)
+            assertEquals(localId, visible.user.localId)
             assertEquals(
                 UserSynchronization.CreateFailed("Email is taken"),
                 visible.synchronization,
@@ -399,9 +545,6 @@ class SqlDelightUserLocalDataSourceTest {
         var source = openSource()
             private set
 
-        val sourceIds: CountingIdGenerator
-            get() = ids
-
         init {
             driver.close()
             application.deleteDatabase(databaseName)
@@ -435,12 +578,8 @@ class SqlDelightUserLocalDataSourceTest {
 
     private class CountingIdGenerator : IdGenerator {
         private var next = 0
-        var remoteLocalId: String = ""
-            private set
 
-        override fun nextId(): String = "generated-${next++}".also { generated ->
-            if (remoteLocalId.isEmpty()) remoteLocalId = generated
-        }
+        override fun nextId(): String = "generated-${next++}"
     }
 
     private companion object {
@@ -456,7 +595,7 @@ class SqlDelightUserLocalDataSourceTest {
         fun snapshot(
             remoteId: Long,
             name: String = "Remote user",
-            position: Long = 1,
+            position: Long? = 1,
         ) = SnapshotUser(
             remoteId = remoteId,
             name = name,

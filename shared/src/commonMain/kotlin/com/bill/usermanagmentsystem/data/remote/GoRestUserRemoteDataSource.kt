@@ -11,6 +11,9 @@ import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.plugins.logging.LogLevel
+import io.ktor.client.plugins.logging.Logger
+import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -32,13 +35,24 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 private const val PAGE_SIZE = 20
+private const val MAX_PAGE_NUMBER = Long.MAX_VALUE / PAGE_SIZE
 private const val PAGINATION_PAGES_HEADER = "X-Pagination-Pages"
 private const val RATE_LIMIT_RESET_HEADER = "X-RateLimit-Reset"
 
-internal fun createGoRestHttpClient(engineFactory: NetworkEngineFactory): HttpClient =
-    createGoRestHttpClient(engineFactory.create())
+internal fun createGoRestHttpClient(
+    engineFactory: NetworkEngineFactory,
+    enableApiLogging: Boolean = false,
+): HttpClient = createGoRestHttpClient(
+    engine = engineFactory.create(),
+    enableApiLogging = enableApiLogging,
+    logger = engineFactory.apiLogger,
+)
 
-internal fun createGoRestHttpClient(engine: HttpClientEngine): HttpClient = HttpClient(engine) {
+internal fun createGoRestHttpClient(
+    engine: HttpClientEngine,
+    enableApiLogging: Boolean = false,
+    logger: Logger = NoOpLogger,
+): HttpClient = HttpClient(engine) {
     expectSuccess = false
     install(ContentNegotiation) {
         json(goRestJson)
@@ -48,7 +62,17 @@ internal fun createGoRestHttpClient(engine: HttpClientEngine): HttpClient = Http
         connectTimeoutMillis = 10.seconds.inWholeMilliseconds
         socketTimeoutMillis = 15.seconds.inWholeMilliseconds
     }
-    // Deliberately omit HTTP logging: Authorization headers can never reach debug output.
+    if (enableApiLogging) {
+        install(Logging) {
+            this.logger = logger
+            level = LogLevel.HEADERS
+            sanitizeHeader { header -> header.equals(HttpHeaders.Authorization, ignoreCase = true) }
+        }
+    }
+}
+
+private object NoOpLogger : Logger {
+    override fun log(message: String) = Unit
 }
 
 internal class GoRestUserRemoteDataSource(
@@ -58,21 +82,35 @@ internal class GoRestUserRemoteDataSource(
 ) : UserRemoteDataSource {
     private val usersUrl = "${appConfig.baseUrl.trimEnd('/')}/users"
 
-    override suspend fun fetchLastPage(): RemoteResult<List<RemoteUser>> = remoteCall {
-        when (val firstPage = fetchPage(page = 1, requirePageCount = true)) {
+    override suspend fun fetchLastPage(): RemoteResult<RemotePage> = remoteCall {
+        when (val firstPage = fetchPageResponse(page = 1, requirePageCount = true)) {
             is PageResult.Failure -> firstPage.failure
             is PageResult.Success -> {
                 val lastPageNumber = requireNotNull(firstPage.pageCount)
-                val lastPage = if (lastPageNumber == 1L) {
+                val lastPageUsers = if (lastPageNumber == 1L) {
                     firstPage.users
                 } else {
-                    when (val result = fetchPage(page = lastPageNumber, requirePageCount = false)) {
-                        is PageResult.Failure -> return@remoteCall result.failure
-                        is PageResult.Success -> result.users
+                    when (val lastPage = fetchPageResponse(page = lastPageNumber, requirePageCount = false)) {
+                        is PageResult.Failure -> return@remoteCall lastPage.failure
+                        is PageResult.Success -> lastPage.users
                     }
                 }
-                RemoteResult.Success(lastPage.mapIndexed { index, dto -> dto.toRemoteUser(index) })
+                RemoteResult.Success(
+                    RemotePage(
+                        users = lastPageUsers.toRemoteUsers(page = lastPageNumber),
+                        page = lastPageNumber,
+                        totalPages = lastPageNumber,
+                    ),
+                )
             }
+        }
+    }
+
+    override suspend fun fetchPage(page: Long): RemoteResult<List<RemoteUser>> = remoteCall {
+        require(page in 1..MAX_PAGE_NUMBER) { "Page number is outside the supported range." }
+        when (val result = fetchPageResponse(page = page, requirePageCount = false)) {
+            is PageResult.Failure -> result.failure
+            is PageResult.Success -> RemoteResult.Success(result.users.toRemoteUsers(page))
         }
     }
 
@@ -111,7 +149,7 @@ internal class GoRestUserRemoteDataSource(
         }
     }
 
-    private suspend fun fetchPage(
+    private suspend fun fetchPageResponse(
         page: Long,
         requirePageCount: Boolean,
     ): PageResult {
@@ -127,7 +165,7 @@ internal class GoRestUserRemoteDataSource(
             response.headers[PAGINATION_PAGES_HEADER]
                 ?.trim()
                 ?.toLongOrNull()
-                ?.takeIf { it >= 1L }
+                ?.takeIf { it in 1..MAX_PAGE_NUMBER }
                 ?: return PageResult.Failure(
                     RemoteResult.PermanentFailure("The server returned invalid pagination metadata."),
                 )
@@ -222,8 +260,13 @@ private fun GoRestUserDto.toRemoteUser(serverPosition: Long?): RemoteUser {
     )
 }
 
-private fun GoRestUserDto.toRemoteUser(serverPosition: Int): RemoteUser =
-    toRemoteUser(serverPosition.toLong())
+private fun List<GoRestUserDto>.toRemoteUsers(page: Long): List<RemoteUser> =
+    mapIndexed { index, user ->
+        // Pages are loaded newest-to-oldest. Negative page offsets keep the
+        // first displayed page ahead of earlier pages in the ascending DB order.
+        val serverPosition = -(page * PAGE_SIZE) + index
+        user.toRemoteUser(serverPosition)
+    }
 
 private val goRestJson = Json {
     ignoreUnknownKeys = true

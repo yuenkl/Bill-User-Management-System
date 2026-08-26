@@ -41,7 +41,7 @@ internal class SqlDelightUserLocalDataSource(
             .map { rows -> rows.map(SelectUndoableUsers::toUndoableDeletion) }
 
     override suspend fun getUser(localId: String): StoredUser? = withContext(queryDispatcher) {
-        queries.selectUserByLocalId(localId).executeAsOneOrNull()?.toStoredUser()
+        queries.selectUserByLocalId(localId.toDatabaseLocalId()).executeAsOneOrNull()?.toStoredUser()
     }
 
     override suspend fun getAllMutations(): List<StoredMutation> = withContext(queryDispatcher) {
@@ -49,27 +49,28 @@ internal class SqlDelightUserLocalDataSource(
     }
 
     override suspend fun insertPendingCreate(
-        localId: String,
         mutationId: String,
         input: com.bill.usermanagmentsystem.domain.model.AddUserInput,
         observedAt: Instant,
-    ) = withContext(queryDispatcher) {
+    ): String = withContext(queryDispatcher) {
+        var localId: Long? = null
         queries.transaction {
             queries.insertPendingUser(
-                local_id = localId,
                 name = input.name,
                 email = input.email,
                 gender = input.gender.apiValue,
                 status = input.status.apiValue,
                 observed_at_epoch_ms = observedAt.toEpochMilliseconds(),
             )
+            localId = queries.selectLastInsertedUserId().executeAsOne()
             queries.insertMutation(
                 mutation_id = mutationId,
-                user_local_id = localId,
+                user_local_id = requireNotNull(localId),
                 kind = MutationKind.Create.databaseValue,
                 created_at_epoch_ms = observedAt.toEpochMilliseconds(),
             )
         }
+        requireNotNull(localId).toString()
     }
 
     override suspend fun requestDelete(
@@ -77,20 +78,21 @@ internal class SqlDelightUserLocalDataSource(
         undoDeadline: Instant,
     ) = withContext(queryDispatcher) {
         queries.transaction {
-            val user = queries.selectUserByLocalId(localId).executeAsOneOrNull()
+            val databaseLocalId = localId.toDatabaseLocalId()
+            val user = queries.selectUserByLocalId(databaseLocalId).executeAsOneOrNull()
                 ?: throw UserDataException(UserDataError.UserNotFound(localId))
 
             when (user.syncStatus()) {
                 StoredUserSyncStatus.PendingCreate,
                 StoredUserSyncStatus.CreateFailed,
                 -> {
-                    queries.deleteMutationForUserKind(localId, MutationKind.Create.databaseValue)
-                    queries.deleteUser(localId)
+                    queries.deleteMutationForUserKind(databaseLocalId, MutationKind.Create.databaseValue)
+                    queries.deleteUser(databaseLocalId)
                 }
 
                 StoredUserSyncStatus.Synced -> {
                     if (!user.isHidden()) {
-                        queries.hideSyncedUser(undoDeadline.toEpochMilliseconds(), localId)
+                        queries.hideSyncedUser(undoDeadline.toEpochMilliseconds(), databaseLocalId)
                     }
                 }
 
@@ -104,7 +106,8 @@ internal class SqlDelightUserLocalDataSource(
         now: Instant,
     ) = withContext(queryDispatcher) {
         queries.transaction {
-            val user = queries.selectUserByLocalId(localId).executeAsOneOrNull()
+            val databaseLocalId = localId.toDatabaseLocalId()
+            val user = queries.selectUserByLocalId(databaseLocalId).executeAsOneOrNull()
                 ?: throw UserDataException(UserDataError.UserNotFound(localId))
             val deadline = user.undo_deadline_epoch_ms?.let(Instant::fromEpochMilliseconds)
 
@@ -116,7 +119,7 @@ internal class SqlDelightUserLocalDataSource(
             ) {
                 throw UserDataException(UserDataError.DeleteTooLate)
             }
-            queries.restoreUndoableUser(localId)
+            queries.restoreUndoableUser(databaseLocalId)
         }
     }
 
@@ -158,7 +161,7 @@ internal class SqlDelightUserLocalDataSource(
                 gender = remoteUser.gender.apiValue,
                 status = remoteUser.status.apiValue,
                 server_position = remoteUser.serverPosition,
-                local_id = localId,
+                local_id = localId.toDatabaseLocalId(),
             ).requireSingleUpdate("complete CREATE for $localId")
             queries.deleteMutation(mutationId)
         }
@@ -170,7 +173,7 @@ internal class SqlDelightUserLocalDataSource(
         reason: String,
     ) = withContext(queryDispatcher) {
         queries.transaction {
-            queries.markCreateFailed(reason, localId)
+            queries.markCreateFailed(reason, localId.toDatabaseLocalId())
                 .requireSingleUpdate("mark CREATE failed for $localId")
             queries.deleteMutation(mutationId)
         }
@@ -182,11 +185,11 @@ internal class SqlDelightUserLocalDataSource(
         createdAt: Instant,
     ) = withContext(queryDispatcher) {
         queries.transaction {
-            queries.retryCreate(localId)
+            queries.retryCreate(localId.toDatabaseLocalId())
                 .requireSingleUpdate("retry CREATE for $localId")
             queries.insertMutation(
                 mutation_id = mutationId,
-                user_local_id = localId,
+                user_local_id = localId.toDatabaseLocalId(),
                 kind = MutationKind.Create.databaseValue,
                 created_at_epoch_ms = createdAt.toEpochMilliseconds(),
             )
@@ -199,7 +202,7 @@ internal class SqlDelightUserLocalDataSource(
     ) = withContext(queryDispatcher) {
         queries.transaction {
             queries.deleteMutation(mutationId)
-            queries.deleteUser(localId)
+            queries.deleteUser(localId.toDatabaseLocalId())
         }
     }
 
@@ -209,7 +212,7 @@ internal class SqlDelightUserLocalDataSource(
         reason: String,
     ) = withContext(queryDispatcher) {
         queries.transaction {
-            queries.restoreFailedDelete(reason, localId)
+            queries.restoreFailedDelete(reason, localId.toDatabaseLocalId())
                 .requireSingleUpdate("restore DELETE failure for $localId")
             queries.deleteMutation(mutationId)
         }
@@ -237,35 +240,62 @@ internal class SqlDelightUserLocalDataSource(
             .requireSingleUpdate("retry blocked mutation $mutationId")
     }
 
+    override suspend fun retryAuthenticationBlockedMutations() = withContext(queryDispatcher) {
+        queries.retryAuthenticationBlockedMutations().await()
+        Unit
+    }
+
     override suspend fun mergeSnapshot(
         users: List<SnapshotUser>,
         observedAt: Instant,
     ) = withContext(queryDispatcher) {
         queries.transaction {
             val snapshotRemoteIds = users.mapTo(mutableSetOf(), SnapshotUser::remoteId)
-            users.forEach { user ->
-                queries.insertRemoteUserIfAbsent(
-                    local_id = idGenerator.nextId(),
-                    remote_id = user.remoteId,
-                    name = user.name,
-                    email = user.email,
-                    gender = user.gender.apiValue,
-                    status = user.status.apiValue,
-                    observed_at_epoch_ms = observedAt.toEpochMilliseconds(),
-                    server_position = user.serverPosition,
-                )
-                queries.updateSyncedRemoteUser(
-                    name = user.name,
-                    email = user.email,
-                    gender = user.gender.apiValue,
-                    status = user.status.apiValue,
-                    server_position = user.serverPosition,
-                    remote_id = user.remoteId,
-                )
-            }
+            mergeUsers(users, observedAt)
             queries.selectSyncedRemoteUsers().executeAsList()
                 .filterNot { it.remote_id in snapshotRemoteIds }
                 .forEach { queries.deleteUser(it.local_id) }
+        }
+    }
+
+    override suspend fun mergePage(
+        users: List<SnapshotUser>,
+        observedAt: Instant,
+    ) = withContext(queryDispatcher) {
+        queries.transaction {
+            mergeUsers(users, observedAt)
+        }
+    }
+
+    private fun mergeUsers(
+        users: List<SnapshotUser>,
+        observedAt: Instant,
+    ) {
+        users.forEach { user ->
+            queries.insertRemoteUserIfAbsent(
+                remote_id = user.remoteId,
+                name = user.name,
+                email = user.email,
+                gender = user.gender.apiValue,
+                status = user.status.apiValue,
+                observed_at_epoch_ms = observedAt.toEpochMilliseconds(),
+                server_position = user.serverPosition,
+            )
+            queries.updatePagedRemoteUser(
+                name = user.name,
+                email = user.email,
+                gender = user.gender.apiValue,
+                status = user.status.apiValue,
+                server_position = user.serverPosition,
+                remote_id = user.remoteId,
+            )
+            queries.updateLocallyCreatedUser(
+                name = user.name,
+                email = user.email,
+                gender = user.gender.apiValue,
+                status = user.status.apiValue,
+                remote_id = user.remoteId,
+            )
         }
     }
 }
@@ -304,7 +334,7 @@ private fun String.toUserStatus(): UserStatus = UserStatus.entries.firstOrNull {
     ?: persistenceFailure("Unknown user status: $this")
 
 private fun Users.toStoredUser(): StoredUser = StoredUser(
-    localId = local_id,
+    localId = local_id.toString(),
     remoteId = remote_id,
     name = name,
     email = email,
@@ -331,7 +361,7 @@ private fun Users.toDomainRecord(): UserRecord {
     }
     return UserRecord(
         user = User(
-            localId = local_id,
+            localId = local_id.toString(),
             remoteId = remote_id,
             name = name,
             email = email,
@@ -345,7 +375,7 @@ private fun Users.toDomainRecord(): UserRecord {
 
 private fun SelectUndoableUsers.toUndoableDeletion(): UndoableDeletion = UndoableDeletion(
     user = User(
-        localId = local_id,
+        localId = local_id.toString(),
         remoteId = remote_id,
         name = name,
         email = email,
@@ -358,7 +388,7 @@ private fun SelectUndoableUsers.toUndoableDeletion(): UndoableDeletion = Undoabl
 
 private fun Pending_mutations.toStoredMutation(): StoredMutation = StoredMutation(
     mutationId = mutation_id,
-    userLocalId = user_local_id,
+    userLocalId = user_local_id.toString(),
     kind = kind.toMutationKind(),
     createdAt = Instant.fromEpochMilliseconds(created_at_epoch_ms),
     attemptCount = attempt_count,
@@ -370,7 +400,7 @@ private fun Pending_mutations.toStoredMutation(): StoredMutation = StoredMutatio
 private fun SelectDueMutations.toDueMutation(): DueMutation = DueMutation(
     mutation = StoredMutation(
         mutationId = mutation_id,
-        userLocalId = user_local_id,
+        userLocalId = user_local_id.toString(),
         kind = kind.toMutationKind(),
         createdAt = Instant.fromEpochMilliseconds(created_at_epoch_ms),
         attemptCount = attempt_count,
@@ -394,6 +424,9 @@ private fun app.cash.sqldelight.db.QueryResult<Long>.requireSingleUpdate(operati
         persistenceFailure("Could not $operation because the durable state changed unexpectedly.")
     }
 }
+
+private fun String.toDatabaseLocalId(): Long = toLongOrNull()
+    ?: persistenceFailure("Invalid numeric local ID: $this")
 
 private fun persistenceFailure(reason: String): Nothing =
     throw UserDataException(UserDataError.Persistence(reason))

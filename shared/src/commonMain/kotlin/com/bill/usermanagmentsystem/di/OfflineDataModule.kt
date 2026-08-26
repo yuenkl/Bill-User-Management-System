@@ -16,6 +16,7 @@ import com.bill.usermanagmentsystem.domain.usecase.AddUserValidator
 import com.bill.usermanagmentsystem.domain.usecase.DeleteUserWithUndo
 import com.bill.usermanagmentsystem.domain.usecase.DefaultDeleteUserWithUndo
 import com.bill.usermanagmentsystem.domain.usecase.FinalizeExpiredDeletions
+import com.bill.usermanagmentsystem.domain.usecase.LoadNextUsersPage
 import com.bill.usermanagmentsystem.domain.usecase.ObserveSyncState
 import com.bill.usermanagmentsystem.domain.usecase.ObserveUndoableDeletions
 import com.bill.usermanagmentsystem.domain.usecase.ObserveUsers
@@ -95,6 +96,10 @@ internal fun offlineDataModule(
     }
     factory {
         val repository = get<UserRepository>()
+        LoadNextUsersPage(repository::loadNextPage)
+    }
+    factory {
+        val repository = get<UserRepository>()
         AddUser(repository::addUser)
     }
     factory {
@@ -127,6 +132,7 @@ internal fun offlineDataModule(
             observeSyncState = get(),
             observeUndoableDeletions = get(),
             refreshUsers = get(),
+            loadNextUsersPage = get(),
             addUser = get(),
             retryUserCreationUseCase = get(),
             addUserValidator = get(),

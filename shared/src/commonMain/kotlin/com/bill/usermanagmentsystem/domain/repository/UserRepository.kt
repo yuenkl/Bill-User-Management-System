@@ -7,6 +7,11 @@ import com.bill.usermanagmentsystem.domain.model.UserRecord
 import kotlinx.coroutines.flow.Flow
 import kotlin.time.Instant
 
+data class PageLoadResult(
+    val loadedCount: Int,
+    val hasMore: Boolean,
+)
+
 interface UserRepository {
     fun observeUsers(): Flow<List<UserRecord>>
 
@@ -15,6 +20,8 @@ interface UserRepository {
     fun observeUndoableDeletions(): Flow<List<UndoableDeletion>>
 
     suspend fun refresh(): Result<Unit>
+
+    suspend fun loadNextPage(): Result<PageLoadResult>
 
     suspend fun addUser(input: AddUserInput): Result<String>
 

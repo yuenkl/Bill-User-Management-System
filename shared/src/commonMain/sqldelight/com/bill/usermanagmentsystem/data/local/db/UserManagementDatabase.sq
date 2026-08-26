@@ -1,5 +1,5 @@
 CREATE TABLE users (
-    local_id TEXT NOT NULL PRIMARY KEY,
+    local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     remote_id INTEGER UNIQUE,
     name TEXT NOT NULL,
     email TEXT NOT NULL,
@@ -17,7 +17,7 @@ CREATE TABLE users (
 
 CREATE TABLE pending_mutations (
     mutation_id TEXT NOT NULL PRIMARY KEY,
-    user_local_id TEXT NOT NULL,
+    user_local_id INTEGER NOT NULL,
     kind TEXT NOT NULL CHECK (kind IN ('CREATE', 'DELETE')),
     created_at_epoch_ms INTEGER NOT NULL,
     attempt_count INTEGER NOT NULL DEFAULT 0,
@@ -55,7 +55,10 @@ ORDER BY undo_deadline_epoch_ms ASC, local_id ASC;
 selectSyncedRemoteUsers:
 SELECT local_id, remote_id
 FROM users
-WHERE sync_status = 'SYNCED' AND remote_id IS NOT NULL;
+WHERE
+    sync_status = 'SYNCED'
+    AND remote_id IS NOT NULL
+    AND server_position IS NOT NULL;
 
 selectDueMutations:
 SELECT
@@ -99,7 +102,6 @@ WHERE
 
 insertPendingUser:
 INSERT INTO users (
-    local_id,
     remote_id,
     name,
     email,
@@ -111,7 +113,10 @@ INSERT INTO users (
     hidden,
     undo_deadline_epoch_ms,
     last_sync_error
-) VALUES (?, NULL, ?, ?, ?, ?, ?, NULL, 'PENDING_CREATE', 0, NULL, NULL);
+) VALUES (NULL, ?, ?, ?, ?, ?, NULL, 'PENDING_CREATE', 0, NULL, NULL);
+
+selectLastInsertedUserId:
+SELECT last_insert_rowid();
 
 insertMutation:
 INSERT INTO pending_mutations (
@@ -139,7 +144,6 @@ INSERT OR IGNORE INTO pending_mutations (
 
 insertRemoteUserIfAbsent:
 INSERT OR IGNORE INTO users (
-    local_id,
     remote_id,
     name,
     email,
@@ -151,9 +155,9 @@ INSERT OR IGNORE INTO users (
     hidden,
     undo_deadline_epoch_ms,
     last_sync_error
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'SYNCED', 0, NULL, NULL);
+) VALUES (?, ?, ?, ?, ?, ?, ?, 'SYNCED', 0, NULL, NULL);
 
-updateSyncedRemoteUser:
+updatePagedRemoteUser:
 UPDATE users
 SET
     name = ?,
@@ -161,7 +165,16 @@ SET
     gender = ?,
     status = ?,
     server_position = ?
-WHERE remote_id = ? AND sync_status = 'SYNCED';
+WHERE remote_id = ? AND sync_status = 'SYNCED' AND server_position IS NOT NULL;
+
+updateLocallyCreatedUser:
+UPDATE users
+SET
+    name = ?,
+    email = ?,
+    gender = ?,
+    status = ?
+WHERE remote_id = ? AND sync_status = 'SYNCED' AND server_position IS NULL;
 
 completeCreate:
 UPDATE users
@@ -228,6 +241,11 @@ resetMutationForExplicitRetry:
 UPDATE pending_mutations
 SET state = 'PENDING', retry_at_epoch_ms = NULL, last_error = NULL
 WHERE mutation_id = ? AND state = 'BLOCKED';
+
+retryAuthenticationBlockedMutations:
+UPDATE pending_mutations
+SET state = 'PENDING', retry_at_epoch_ms = NULL, last_error = NULL
+WHERE state = 'BLOCKED' AND last_error = 'Authentication is required.';
 
 deleteMutation:
 DELETE FROM pending_mutations

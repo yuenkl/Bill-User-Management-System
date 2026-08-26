@@ -25,6 +25,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -50,6 +55,8 @@ fun UserForm(
     val emailFocusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     val fieldsEnabled = !state.submitting
+    val nameErrorMessage = state.nameError ?: state.nameApiError
+    val emailErrorMessage = state.emailError ?: state.emailApiError
 
     Column(
         modifier = modifier
@@ -61,6 +68,7 @@ fun UserForm(
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
                 text = "Add user",
+                modifier = Modifier.semantics { heading() },
                 fontWeight = FontWeight.SemiBold,
                 style = MaterialTheme.typography.headlineSmall,
             )
@@ -74,12 +82,16 @@ fun UserForm(
         OutlinedTextField(
             value = state.name,
             onValueChange = onNameChange,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics {
+                    if (nameErrorMessage != null) error(nameErrorMessage)
+                },
             enabled = fieldsEnabled,
             singleLine = true,
             label = { Text("Name") },
-            isError = state.nameError != null || state.nameApiError != null,
-            supportingText = supportingError(state.nameError, state.nameApiError),
+            isError = nameErrorMessage != null,
+            supportingText = supportingError(nameErrorMessage),
             keyboardOptions = KeyboardOptions(
                 capitalization = KeyboardCapitalization.Words,
                 imeAction = ImeAction.Next,
@@ -94,12 +106,15 @@ fun UserForm(
             onValueChange = onEmailChange,
             modifier = Modifier
                 .fillMaxWidth()
-                .focusRequester(emailFocusRequester),
+                .focusRequester(emailFocusRequester)
+                .semantics {
+                    if (emailErrorMessage != null) error(emailErrorMessage)
+                },
             enabled = fieldsEnabled,
             singleLine = true,
             label = { Text("Email") },
-            isError = state.emailError != null || state.emailApiError != null,
-            supportingText = supportingError(state.emailError, state.emailApiError),
+            isError = emailErrorMessage != null,
+            supportingText = supportingError(emailErrorMessage),
             keyboardOptions = KeyboardOptions(
                 keyboardType = KeyboardType.Email,
                 imeAction = ImeAction.Done,
@@ -109,7 +124,12 @@ fun UserForm(
             ),
         )
 
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+            modifier = Modifier.semantics {
+                state.genderError?.let { error(it) }
+            },
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             Text("Gender", fontWeight = FontWeight.Medium)
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -175,7 +195,11 @@ fun UserForm(
             TextButton(onClick = onCancel, enabled = fieldsEnabled) {
                 Text("Cancel")
             }
-            Button(onClick = onSubmit, enabled = state.canSubmit) {
+            Button(
+                onClick = onSubmit,
+                modifier = Modifier.semantics { contentDescription = "Submit user" },
+                enabled = state.canSubmit,
+            ) {
                 Text(if (state.submitting) "Saving…" else "Add user")
             }
         }
@@ -183,18 +207,16 @@ fun UserForm(
 }
 
 @Composable
-private fun supportingError(
-    localError: String?,
-    apiError: String?,
-): (@Composable () -> Unit)? {
-    val error = localError ?: apiError ?: return null
-    return { SupportingError(error) }
+private fun supportingError(message: String?): (@Composable () -> Unit)? {
+    val errorMessage = message ?: return null
+    return { SupportingError(errorMessage) }
 }
 
 @Composable
 private fun SupportingError(message: String) {
     Text(
         text = message,
+        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
         color = MaterialTheme.colorScheme.error,
         style = MaterialTheme.typography.bodySmall,
     )

@@ -59,9 +59,15 @@ fun UserCardShimmer(modifier: Modifier = Modifier) {
             Spacer(Modifier.width(14.dp))
             Column {
                 Placeholder(Modifier.fillMaxWidth(0.58f).height(18.dp), placeholder)
-                Spacer(Modifier.height(9.dp))
+                Spacer(Modifier.height(6.dp))
                 Placeholder(Modifier.fillMaxWidth(0.82f).height(14.dp), placeholder)
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(8.dp))
+                Row {
+                    Placeholder(Modifier.width(52.dp).height(20.dp), placeholder)
+                    Spacer(Modifier.width(6.dp))
+                    Placeholder(Modifier.width(60.dp).height(20.dp), placeholder)
+                }
+                Spacer(Modifier.height(7.dp))
                 Placeholder(Modifier.fillMaxWidth(0.46f).height(14.dp), placeholder)
             }
         }

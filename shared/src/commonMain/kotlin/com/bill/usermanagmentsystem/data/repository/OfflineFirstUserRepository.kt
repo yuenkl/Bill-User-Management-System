@@ -10,6 +10,7 @@ import com.bill.usermanagmentsystem.domain.model.UserDataError
 import com.bill.usermanagmentsystem.domain.model.UserDataException
 import com.bill.usermanagmentsystem.domain.model.UserRecord
 import com.bill.usermanagmentsystem.domain.model.UndoableDeletion
+import com.bill.usermanagmentsystem.domain.repository.PageLoadResult
 import com.bill.usermanagmentsystem.domain.repository.UserRepository
 import com.bill.usermanagmentsystem.platform.TimeProvider
 import kotlinx.coroutines.CancellationException
@@ -34,16 +35,15 @@ internal class OfflineFirstUserRepository(
 
     override suspend fun refresh(): Result<Unit> = syncCoordinator.sync()
 
+    override suspend fun loadNextPage(): Result<PageLoadResult> = syncCoordinator.loadNextPage()
+
     override suspend fun addUser(input: AddUserInput): Result<String> {
         val result = durableOperation {
-            val localId = idGenerator.nextId()
             localDataSource.insertPendingCreate(
-                localId = localId,
                 mutationId = idGenerator.nextId(),
                 input = input,
                 observedAt = timeProvider.now(),
             )
-            localId
         }
         triggerSyncAfter(result)
         return result

@@ -16,11 +16,10 @@ internal interface UserLocalDataSource {
     suspend fun getAllMutations(): List<StoredMutation>
 
     suspend fun insertPendingCreate(
-        localId: String,
         mutationId: String,
         input: AddUserInput,
         observedAt: Instant,
-    )
+    ): String
 
     suspend fun requestDelete(
         localId: String,
@@ -78,7 +77,14 @@ internal interface UserLocalDataSource {
 
     suspend fun retryBlockedMutation(mutationId: String)
 
+    suspend fun retryAuthenticationBlockedMutations()
+
     suspend fun mergeSnapshot(
+        users: List<SnapshotUser>,
+        observedAt: Instant,
+    )
+
+    suspend fun mergePage(
         users: List<SnapshotUser>,
         observedAt: Instant,
     )

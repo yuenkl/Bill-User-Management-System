@@ -15,6 +15,7 @@ import com.bill.usermanagmentsystem.domain.usecase.AddUser
 import com.bill.usermanagmentsystem.domain.usecase.AddUserValidator
 import com.bill.usermanagmentsystem.domain.usecase.DeleteUserWithUndo
 import com.bill.usermanagmentsystem.domain.usecase.FinalizeExpiredDeletions
+import com.bill.usermanagmentsystem.domain.usecase.LoadNextUsersPage
 import com.bill.usermanagmentsystem.domain.usecase.ObserveSyncState
 import com.bill.usermanagmentsystem.domain.usecase.ObserveUndoableDeletions
 import com.bill.usermanagmentsystem.domain.usecase.ObserveUsers
@@ -22,6 +23,7 @@ import com.bill.usermanagmentsystem.domain.usecase.RefreshUsers
 import com.bill.usermanagmentsystem.domain.usecase.RelativeTimeFormatter
 import com.bill.usermanagmentsystem.domain.usecase.RetryUserCreation
 import com.bill.usermanagmentsystem.domain.usecase.UndoUserDeletion
+import com.bill.usermanagmentsystem.domain.repository.PageLoadResult
 import com.bill.usermanagmentsystem.platform.AppLifecycleObserver
 import com.bill.usermanagmentsystem.platform.AppLifecycleState
 import com.bill.usermanagmentsystem.platform.ConnectivityObserver
@@ -134,6 +136,88 @@ class UserFeedViewModelTest {
             assertEquals(1, refreshCalls)
             gate.complete(Result.success(Unit))
             runCurrent()
+        }
+    }
+
+    @Test
+    fun startupConnectivityForegroundAndManualTriggersShareOneActiveSynchronization() = runTest {
+        val gate = CompletableDeferred<Result<Unit>>()
+        withFixture(initialRefreshHandler = { gate.await() }) {
+            runCurrent()
+
+            connectivity.status.value = ConnectivityStatus.Unavailable
+            runCurrent()
+            connectivity.status.value = ConnectivityStatus.Available
+            lifecycle.mutableState.value = AppLifecycleState.Foreground
+            viewModel.refresh()
+            runCurrent()
+
+            assertEquals(1, refreshCalls)
+            gate.complete(Result.success(Unit))
+            runCurrent()
+        }
+    }
+
+    @Test
+    fun connectivityAndForegroundTriggersSynchronizeWhenTheCoordinatorIsIdle() = runTest {
+        withFixture(connectivityStatus = ConnectivityStatus.Unavailable) {
+            runCurrent()
+            assertEquals(1, refreshCalls)
+
+            connectivity.status.value = ConnectivityStatus.Available
+            runCurrent()
+            assertEquals(2, refreshCalls)
+
+            lifecycle.mutableState.value = AppLifecycleState.Foreground
+            runCurrent()
+            assertEquals(3, refreshCalls)
+        }
+    }
+
+    @Test
+    fun nextPageRequestsAreDeduplicatedAndExposeRemainingAvailability() = runTest {
+        val gate = CompletableDeferred<Result<PageLoadResult>>()
+        withFixture {
+            pageHandler = { gate.await() }
+            runCurrent()
+
+            viewModel.loadNextPage()
+            viewModel.loadNextPage()
+            runCurrent()
+
+            assertEquals(1, pageCalls)
+            assertTrue(viewModel.uiState.value.loadingMore)
+
+            gate.complete(Result.success(PageLoadResult(loadedCount = 20, hasMore = true)))
+            runCurrent()
+
+            assertTrue(!viewModel.uiState.value.loadingMore)
+            assertTrue(viewModel.uiState.value.canLoadMore)
+        }
+    }
+
+    @Test
+    fun nextPageFailureRequiresExplicitRetryAndCanReachTheEnd() = runTest {
+        withFixture {
+            pageHandler = { Result.failure(UserDataException(UserDataError.Offline)) }
+            runCurrent()
+
+            viewModel.loadNextPage()
+            runCurrent()
+            assertEquals(1, pageCalls)
+            assertNotNull(viewModel.uiState.value.loadMoreError)
+
+            viewModel.loadNextPage()
+            runCurrent()
+            assertEquals(1, pageCalls)
+
+            pageHandler = { Result.success(PageLoadResult(loadedCount = 5, hasMore = false)) }
+            viewModel.retryNextPage()
+            runCurrent()
+
+            assertEquals(2, pageCalls)
+            assertNull(viewModel.uiState.value.loadMoreError)
+            assertTrue(!viewModel.uiState.value.canLoadMore)
         }
     }
 
@@ -392,6 +476,10 @@ class UserFeedViewModelTest {
         val deleteRequests = mutableListOf<String>()
         val undoRequests = mutableListOf<String>()
         var refreshHandler: suspend () -> Result<Unit> = initialRefreshHandler
+        var pageCalls = 0
+        var pageHandler: suspend () -> Result<PageLoadResult> = {
+            Result.success(PageLoadResult(loadedCount = 0, hasMore = false))
+        }
         val addInputs = mutableListOf<AddUserInput>()
         var addHandler: suspend (AddUserInput) -> Result<String> = { Result.success("local-created") }
         val retryIds = mutableListOf<String>()
@@ -408,6 +496,10 @@ class UserFeedViewModelTest {
             refreshUsers = RefreshUsers {
                 refreshCalls += 1
                 refreshHandler()
+            },
+            loadNextUsersPage = LoadNextUsersPage {
+                pageCalls += 1
+                pageHandler()
             },
             addUser = AddUser { input ->
                 addInputs += input
@@ -443,8 +535,8 @@ class UserFeedViewModelTest {
     }
 
     private class FakeLifecycleObserver : AppLifecycleObserver {
-        override val state: StateFlow<AppLifecycleState> =
-            MutableStateFlow(AppLifecycleState.Background)
+        val mutableState = MutableStateFlow(AppLifecycleState.Background)
+        override val state: StateFlow<AppLifecycleState> = mutableState
     }
 
     private class FakeTimeProvider(var current: Instant) : TimeProvider {
