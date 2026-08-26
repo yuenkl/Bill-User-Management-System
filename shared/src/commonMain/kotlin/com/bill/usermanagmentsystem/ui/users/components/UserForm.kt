@@ -61,131 +61,137 @@ fun UserForm(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(
-                text = "Add user",
-                modifier = Modifier.semantics { heading() },
-                fontWeight = FontWeight.SemiBold,
-                style = MaterialTheme.typography.headlineSmall,
-            )
-            Text(
-                text = "Saved on this device first, then synchronized when possible.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
-
-        OutlinedTextField(
-            value = state.name,
-            onValueChange = onNameChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .semantics {
-                    if (nameErrorMessage != null) error(nameErrorMessage)
-                },
-            enabled = fieldsEnabled,
-            singleLine = true,
-            label = { Text("Name") },
-            isError = nameErrorMessage != null,
-            supportingText = supportingError(nameErrorMessage),
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.Words,
-                imeAction = ImeAction.Next,
-            ),
-            keyboardActions = KeyboardActions(
-                onNext = { emailFocusRequester.requestFocus() },
-            ),
-        )
-
-        OutlinedTextField(
-            value = state.email,
-            onValueChange = onEmailChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .focusRequester(emailFocusRequester)
-                .semantics {
-                    if (emailErrorMessage != null) error(emailErrorMessage)
-                },
-            enabled = fieldsEnabled,
-            singleLine = true,
-            label = { Text("Email") },
-            isError = emailErrorMessage != null,
-            supportingText = supportingError(emailErrorMessage),
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Email,
-                imeAction = ImeAction.Done,
-            ),
-            keyboardActions = KeyboardActions(
-                onDone = { focusManager.clearFocus() },
-            ),
-        )
-
         Column(
-            modifier = Modifier.semantics {
-                state.genderError?.let { error(it) }
-            },
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("Gender", fontWeight = FontWeight.Medium)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "Add user",
+                    modifier = Modifier.semantics { heading() },
+                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+                Text(
+                    text = "Saved on this device first, then synchronized when possible.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+
+            OutlinedTextField(
+                value = state.name,
+                onValueChange = onNameChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics {
+                        if (nameErrorMessage != null) error(nameErrorMessage)
+                    },
+                enabled = fieldsEnabled,
+                singleLine = true,
+                label = { Text("Name") },
+                isError = nameErrorMessage != null,
+                supportingText = supportingError(nameErrorMessage),
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Words,
+                    imeAction = ImeAction.Next,
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = { emailFocusRequester.requestFocus() },
+                ),
+            )
+
+            OutlinedTextField(
+                value = state.email,
+                onValueChange = onEmailChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(emailFocusRequester)
+                    .semantics {
+                        if (emailErrorMessage != null) error(emailErrorMessage)
+                    },
+                enabled = fieldsEnabled,
+                singleLine = true,
+                label = { Text("Email") },
+                isError = emailErrorMessage != null,
+                supportingText = supportingError(emailErrorMessage),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Email,
+                    imeAction = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = { focusManager.clearFocus() },
+                ),
+            )
+
+            Column(
+                modifier = Modifier.semantics {
+                    state.genderError?.let { error(it) }
+                },
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Gender.entries.forEach { gender ->
-                    FilterChip(
-                        selected = state.gender == gender,
-                        onClick = { onGenderSelected(gender) },
-                        modifier = Modifier.weight(1f),
+                Text("Gender", fontWeight = FontWeight.Medium)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Gender.entries.forEach { gender ->
+                        FilterChip(
+                            selected = state.gender == gender,
+                            onClick = { onGenderSelected(gender) },
+                            modifier = Modifier.weight(1f),
+                            enabled = fieldsEnabled,
+                            label = { Text(gender.displayName()) },
+                        )
+                    }
+                }
+                state.genderError?.let { SupportingError(it) }
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(
                         enabled = fieldsEnabled,
-                        label = { Text(gender.displayName()) },
+                        role = Role.Switch,
+                        onClick = {
+                            onStatusSelected(
+                                if (state.status == UserStatus.Active) {
+                                    UserStatus.Inactive
+                                } else {
+                                    UserStatus.Active
+                                },
+                            )
+                        },
+                    )
+                    .semantics(mergeDescendants = true) {
+                        stateDescription = if (state.status == UserStatus.Active) "Active" else "Inactive"
+                    },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Active user", fontWeight = FontWeight.Medium)
+                    Text(
+                        text = if (state.status == UserStatus.Active) "Status: active" else "Status: inactive",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
                     )
                 }
-            }
-            state.genderError?.let { SupportingError(it) }
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(
+                Switch(
+                    checked = state.status == UserStatus.Active,
+                    onCheckedChange = null,
                     enabled = fieldsEnabled,
-                    role = Role.Switch,
-                    onClick = {
-                        onStatusSelected(
-                            if (state.status == UserStatus.Active) {
-                                UserStatus.Inactive
-                            } else {
-                                UserStatus.Active
-                            },
-                        )
-                    },
-                )
-                .semantics(mergeDescendants = true) {
-                    stateDescription = if (state.status == UserStatus.Active) "Active" else "Inactive"
-                },
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Active user", fontWeight = FontWeight.Medium)
-                Text(
-                    text = if (state.status == UserStatus.Active) "Status: active" else "Status: inactive",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
                 )
             }
-            Switch(
-                checked = state.status == UserStatus.Active,
-                onCheckedChange = null,
-                enabled = fieldsEnabled,
-            )
-        }
 
-        state.submissionError?.let { SupportingError(it) }
+            state.submissionError?.let { SupportingError(it) }
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth(),

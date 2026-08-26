@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -145,6 +146,7 @@ fun UserFeedScreen(
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val layoutMode = adaptiveLayoutMode(maxWidth)
+        val compactFormMaxHeight = maxHeight * 0.7f
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             topBar = {
@@ -248,6 +250,7 @@ fun UserFeedScreen(
                         onCancel = onAddUserDismissed,
                         onSubmit = onAddUserSubmitted,
                         modifier = Modifier
+                            .heightIn(max = compactFormMaxHeight)
                             .imePadding(),
                     )
                 }
