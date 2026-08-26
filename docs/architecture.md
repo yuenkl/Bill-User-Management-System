@@ -161,7 +161,7 @@ Create/delete state changes and their outbox rows occur in the same database tra
 4. For each `DELETE`, skip the network when no remote ID exists. Otherwise call DELETE; treat 204/404 as success and remove the row/mutation transactionally.
 5. Stop processing on connectivity loss. Keep remaining work durable.
 6. After mutations, probe page 1 with `per_page=20`, read `X-Pagination-Pages`, and fetch the reported last page.
-7. Transactionally replace the remote snapshot with the last page while preserving pending/failed local rows. As the user scrolls, serialize `last-1`, `last-2`, and earlier pages against synchronization and append each page transactionally.
+7. Transactionally replace the remote snapshot with the last page while preserving pending, failed, and successfully created local rows. As the user scrolls, serialize `last-1`, `last-2`, and earlier pages against synchronization and append each page transactionally.
 
 Failure policy:
 

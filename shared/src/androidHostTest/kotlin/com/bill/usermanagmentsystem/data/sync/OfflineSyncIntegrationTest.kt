@@ -18,6 +18,7 @@ import com.bill.usermanagmentsystem.domain.model.UserDataError
 import com.bill.usermanagmentsystem.domain.model.userDataErrorOrNull
 import com.bill.usermanagmentsystem.platform.ConnectivityStatus
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.runner.RunWith
@@ -69,7 +70,7 @@ class OfflineSyncIntegrationTest {
                     RemoteResult.Success(remoteUser(remoteId = 44))
                 }
                 fetchHandler = {
-                    RemoteResult.Success(listOf(remoteUser(remoteId = 44, serverPosition = 1)))
+                    RemoteResult.Success(listOf(remoteUser(remoteId = 77, serverPosition = 1)))
                 }
             }
             val coordinator = DefaultSyncCoordinator(
@@ -86,6 +87,10 @@ class OfflineSyncIntegrationTest {
             val stored = local.getUser("stable-local-id")!!
             assertEquals(44, stored.remoteId)
             assertEquals(instant(1_000), stored.observedAt)
+            assertEquals(
+                setOf(44L, 77L),
+                local.observeVisibleUsers().first().mapNotNull { it.user.remoteId }.toSet(),
+            )
             assertTrue(local.getAllMutations().isEmpty())
             assertEquals(1, remote.createRequests.size)
         } finally {

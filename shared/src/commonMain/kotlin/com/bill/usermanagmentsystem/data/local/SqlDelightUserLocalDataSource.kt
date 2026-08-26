@@ -279,12 +279,19 @@ internal class SqlDelightUserLocalDataSource(
                 observed_at_epoch_ms = observedAt.toEpochMilliseconds(),
                 server_position = user.serverPosition,
             )
-            queries.updateSyncedRemoteUser(
+            queries.updatePagedRemoteUser(
                 name = user.name,
                 email = user.email,
                 gender = user.gender.apiValue,
                 status = user.status.apiValue,
                 server_position = user.serverPosition,
+                remote_id = user.remoteId,
+            )
+            queries.updateLocallyCreatedUser(
+                name = user.name,
+                email = user.email,
+                gender = user.gender.apiValue,
+                status = user.status.apiValue,
                 remote_id = user.remoteId,
             )
         }

@@ -101,7 +101,7 @@ Coverage includes incremental pagination and Retry, the compact/wide breakpoint,
 - Delete first hides the row and persists a five-second deadline. Undo before the deadline restores it without a network DELETE.
 - When the deadline expires, one durable DELETE mutation is created. HTTP 204 and 404 complete it; retryable failures keep it queued; permanent failures restore the user and explain the problem.
 - Refresh never clears a good cache because of an offline, authentication, rate-limit, 5xx, or malformed-response failure.
-- The last page replaces the refreshable remote snapshot; earlier pages append in descending page order when scrolled into view. A page failure keeps all loaded users visible and exposes an explicit Retry without advancing the cursor.
+- The last page replaces the refreshable remote snapshot while retaining locally created rows; earlier pages append in descending page order when scrolled into view. A page failure keeps all loaded users visible and exposes an explicit Retry without advancing the cursor.
 
 ## Technology choices and tradeoffs
 

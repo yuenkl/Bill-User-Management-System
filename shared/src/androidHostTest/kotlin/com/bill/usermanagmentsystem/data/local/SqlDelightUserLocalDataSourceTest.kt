@@ -111,6 +111,34 @@ class SqlDelightUserLocalDataSourceTest {
     }
 
     @Test
+    fun completedLocalCreateSurvivesALastPageSnapshotThatDoesNotContainIt() = runTest {
+        withFixture("completed-create-last-page") {
+            source.insertPendingCreate(
+                localId = "stable-local-id",
+                mutationId = "create-id",
+                input = input(name = "Created user"),
+                observedAt = instant(1_000),
+            )
+            source.completeCreate(
+                mutationId = "create-id",
+                localId = "stable-local-id",
+                remoteUser = snapshot(remoteId = 42, name = "Created user", position = null),
+            )
+
+            source.mergeSnapshot(
+                users = listOf(snapshot(remoteId = 77, name = "Last page user", position = -40)),
+                observedAt = instant(2_000),
+            )
+
+            assertEquals(42, source.getUser("stable-local-id")?.remoteId)
+            assertEquals(
+                setOf("Created user", "Last page user"),
+                source.observeVisibleUsers().first().map { it.user.name }.toSet(),
+            )
+        }
+    }
+
+    @Test
     fun pendingCreateSurvivesDatabaseReopen() = runTest {
         withFixture("create-reopen") {
             source.insertPendingCreate(
@@ -503,7 +531,7 @@ class SqlDelightUserLocalDataSourceTest {
         fun snapshot(
             remoteId: Long,
             name: String = "Remote user",
-            position: Long = 1,
+            position: Long? = 1,
         ) = SnapshotUser(
             remoteId = remoteId,
             name = name,

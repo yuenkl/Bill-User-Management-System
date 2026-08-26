@@ -55,7 +55,10 @@ ORDER BY undo_deadline_epoch_ms ASC, local_id ASC;
 selectSyncedRemoteUsers:
 SELECT local_id, remote_id
 FROM users
-WHERE sync_status = 'SYNCED' AND remote_id IS NOT NULL;
+WHERE
+    sync_status = 'SYNCED'
+    AND remote_id IS NOT NULL
+    AND server_position IS NOT NULL;
 
 selectDueMutations:
 SELECT
@@ -153,7 +156,7 @@ INSERT OR IGNORE INTO users (
     last_sync_error
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'SYNCED', 0, NULL, NULL);
 
-updateSyncedRemoteUser:
+updatePagedRemoteUser:
 UPDATE users
 SET
     name = ?,
@@ -161,7 +164,16 @@ SET
     gender = ?,
     status = ?,
     server_position = ?
-WHERE remote_id = ? AND sync_status = 'SYNCED';
+WHERE remote_id = ? AND sync_status = 'SYNCED' AND server_position IS NOT NULL;
+
+updateLocallyCreatedUser:
+UPDATE users
+SET
+    name = ?,
+    email = ?,
+    gender = ?,
+    status = ?
+WHERE remote_id = ? AND sync_status = 'SYNCED' AND server_position IS NULL;
 
 completeCreate:
 UPDATE users
