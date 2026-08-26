@@ -45,6 +45,12 @@
 - Shared Android host tests: `./gradlew :shared:testAndroidHostTest`
 - Shared iOS simulator tests: `./gradlew :shared:iosSimulatorArm64Test`
 
+## Git and GitHub
+
+- After completing and verifying one self-contained feature, fix, or task, commit it with a concise, meaningful message that describes the outcome.
+- Keep each commit focused. Stage only files related to that logical change; do not bundle unrelated files or multiple independent tasks into one commit.
+- Review the staged diff before committing and preserve any unrelated user changes.
+
 ## Completion standard
 
 - Re-read the request and confirm every acceptance point is implemented.
