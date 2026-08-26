@@ -1,7 +1,18 @@
 package com.bill.usermanagmentsystem.domain.usecase
 
 import com.bill.usermanagmentsystem.domain.model.AddUserInput
+import com.bill.usermanagmentsystem.domain.model.SyncState
+import com.bill.usermanagmentsystem.domain.model.UserRecord
+import kotlinx.coroutines.flow.Flow
 import kotlin.time.Instant
+
+fun interface ObserveUsers {
+    operator fun invoke(): Flow<List<UserRecord>>
+}
+
+fun interface ObserveSyncState {
+    operator fun invoke(): Flow<SyncState>
+}
 
 fun interface RefreshUsers {
     suspend operator fun invoke(): Result<Unit>
