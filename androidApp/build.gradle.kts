@@ -1,4 +1,19 @@
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use(::load)
+    }
+}
+
+val goRestAccessToken = providers.gradleProperty("GOREST_ACCESS_TOKEN")
+    .orElse(providers.environmentVariable("GOREST_ACCESS_TOKEN"))
+    .orElse(localProperties.getProperty("GOREST_ACCESS_TOKEN", ""))
+    .get()
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
 
 plugins {
     alias(libs.plugins.androidApplication)
@@ -14,7 +29,6 @@ dependencies {
     implementation(project(":shared"))
 
     implementation(libs.androidx.activity.compose)
-
     implementation(libs.compose.uiToolingPreview)
     debugImplementation(libs.compose.uiTooling)
 }
@@ -49,6 +63,11 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
     buildFeatures {
+        buildConfig = true
         compose = true
+    }
+
+    defaultConfig {
+        buildConfigField("String", "GOREST_ACCESS_TOKEN", "\"$goRestAccessToken\"")
     }
 }
