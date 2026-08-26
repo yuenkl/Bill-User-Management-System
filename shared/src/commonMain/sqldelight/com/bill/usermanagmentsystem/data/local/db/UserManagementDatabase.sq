@@ -229,6 +229,11 @@ UPDATE pending_mutations
 SET state = 'PENDING', retry_at_epoch_ms = NULL, last_error = NULL
 WHERE mutation_id = ? AND state = 'BLOCKED';
 
+retryAuthenticationBlockedMutations:
+UPDATE pending_mutations
+SET state = 'PENDING', retry_at_epoch_ms = NULL, last_error = NULL
+WHERE state = 'BLOCKED' AND last_error = 'Authentication is required.';
+
 deleteMutation:
 DELETE FROM pending_mutations
 WHERE mutation_id = ?;

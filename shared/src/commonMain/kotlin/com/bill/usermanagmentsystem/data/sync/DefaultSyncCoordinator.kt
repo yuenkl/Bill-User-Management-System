@@ -166,6 +166,7 @@ internal class DefaultSyncCoordinator(
         localDataSource.finalizeExpiredDeletes(timeProvider.now())
         if (!hasValidatedConnection()) return offlineFailure()
 
+        localDataSource.retryAuthenticationBlockedMutations()
         var permanentFailure: UserDataException? = null
         val dueMutations = localDataSource.getDueMutations(timeProvider.now())
         for (mutation in dueMutations) {

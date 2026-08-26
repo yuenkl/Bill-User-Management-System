@@ -35,7 +35,8 @@ Snapshot results affect UI only after their database transaction commits.
 | No local row | Submit valid form | Transaction inserts user as `PendingCreate` plus CREATE mutation; DB emits user at top | Local transaction failure keeps form open and shows error | Duplicate submit is ignored while transaction runs |
 | `PendingCreate` | Sync CREATE | HTTP 201 attaches remote ID, removes mutation, emits `Synced` | Persist `RETRYABLE_WAIT`; keep user visible | 401/403 -> `BLOCKED`; 422 -> remove mutation and emit `CreateFailed` |
 | `RetryableWait` | Retry time/explicit refresh | Return to CREATE attempt | Persist later retry using backoff | Reclassify using response; never loop immediately |
-| `Blocked` | Automatic sync trigger | No operation | Not applicable | Remain blocked until configuration changes or explicit Retry |
+| `Blocked` (authentication) | Next sync after configuration is corrected | Reset to pending and retry CREATE | Follow retryable path | Block again if credentials remain invalid |
+| `Blocked` (other permanent failure) | Automatic sync trigger | No operation | Not applicable | Remain blocked until explicit Retry |
 | `CreateFailed` | Explicit Retry | Create one new mutation and emit `PendingCreate` | Follow retryable path | Remain failed with new reason |
 | `PendingCreate`/`CreateFailed` | Confirm delete | Remove local row and CREATE mutation | Local transaction failure leaves prior state | Send neither POST nor DELETE after successful cancellation |
 

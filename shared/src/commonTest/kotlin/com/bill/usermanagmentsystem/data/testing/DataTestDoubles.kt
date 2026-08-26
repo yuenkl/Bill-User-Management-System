@@ -45,6 +45,7 @@ internal class FakeUserLocalDataSource : UserLocalDataSource {
     val deleteRequests = mutableListOf<Pair<String, Instant>>()
     val undoRequests = mutableListOf<Pair<String, Instant>>()
     val retriedBlockedMutations = mutableListOf<String>()
+    var retriedAuthenticationBlockedMutations = 0
     var finalizedDeleteCalls = 0
     var finalizedDeleteResult = 0
     var insertFailure: Throwable? = null
@@ -124,6 +125,10 @@ internal class FakeUserLocalDataSource : UserLocalDataSource {
 
     override suspend fun retryBlockedMutation(mutationId: String) {
         retriedBlockedMutations += mutationId
+    }
+
+    override suspend fun retryAuthenticationBlockedMutations() {
+        retriedAuthenticationBlockedMutations += 1
     }
 
     override suspend fun mergeSnapshot(users: List<SnapshotUser>, observedAt: Instant) {

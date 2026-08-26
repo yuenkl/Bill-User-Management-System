@@ -237,6 +237,11 @@ internal class SqlDelightUserLocalDataSource(
             .requireSingleUpdate("retry blocked mutation $mutationId")
     }
 
+    override suspend fun retryAuthenticationBlockedMutations() = withContext(queryDispatcher) {
+        queries.retryAuthenticationBlockedMutations().await()
+        Unit
+    }
+
     override suspend fun mergeSnapshot(
         users: List<SnapshotUser>,
         observedAt: Instant,

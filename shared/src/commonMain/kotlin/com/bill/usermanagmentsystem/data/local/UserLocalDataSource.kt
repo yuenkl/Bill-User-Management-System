@@ -78,6 +78,8 @@ internal interface UserLocalDataSource {
 
     suspend fun retryBlockedMutation(mutationId: String)
 
+    suspend fun retryAuthenticationBlockedMutations()
+
     suspend fun mergeSnapshot(
         users: List<SnapshotUser>,
         observedAt: Instant,

@@ -347,6 +347,33 @@ class SqlDelightUserLocalDataSourceTest {
     }
 
     @Test
+    fun authenticationBlockedMutationsResumeWhenCredentialsAreUpdated() = runTest {
+        withFixture("authentication-retry") {
+            source.insertPendingCreate(
+                localId = "authentication-user",
+                mutationId = "authentication-mutation",
+                input = input(),
+                observedAt = instant(1_000),
+            )
+            source.markMutationBlocked("authentication-mutation", "Authentication is required.")
+            source.insertPendingCreate(
+                localId = "permanent-user",
+                mutationId = "permanent-mutation",
+                input = input(name = "Permanent user"),
+                observedAt = instant(2_000),
+            )
+            source.markMutationBlocked("permanent-mutation", "The endpoint is unavailable.")
+
+            source.retryAuthenticationBlockedMutations()
+
+            assertEquals(
+                listOf("authentication-mutation"),
+                source.getDueMutations(instant(10_000)).map { it.mutation.mutationId },
+            )
+        }
+    }
+
+    @Test
     fun failedCreateRetryCreatesOneNewPendingMutation() = runTest {
         withFixture("failed-create-retry") {
             source.insertPendingCreate(

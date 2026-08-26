@@ -53,6 +53,8 @@ GOREST_ACCESS_TOKEN=YOUR_GOREST_ACCESS_TOKEN
 
 [`local.properties.example`](local.properties.example) contains the same placeholder. A `GOREST_ACCESS_TOKEN` Gradle property or environment variable also works and takes precedence over `local.properties`.
 
+The token is compiled into Android's build configuration. After changing it, rebuild and reinstall the app; simply reopening an already-installed build does not update the token.
+
 ### iOS token setup
 
 Copy the ignored secrets template and replace the placeholder:

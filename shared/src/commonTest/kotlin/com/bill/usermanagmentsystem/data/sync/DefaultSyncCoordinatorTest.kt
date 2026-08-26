@@ -89,6 +89,22 @@ class DefaultSyncCoordinatorTest {
     }
 
     @Test
+    fun nextSyncRetriesOnlyAuthenticationBlockedMutationsAfterCredentialsChange() = runTest {
+        val fixture = fixture()
+        fixture.local.dueMutations += dueCreate(mutationId = "create", localId = "new-user")
+        fixture.remote.createHandler = { RemoteResult.AuthenticationFailure }
+
+        assertTrue(fixture.coordinator.sync().isFailure)
+        assertEquals(listOf("create" to "Authentication is required."), fixture.local.blockedMutations)
+
+        fixture.remote.createHandler = { RemoteResult.Success(remoteUser(remoteId = 55)) }
+
+        assertTrue(fixture.coordinator.sync().isSuccess)
+        assertEquals(2, fixture.local.retriedAuthenticationBlockedMutations)
+        assertEquals(listOf("create" to "new-user"), fixture.local.completedCreates)
+    }
+
+    @Test
     fun successfulSyncStartsAtLastPageAndLoadsEarlierPagesInOrder() = runTest {
         val fixture = fixture()
         fixture.remote.totalPages = 3
