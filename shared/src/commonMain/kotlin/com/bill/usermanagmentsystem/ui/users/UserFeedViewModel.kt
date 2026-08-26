@@ -516,8 +516,8 @@ class UserFeedViewModel(
 
     private fun updateForm(transform: (AddUserFormUiState) -> AddUserFormUiState) {
         val current = presentation.value.addUserForm ?: return
-        presentation.update {
-            presentation.value.copy(addUserForm = transform(current))
+        presentation.update { state ->
+            state.copy(addUserForm = transform(current))
         }
     }
 
