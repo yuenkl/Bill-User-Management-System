@@ -10,7 +10,34 @@ data class UserFeedUiState(
     val emptyState: UserFeedEmptyState? = null,
     val banner: UserFeedBanner? = null,
     val message: UserFeedMessage? = null,
+    val addUserForm: AddUserFormUiState? = null,
 )
+
+data class AddUserFormUiState(
+    val name: String = "",
+    val email: String = "",
+    val gender: Gender? = null,
+    val status: UserStatus = UserStatus.Active,
+    val nameTouched: Boolean = false,
+    val emailTouched: Boolean = false,
+    val genderTouched: Boolean = false,
+    val nameError: String? = null,
+    val emailError: String? = null,
+    val genderError: String? = null,
+    val nameApiError: String? = null,
+    val emailApiError: String? = null,
+    val submissionError: String? = null,
+    val isValid: Boolean = false,
+    val submitting: Boolean = false,
+) {
+    val canSubmit: Boolean
+        get() = isValid && nameApiError == null && emailApiError == null && !submitting
+}
+
+enum class AddUserField {
+    Name,
+    Email,
+}
 
 data class UserItemUiModel(
     val localId: String,
@@ -25,7 +52,10 @@ data class UserItemUiModel(
 sealed interface UserItemSynchronization {
     data object Synced : UserItemSynchronization
     data object Pending : UserItemSynchronization
-    data class Failed(val reason: String) : UserItemSynchronization
+    data class Failed(
+        val reason: String,
+        val retrying: Boolean = false,
+    ) : UserItemSynchronization
 }
 
 sealed interface UserFeedEmptyState {

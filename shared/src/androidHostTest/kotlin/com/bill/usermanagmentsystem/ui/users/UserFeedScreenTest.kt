@@ -4,12 +4,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.v2.runComposeUiTest
 import com.bill.usermanagmentsystem.domain.model.Gender
 import com.bill.usermanagmentsystem.domain.model.UserStatus
@@ -19,6 +23,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -83,6 +88,41 @@ class UserFeedScreenTest {
     }
 
     @Test
+    fun failedCreateOffersExplicitRetryForThatUser() = runComposeUiTest {
+        var retriedId: String? = null
+        setContent {
+            UserManagementTheme {
+                UserFeedScreen(
+                    state = UserFeedUiState(
+                        users = listOf(
+                            user().copy(
+                                synchronization = UserItemSynchronization.Failed(
+                                    "email: already exists",
+                                ),
+                            ),
+                        ),
+                        initialLoading = false,
+                    ),
+                    onRefresh = {},
+                    onRetry = {},
+                    onAddUser = {},
+                    onAddUserDismissed = {},
+                    onAddUserNameChanged = {},
+                    onAddUserEmailChanged = {},
+                    onAddUserGenderSelected = {},
+                    onAddUserStatusSelected = {},
+                    onAddUserSubmitted = {},
+                    onRetryUserCreation = { retriedId = it },
+                    onMessageConsumed = {},
+                )
+            }
+        }
+
+        onNodeWithText("Retry sync").performClick()
+        assertEquals("local-1", retriedId)
+    }
+
+    @Test
     fun retryAndAccessibleRefreshActionsForwardEvents() = runComposeUiTest {
         var retryCalls = 0
         var refreshCalls = 0
@@ -95,6 +135,14 @@ class UserFeedScreenTest {
                     ),
                     onRefresh = { refreshCalls += 1 },
                     onRetry = { retryCalls += 1 },
+                    onAddUser = {},
+                    onAddUserDismissed = {},
+                    onAddUserNameChanged = {},
+                    onAddUserEmailChanged = {},
+                    onAddUserGenderSelected = {},
+                    onAddUserStatusSelected = {},
+                    onAddUserSubmitted = {},
+                    onRetryUserCreation = {},
                     onMessageConsumed = {},
                 )
             }
@@ -107,6 +155,58 @@ class UserFeedScreenTest {
         assertEquals(1, refreshCalls)
     }
 
+    @Test
+    fun accessibleFabForwardsAddUserEvent() = runComposeUiTest {
+        var addCalls = 0
+        setContent {
+            UserManagementTheme {
+                UserFeedScreen(
+                    state = UserFeedUiState(initialLoading = false),
+                    onRefresh = {},
+                    onRetry = {},
+                    onAddUser = { addCalls += 1 },
+                    onAddUserDismissed = {},
+                    onAddUserNameChanged = {},
+                    onAddUserEmailChanged = {},
+                    onAddUserGenderSelected = {},
+                    onAddUserStatusSelected = {},
+                    onAddUserSubmitted = {},
+                    onRetryUserCreation = {},
+                    onMessageConsumed = {},
+                )
+            }
+        }
+
+        onNodeWithContentDescription("Add user").performClick()
+        assertEquals(1, addCalls)
+    }
+
+    @Test
+    @Config(qualifiers = "w800dp-h1000dp")
+    fun compactFormUsesSheetAndRendersValues() = runComposeUiTest {
+        val form = AddUserFormUiState(
+            name = "Ada Lovelace",
+            email = "ada@example.com",
+            gender = Gender.Female,
+            isValid = true,
+        )
+        setContent {
+            Box(Modifier.size(width = 500.dp, height = 800.dp)) {
+                screen(UserFeedUiState(initialLoading = false, addUserForm = form))
+            }
+        }
+
+        onNodeWithContentDescription("Add user sheet").fetchSemanticsNode()
+        onNodeWithText("Ada Lovelace").fetchSemanticsNode()
+        onNodeWithText("ada@example.com").fetchSemanticsNode()
+    }
+
+    @Test
+    fun adaptiveFormPresentationSwitchesAtSixHundredDp() {
+        assertEquals(AddUserFormPresentation.Sheet, addUserFormPresentation(599.dp))
+        assertEquals(AddUserFormPresentation.Dialog, addUserFormPresentation(600.dp))
+    }
+
     @Composable
     private fun screen(state: UserFeedUiState) {
         UserManagementTheme {
@@ -114,6 +214,14 @@ class UserFeedScreenTest {
                 state = state,
                 onRefresh = {},
                 onRetry = {},
+                onAddUser = {},
+                onAddUserDismissed = {},
+                onAddUserNameChanged = {},
+                onAddUserEmailChanged = {},
+                onAddUserGenderSelected = {},
+                onAddUserStatusSelected = {},
+                onAddUserSubmitted = {},
+                onRetryUserCreation = {},
                 onMessageConsumed = {},
             )
         }

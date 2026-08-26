@@ -39,6 +39,14 @@ fun UserFeedPreview() {
             ),
             onRefresh = {},
             onRetry = {},
+            onAddUser = {},
+            onAddUserDismissed = {},
+            onAddUserNameChanged = {},
+            onAddUserEmailChanged = {},
+            onAddUserGenderSelected = {},
+            onAddUserStatusSelected = {},
+            onAddUserSubmitted = {},
+            onRetryUserCreation = {},
             onMessageConsumed = {},
         )
     }

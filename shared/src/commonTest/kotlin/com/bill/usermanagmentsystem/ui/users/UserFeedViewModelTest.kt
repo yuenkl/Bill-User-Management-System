@@ -1,6 +1,7 @@
 package com.bill.usermanagmentsystem.ui.users
 
 import androidx.lifecycle.viewModelScope
+import com.bill.usermanagmentsystem.domain.model.AddUserInput
 import com.bill.usermanagmentsystem.domain.model.Gender
 import com.bill.usermanagmentsystem.domain.model.SyncState
 import com.bill.usermanagmentsystem.domain.model.User
@@ -9,10 +10,13 @@ import com.bill.usermanagmentsystem.domain.model.UserDataException
 import com.bill.usermanagmentsystem.domain.model.UserRecord
 import com.bill.usermanagmentsystem.domain.model.UserStatus
 import com.bill.usermanagmentsystem.domain.model.UserSynchronization
+import com.bill.usermanagmentsystem.domain.usecase.AddUser
+import com.bill.usermanagmentsystem.domain.usecase.AddUserValidator
 import com.bill.usermanagmentsystem.domain.usecase.ObserveSyncState
 import com.bill.usermanagmentsystem.domain.usecase.ObserveUsers
 import com.bill.usermanagmentsystem.domain.usecase.RefreshUsers
 import com.bill.usermanagmentsystem.domain.usecase.RelativeTimeFormatter
+import com.bill.usermanagmentsystem.domain.usecase.RetryUserCreation
 import com.bill.usermanagmentsystem.platform.AppLifecycleObserver
 import com.bill.usermanagmentsystem.platform.AppLifecycleState
 import com.bill.usermanagmentsystem.platform.ConnectivityObserver
@@ -143,6 +147,106 @@ class UserFeedViewModelTest {
         }
     }
 
+    @Test
+    fun formErrorsAppearAfterInteractionAndClearWhenCorrected() = runTest {
+        withFixture {
+            viewModel.openAddUserForm()
+            runCurrent()
+            assertNull(viewModel.uiState.value.addUserForm?.nameError)
+
+            viewModel.updateAddUserName(" ")
+            runCurrent()
+            assertEquals("Enter a name.", viewModel.uiState.value.addUserForm?.nameError)
+
+            viewModel.updateAddUserName("Ada Lovelace")
+            runCurrent()
+            assertNull(viewModel.uiState.value.addUserForm?.nameError)
+        }
+    }
+
+    @Test
+    fun submitRequiresEveryFieldNormalizesInputAndRejectsDuplicateTaps() = runTest {
+        val gate = CompletableDeferred<Result<String>>()
+        withFixture {
+            addHandler = { gate.await() }
+            viewModel.openAddUserForm()
+            viewModel.updateAddUserName("  Ada Lovelace  ")
+            viewModel.updateAddUserEmail(" ada@example.com ")
+            runCurrent()
+            assertEquals(false, viewModel.uiState.value.addUserForm?.canSubmit)
+
+            viewModel.selectAddUserGender(Gender.Female)
+            runCurrent()
+            assertTrue(viewModel.uiState.value.addUserForm?.canSubmit == true)
+
+            viewModel.submitAddUser()
+            viewModel.submitAddUser()
+            runCurrent()
+
+            assertEquals(1, addInputs.size)
+            assertEquals("Ada Lovelace", addInputs.single().name)
+            assertEquals("ada@example.com", addInputs.single().email)
+            assertTrue(viewModel.uiState.value.addUserForm?.submitting == true)
+
+            gate.complete(Result.success("local-created"))
+            runCurrent()
+            assertNull(viewModel.uiState.value.addUserForm)
+        }
+    }
+
+    @Test
+    fun serverFieldFailureStaysSeparateUntilFieldChanges() = runTest {
+        withFixture {
+            addHandler = {
+                Result.failure(
+                    UserDataException(UserDataError.ValidationRejected("email: has already been taken")),
+                )
+            }
+            viewModel.openAddUserForm()
+            viewModel.updateAddUserName("Ada Lovelace")
+            viewModel.updateAddUserEmail("ada@example.com")
+            viewModel.selectAddUserGender(Gender.Female)
+            viewModel.submitAddUser()
+            runCurrent()
+
+            val failed = assertNotNull(viewModel.uiState.value.addUserForm)
+            assertNull(failed.emailError)
+            assertEquals("has already been taken", failed.emailApiError)
+            assertEquals(false, failed.canSubmit)
+
+            viewModel.updateAddUserEmail("ada2@example.com")
+            runCurrent()
+            assertNull(viewModel.uiState.value.addUserForm?.emailApiError)
+            assertTrue(viewModel.uiState.value.addUserForm?.canSubmit == true)
+        }
+    }
+
+    @Test
+    fun retryCreateRejectsOverlappingTaps() = runTest {
+        val gate = CompletableDeferred<Result<Unit>>()
+        withFixture {
+            retryHandler = { gate.await() }
+            users.value = listOf(
+                userRecord().copy(
+                    synchronization = UserSynchronization.CreateFailed("email: already exists"),
+                ),
+            )
+            runCurrent()
+
+            viewModel.retryUserCreation("local-1")
+            viewModel.retryUserCreation("local-1")
+            runCurrent()
+            assertEquals(listOf("local-1"), retryIds)
+            assertTrue(
+                (viewModel.uiState.value.users.single().synchronization as UserItemSynchronization.Failed)
+                    .retrying,
+            )
+
+            gate.complete(Result.success(Unit))
+            runCurrent()
+        }
+    }
+
     private suspend fun kotlinx.coroutines.test.TestScope.withFixture(
         connectivityStatus: ConnectivityStatus = ConnectivityStatus.Available,
         initialRefreshHandler: suspend () -> Result<Unit> = { Result.success(Unit) },
@@ -171,6 +275,10 @@ class UserFeedViewModelTest {
         val clock = FakeTimeProvider(Instant.parse("2026-08-26T12:00:00Z"))
         var refreshCalls = 0
         var refreshHandler: suspend () -> Result<Unit> = initialRefreshHandler
+        val addInputs = mutableListOf<AddUserInput>()
+        var addHandler: suspend (AddUserInput) -> Result<String> = { Result.success("local-created") }
+        val retryIds = mutableListOf<String>()
+        var retryHandler: suspend (String) -> Result<Unit> = { Result.success(Unit) }
         val viewModel = UserFeedViewModel(
             observeUsers = ObserveUsers { users },
             observeSyncState = ObserveSyncState { syncState },
@@ -178,6 +286,15 @@ class UserFeedViewModelTest {
                 refreshCalls += 1
                 refreshHandler()
             },
+            addUser = AddUser { input ->
+                addInputs += input
+                addHandler(input)
+            },
+            retryUserCreationUseCase = RetryUserCreation { localId ->
+                retryIds += localId
+                retryHandler(localId)
+            },
+            addUserValidator = AddUserValidator(),
             connectivityObserver = connectivity,
             lifecycleObserver = lifecycle,
             timeProvider = clock,

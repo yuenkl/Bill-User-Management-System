@@ -2,12 +2,15 @@ package com.bill.usermanagmentsystem.ui.users
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,6 +18,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -34,10 +38,15 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.bill.usermanagmentsystem.domain.model.Gender
+import com.bill.usermanagmentsystem.domain.model.UserStatus
 import com.bill.usermanagmentsystem.ui.users.components.UserCard
 import com.bill.usermanagmentsystem.ui.users.components.UserCardShimmer
+import com.bill.usermanagmentsystem.ui.users.components.UserForm
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
@@ -50,6 +59,14 @@ fun UserFeedRoute(
         state = state,
         onRefresh = viewModel::refresh,
         onRetry = viewModel::retry,
+        onAddUser = viewModel::openAddUserForm,
+        onAddUserDismissed = viewModel::dismissAddUserForm,
+        onAddUserNameChanged = viewModel::updateAddUserName,
+        onAddUserEmailChanged = viewModel::updateAddUserEmail,
+        onAddUserGenderSelected = viewModel::selectAddUserGender,
+        onAddUserStatusSelected = viewModel::selectAddUserStatus,
+        onAddUserSubmitted = viewModel::submitAddUser,
+        onRetryUserCreation = viewModel::retryUserCreation,
         onMessageConsumed = viewModel::consumeMessage,
         modifier = modifier,
     )
@@ -61,6 +78,14 @@ fun UserFeedScreen(
     state: UserFeedUiState,
     onRefresh: () -> Unit,
     onRetry: () -> Unit,
+    onAddUser: () -> Unit,
+    onAddUserDismissed: () -> Unit,
+    onAddUserNameChanged: (String) -> Unit,
+    onAddUserEmailChanged: (String) -> Unit,
+    onAddUserGenderSelected: (Gender) -> Unit,
+    onAddUserStatusSelected: (UserStatus) -> Unit,
+    onAddUserSubmitted: () -> Unit,
+    onRetryUserCreation: (String) -> Unit,
     onMessageConsumed: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -73,47 +98,126 @@ fun UserFeedScreen(
         }
     }
 
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        topBar = {
-            TopAppBar(
-                title = { Text("User directory") },
-                actions = {
-                    TextButton(onClick = onRefresh) { Text("Refresh") }
-                },
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = {},
-                modifier = Modifier.semantics { contentDescription = "Add user" },
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val formPresentation = addUserFormPresentation(maxWidth)
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            topBar = {
+                TopAppBar(
+                    title = { Text("User directory") },
+                    actions = {
+                        TextButton(onClick = onRefresh) { Text("Refresh") }
+                    },
+                )
+            },
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            floatingActionButton = {
+                FloatingActionButton(
+                    onClick = onAddUser,
+                    modifier = Modifier
+                        .navigationBarsPadding()
+                        .semantics { contentDescription = "Add user" },
+                ) {
+                    Text("+", style = MaterialTheme.typography.headlineMedium)
+                }
+            },
+        ) { contentPadding ->
+            PullToRefreshBox(
+                isRefreshing = state.refreshing,
+                onRefresh = onRefresh,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(contentPadding)
+                    .semantics {
+                        contentDescription = "User feed. Pull to refresh."
+                        onClick(label = "Refresh") {
+                            onRefresh()
+                            true
+                        }
+                    },
             ) {
-                Text("+", style = MaterialTheme.typography.headlineMedium)
+                when {
+                    state.initialLoading -> LoadingFeed()
+                    state.emptyState != null -> EmptyFeed(state.emptyState, onRetry)
+                    else -> UserList(state.users, state.banner, onRetryUserCreation)
+                }
             }
-        },
-    ) { contentPadding ->
-        PullToRefreshBox(
-            isRefreshing = state.refreshing,
-            onRefresh = onRefresh,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(contentPadding)
-                .semantics {
-                    contentDescription = "User feed. Pull to refresh."
-                    onClick(label = "Refresh") {
-                        onRefresh()
-                        true
+        }
+
+        state.addUserForm?.let { form ->
+            if (formPresentation == AddUserFormPresentation.Dialog) {
+                Dialog(onDismissRequest = onAddUserDismissed) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .imePadding()
+                            .semantics { contentDescription = "Add user dialog" },
+                        shape = MaterialTheme.shapes.extraLarge,
+                        tonalElevation = 6.dp,
+                    ) {
+                        UserFormContent(
+                            state = form,
+                            onNameChange = onAddUserNameChanged,
+                            onEmailChange = onAddUserEmailChanged,
+                            onGenderSelected = onAddUserGenderSelected,
+                            onStatusSelected = onAddUserStatusSelected,
+                            onCancel = onAddUserDismissed,
+                            onSubmit = onAddUserSubmitted,
+                        )
                     }
-                },
-        ) {
-            when {
-                state.initialLoading -> LoadingFeed()
-                state.emptyState != null -> EmptyFeed(state.emptyState, onRetry)
-                else -> UserList(state.users, state.banner)
+                }
+            } else {
+                ModalBottomSheet(
+                    onDismissRequest = onAddUserDismissed,
+                    modifier = Modifier.semantics { contentDescription = "Add user sheet" },
+                ) {
+                    UserFormContent(
+                        state = form,
+                        onNameChange = onAddUserNameChanged,
+                        onEmailChange = onAddUserEmailChanged,
+                        onGenderSelected = onAddUserGenderSelected,
+                        onStatusSelected = onAddUserStatusSelected,
+                        onCancel = onAddUserDismissed,
+                        onSubmit = onAddUserSubmitted,
+                        modifier = Modifier
+                            .navigationBarsPadding()
+                            .imePadding(),
+                    )
+                }
             }
         }
     }
+}
+
+internal enum class AddUserFormPresentation {
+    Sheet,
+    Dialog,
+}
+
+internal fun addUserFormPresentation(width: Dp): AddUserFormPresentation =
+    if (width >= 600.dp) AddUserFormPresentation.Dialog else AddUserFormPresentation.Sheet
+
+@Composable
+private fun UserFormContent(
+    state: AddUserFormUiState,
+    onNameChange: (String) -> Unit,
+    onEmailChange: (String) -> Unit,
+    onGenderSelected: (Gender) -> Unit,
+    onStatusSelected: (UserStatus) -> Unit,
+    onCancel: () -> Unit,
+    onSubmit: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    UserForm(
+        state = state,
+        onNameChange = onNameChange,
+        onEmailChange = onEmailChange,
+        onGenderSelected = onGenderSelected,
+        onStatusSelected = onStatusSelected,
+        onCancel = onCancel,
+        onSubmit = onSubmit,
+        modifier = modifier,
+    )
 }
 
 @Composable
@@ -131,6 +235,7 @@ private fun LoadingFeed() {
 private fun UserList(
     users: List<UserItemUiModel>,
     banner: UserFeedBanner?,
+    onRetryUserCreation: (String) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -141,7 +246,10 @@ private fun UserList(
             item(key = "feed-banner") { FeedBanner(banner) }
         }
         items(users, key = UserItemUiModel::localId) { user ->
-            UserCard(user)
+            UserCard(
+                user = user,
+                onRetryCreation = { onRetryUserCreation(user.localId) },
+            )
         }
     }
 }
