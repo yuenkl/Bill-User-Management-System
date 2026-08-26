@@ -1,0 +1,7 @@
+TEAM_ID=
+
+PRODUCT_NAME=UserManagmentSystem
+PRODUCT_BUNDLE_IDENTIFIER=com.bill.usermanagmentsystem.UserManagmentSystem$(TEAM_ID)
+
+CURRENT_PROJECT_VERSION=1
+MARKETING_VERSION=1.0
