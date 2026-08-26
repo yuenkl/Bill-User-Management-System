@@ -90,3 +90,12 @@ kotlin {
 dependencies {
     androidRuntimeClasspath(libs.compose.uiTooling)
 }
+
+sqldelight {
+    databases {
+        create("UserManagementDatabase") {
+            packageName.set("com.bill.usermanagmentsystem.data.local.db")
+            verifyMigrations.set(true)
+        }
+    }
+}
