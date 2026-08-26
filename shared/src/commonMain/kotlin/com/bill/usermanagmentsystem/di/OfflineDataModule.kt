@@ -13,10 +13,16 @@ import com.bill.usermanagmentsystem.data.sync.SyncCoordinator
 import com.bill.usermanagmentsystem.domain.repository.UserRepository
 import com.bill.usermanagmentsystem.domain.usecase.AddUser
 import com.bill.usermanagmentsystem.domain.usecase.AddUserValidator
+import com.bill.usermanagmentsystem.domain.usecase.DeleteUserWithUndo
+import com.bill.usermanagmentsystem.domain.usecase.DefaultDeleteUserWithUndo
+import com.bill.usermanagmentsystem.domain.usecase.FinalizeExpiredDeletions
 import com.bill.usermanagmentsystem.domain.usecase.ObserveSyncState
+import com.bill.usermanagmentsystem.domain.usecase.ObserveUndoableDeletions
 import com.bill.usermanagmentsystem.domain.usecase.ObserveUsers
 import com.bill.usermanagmentsystem.domain.usecase.RefreshUsers
 import com.bill.usermanagmentsystem.domain.usecase.RetryUserCreation
+import com.bill.usermanagmentsystem.domain.usecase.SyncPendingUsers
+import com.bill.usermanagmentsystem.domain.usecase.UndoUserDeletion
 import com.bill.usermanagmentsystem.platform.SqlDriverFactory
 import com.bill.usermanagmentsystem.ui.users.UserFeedViewModel
 import kotlinx.coroutines.CoroutineDispatcher
@@ -96,14 +102,37 @@ internal fun offlineDataModule(
         RetryUserCreation(repository::retryCreate)
     }
     factory { AddUserValidator() }
+    factory {
+        val repository = get<UserRepository>()
+        ObserveUndoableDeletions(repository::observeUndoableDeletions)
+    }
+    factory<DeleteUserWithUndo> {
+        DefaultDeleteUserWithUndo(repository = get(), timeProvider = get())
+    }
+    factory {
+        val repository = get<UserRepository>()
+        UndoUserDeletion(repository::undoDelete)
+    }
+    factory {
+        val repository = get<UserRepository>()
+        FinalizeExpiredDeletions(repository::finalizeExpiredDeletions)
+    }
+    factory {
+        val repository = get<UserRepository>()
+        SyncPendingUsers(repository::syncPending)
+    }
     viewModel {
         UserFeedViewModel(
             observeUsers = get(),
             observeSyncState = get(),
+            observeUndoableDeletions = get(),
             refreshUsers = get(),
             addUser = get(),
             retryUserCreationUseCase = get(),
             addUserValidator = get(),
+            deleteUserWithUndo = get(),
+            undoUserDeletion = get(),
+            finalizeExpiredDeletions = get(),
             connectivityObserver = get(),
             lifecycleObserver = get(),
             timeProvider = get(),

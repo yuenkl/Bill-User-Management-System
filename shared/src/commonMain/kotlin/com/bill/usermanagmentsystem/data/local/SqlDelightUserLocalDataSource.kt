@@ -2,6 +2,7 @@ package com.bill.usermanagmentsystem.data.local
 
 import com.bill.usermanagmentsystem.data.local.db.Pending_mutations
 import com.bill.usermanagmentsystem.data.local.db.SelectDueMutations
+import com.bill.usermanagmentsystem.data.local.db.SelectUndoableUsers
 import com.bill.usermanagmentsystem.data.local.db.UserManagementDatabase
 import com.bill.usermanagmentsystem.data.local.db.Users
 import com.bill.usermanagmentsystem.domain.model.Gender
@@ -11,6 +12,7 @@ import com.bill.usermanagmentsystem.domain.model.UserDataException
 import com.bill.usermanagmentsystem.domain.model.UserRecord
 import com.bill.usermanagmentsystem.domain.model.UserStatus
 import com.bill.usermanagmentsystem.domain.model.UserSynchronization
+import com.bill.usermanagmentsystem.domain.model.UndoableDeletion
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -31,6 +33,12 @@ internal class SqlDelightUserLocalDataSource(
             .asFlow()
             .mapToList(queryDispatcher)
             .map { rows -> rows.map(Users::toDomainRecord) }
+
+    override fun observeUndoableUsers(): Flow<List<UndoableDeletion>> =
+        queries.selectUndoableUsers()
+            .asFlow()
+            .mapToList(queryDispatcher)
+            .map { rows -> rows.map(SelectUndoableUsers::toUndoableDeletion) }
 
     override suspend fun getUser(localId: String): StoredUser? = withContext(queryDispatcher) {
         queries.selectUserByLocalId(localId).executeAsOneOrNull()?.toStoredUser()
@@ -334,6 +342,19 @@ private fun Users.toDomainRecord(): UserRecord {
         synchronization = synchronization,
     )
 }
+
+private fun SelectUndoableUsers.toUndoableDeletion(): UndoableDeletion = UndoableDeletion(
+    user = User(
+        localId = local_id,
+        remoteId = remote_id,
+        name = name,
+        email = email,
+        gender = gender.toGender(),
+        status = status.toUserStatus(),
+        observedAt = Instant.fromEpochMilliseconds(observed_at_epoch_ms),
+    ),
+    deadline = Instant.fromEpochMilliseconds(undo_deadline_epoch_ms),
+)
 
 private fun Pending_mutations.toStoredMutation(): StoredMutation = StoredMutation(
     mutationId = mutation_id,

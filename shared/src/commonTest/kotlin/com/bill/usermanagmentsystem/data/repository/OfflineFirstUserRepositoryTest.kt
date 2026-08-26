@@ -12,6 +12,7 @@ import com.bill.usermanagmentsystem.domain.model.Gender
 import com.bill.usermanagmentsystem.domain.model.UserDataError
 import com.bill.usermanagmentsystem.domain.model.UserStatus
 import com.bill.usermanagmentsystem.domain.model.userDataErrorOrNull
+import com.bill.usermanagmentsystem.domain.usecase.DefaultDeleteUserWithUndo
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -80,6 +81,39 @@ class OfflineFirstUserRepositoryTest {
 
         assertEquals("user-id" to deadline, local.deleteRequests.single())
         assertEquals("user-id" to instant(1_000), local.undoRequests.single())
+    }
+
+    @Test
+    fun deleteUseCaseCalculatesExactFiveSecondDeadline() = runTest {
+        val local = FakeUserLocalDataSource()
+        val repository = repository(local, FakeSyncCoordinator())
+        val useCase = DefaultDeleteUserWithUndo(
+            repository = repository,
+            timeProvider = FakeTimeProvider(instant(1_000)),
+        )
+
+        val result = useCase("user-id")
+
+        assertEquals(instant(6_000), result.getOrThrow())
+        assertEquals("user-id" to instant(6_000), local.deleteRequests.single())
+    }
+
+    @Test
+    fun expiredDeleteFinalizationTriggersSyncOnlyWhenStateChanged() = runTest {
+        val local = FakeUserLocalDataSource().apply { finalizedDeleteResult = 1 }
+        val sync = FakeSyncCoordinator()
+        val repository = repository(local, sync)
+
+        assertEquals(1, repository.finalizeExpiredDeletions().getOrThrow())
+        runCurrent()
+
+        assertEquals(1, local.finalizedDeleteCalls)
+        assertEquals(1, sync.syncCalls)
+
+        local.finalizedDeleteResult = 0
+        assertEquals(0, repository.finalizeExpiredDeletions().getOrThrow())
+        runCurrent()
+        assertEquals(1, sync.syncCalls)
     }
 
     @Test

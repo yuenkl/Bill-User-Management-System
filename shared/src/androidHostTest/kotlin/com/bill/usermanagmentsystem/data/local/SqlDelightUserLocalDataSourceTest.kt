@@ -11,6 +11,7 @@ import com.bill.usermanagmentsystem.domain.model.UserDataException
 import com.bill.usermanagmentsystem.domain.model.UserStatus
 import com.bill.usermanagmentsystem.domain.model.UserSynchronization
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.async
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -158,6 +159,22 @@ class SqlDelightUserLocalDataSourceTest {
     }
 
     @Test
+    fun undoableDeletionProjectionSurvivesDatabaseReopen() = runTest {
+        withFixture("undo-projection-reopen") {
+            source.mergeSnapshot(listOf(snapshot(remoteId = 7, name = "Ada")), instant(1_000))
+            val localId = source.observeVisibleUsers().first().single().user.localId
+            source.requestDelete(localId, instant(6_000))
+
+            reopen()
+
+            val deletion = source.observeUndoableUsers().first().single()
+            assertEquals(localId, deletion.user.localId)
+            assertEquals("Ada", deletion.user.name)
+            assertEquals(instant(6_000), deletion.deadline)
+        }
+    }
+
+    @Test
     fun undoAtDeadlineIsRejectedAndDurableDeleteStateRemains() = runTest {
         withFixture("late-undo") {
             source.mergeSnapshot(listOf(snapshot(remoteId = 7)), instant(1_000))
@@ -169,6 +186,27 @@ class SqlDelightUserLocalDataSourceTest {
             assertEquals(UserDataError.DeleteTooLate, assertIs<UserDataException>(failure).error)
             assertTrue(source.getUser(localId)!!.hidden)
             assertEquals(instant(6_000), source.getUser(localId)?.undoDeadline)
+        }
+    }
+
+    @Test
+    fun undoAndTimeoutRaceHasOneDurableWinner() = runTest {
+        withFixture("undo-timeout-race") {
+            source.mergeSnapshot(listOf(snapshot(remoteId = 7)), instant(1_000))
+            val localId = source.observeVisibleUsers().first().single().user.localId
+            source.requestDelete(localId, instant(6_000))
+
+            val undo = async { runCatching { source.undoDelete(localId, instant(5_999)) } }
+            val finalize = async { source.finalizeExpiredDeletes(instant(6_000)) }
+            val undoResult = undo.await()
+            val finalizedCount = finalize.await()
+
+            val restored = source.observeVisibleUsers().first().any { it.user.localId == localId }
+            val deleteMutations = source.getAllMutations().filter { it.kind == MutationKind.Delete }
+            assertTrue(restored.xor(deleteMutations.isNotEmpty()))
+            assertEquals(restored, undoResult.isSuccess)
+            assertEquals(if (restored) 0 else 1, finalizedCount)
+            assertTrue(deleteMutations.size <= 1)
         }
     }
 
@@ -187,6 +225,36 @@ class SqlDelightUserLocalDataSourceTest {
             assertEquals(MutationKind.Delete, mutation.kind)
             assertEquals(localId, mutation.userLocalId)
             assertEquals(StoredUserSyncStatus.PendingDelete, source.getUser(localId)?.synchronization)
+        }
+    }
+
+    @Test
+    fun multipleDeletionDeadlinesFinalizeIndependentlyWithoutDuplicateMutations() = runTest {
+        withFixture("multiple-delete-deadlines") {
+            source.mergeSnapshot(
+                listOf(
+                    snapshot(remoteId = 7, name = "Ada", position = 1),
+                    snapshot(remoteId = 8, name = "Grace", position = 2),
+                ),
+                instant(1_000),
+            )
+            val users = source.observeVisibleUsers().first().associateBy { it.user.name }
+            source.requestDelete(users.getValue("Ada").user.localId, instant(6_000))
+            source.requestDelete(users.getValue("Grace").user.localId, instant(8_000))
+
+            assertEquals(
+                listOf("Ada", "Grace"),
+                source.observeUndoableUsers().first().map { it.user.name },
+            )
+            assertEquals(1, source.finalizeExpiredDeletes(instant(6_000)))
+            assertEquals(listOf("Grace"), source.observeUndoableUsers().first().map { it.user.name })
+            assertEquals(1, source.finalizeExpiredDeletes(instant(8_000)))
+            assertEquals(0, source.finalizeExpiredDeletes(instant(9_000)))
+
+            val mutations = source.getAllMutations()
+            assertEquals(2, mutations.size)
+            assertEquals(2, mutations.map(StoredMutation::userLocalId).toSet().size)
+            assertTrue(mutations.all { it.kind == MutationKind.Delete })
         }
     }
 

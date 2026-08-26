@@ -8,13 +8,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.v2.runComposeUiTest
+import androidx.compose.ui.unit.dp
 import com.bill.usermanagmentsystem.domain.model.Gender
 import com.bill.usermanagmentsystem.domain.model.UserStatus
 import com.bill.usermanagmentsystem.ui.theme.UserManagementTheme
@@ -24,6 +26,7 @@ import kotlin.test.assertTrue
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlin.time.Instant
 
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -205,6 +208,97 @@ class UserFeedScreenTest {
     fun adaptiveFormPresentationSwitchesAtSixHundredDp() {
         assertEquals(AddUserFormPresentation.Sheet, addUserFormPresentation(599.dp))
         assertEquals(AddUserFormPresentation.Dialog, addUserFormPresentation(600.dp))
+    }
+
+    @Test
+    fun longClickOpensIdentityConfirmationAndCancelDoesNotDelete() = runComposeUiTest {
+        var state by mutableStateOf(
+            UserFeedUiState(
+                users = listOf(user()),
+                initialLoading = false,
+            ),
+        )
+        var confirmCalls = 0
+        setContent {
+            UserManagementTheme {
+                UserFeedScreen(
+                    state = state,
+                    onRefresh = {},
+                    onRetry = {},
+                    onAddUser = {},
+                    onAddUserDismissed = {},
+                    onAddUserNameChanged = {},
+                    onAddUserEmailChanged = {},
+                    onAddUserGenderSelected = {},
+                    onAddUserStatusSelected = {},
+                    onAddUserSubmitted = {},
+                    onRetryUserCreation = {},
+                    onMessageConsumed = {},
+                    onUserLongClick = { localId ->
+                        state = state.copy(
+                            deleteConfirmation = state.users.first { it.localId == localId },
+                        )
+                    },
+                    onDeleteCancel = { state = state.copy(deleteConfirmation = null) },
+                    onDeleteConfirm = { confirmCalls += 1 },
+                )
+            }
+        }
+
+        onNodeWithContentDescription(
+            "Ada Lovelace, ada@example.com, 2 minutes ago",
+        ).performSemanticsAction(SemanticsActions.OnLongClick)
+
+        onNodeWithText("Delete user?").fetchSemanticsNode()
+        assertEquals(2, onAllNodesWithText("Ada Lovelace").fetchSemanticsNodes().size)
+        assertEquals(2, onAllNodesWithText("ada@example.com").fetchSemanticsNodes().size)
+        onNodeWithText("Cancel").performClick()
+
+        assertEquals(0, confirmCalls)
+        assertTrue(onAllNodesWithText("Delete user?").fetchSemanticsNodes().isEmpty())
+
+        onNodeWithContentDescription(
+            "Ada Lovelace, ada@example.com, 2 minutes ago",
+        ).performSemanticsAction(SemanticsActions.OnLongClick)
+        onNodeWithText("Delete").performClick()
+        assertEquals(1, confirmCalls)
+    }
+
+    @Test
+    fun undoSnackbarNamesUserAndForwardsUndoAction() = runComposeUiTest {
+        var undoLocalId: String? = null
+        setContent {
+            UserManagementTheme {
+                UserFeedScreen(
+                    state = UserFeedUiState(
+                        initialLoading = false,
+                        emptyState = UserFeedEmptyState.Empty,
+                        undoSnackbar = DeleteUndoUiModel(
+                            localId = "local-1",
+                            userName = "Ada Lovelace",
+                            deadline = Instant.parse("2026-08-26T12:00:05Z"),
+                        ),
+                    ),
+                    onRefresh = {},
+                    onRetry = {},
+                    onAddUser = {},
+                    onAddUserDismissed = {},
+                    onAddUserNameChanged = {},
+                    onAddUserEmailChanged = {},
+                    onAddUserGenderSelected = {},
+                    onAddUserStatusSelected = {},
+                    onAddUserSubmitted = {},
+                    onRetryUserCreation = {},
+                    onMessageConsumed = {},
+                    onUndoDelete = { undoLocalId = it },
+                )
+            }
+        }
+
+        onNodeWithText("Ada Lovelace deleted").fetchSemanticsNode()
+        onNodeWithText("Undo").performClick()
+
+        assertEquals("local-1", undoLocalId)
     }
 
     @Composable

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -22,6 +23,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -68,6 +71,10 @@ fun UserFeedRoute(
         onAddUserSubmitted = viewModel::submitAddUser,
         onRetryUserCreation = viewModel::retryUserCreation,
         onMessageConsumed = viewModel::consumeMessage,
+        onUserLongClick = viewModel::selectUserForDeletion,
+        onDeleteCancel = viewModel::cancelDelete,
+        onDeleteConfirm = viewModel::confirmDelete,
+        onUndoDelete = viewModel::undoDelete,
         modifier = modifier,
     )
 }
@@ -87,14 +94,32 @@ fun UserFeedScreen(
     onAddUserSubmitted: () -> Unit,
     onRetryUserCreation: (String) -> Unit,
     onMessageConsumed: (Long) -> Unit,
+    onUserLongClick: (String) -> Unit = {},
+    onDeleteCancel: () -> Unit = {},
+    onDeleteConfirm: () -> Unit = {},
+    onUndoDelete: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val message = state.message
-    LaunchedEffect(message?.id) {
-        if (message != null) {
+    val undoSnackbar = state.undoSnackbar
+    LaunchedEffect(message?.id, undoSnackbar?.localId) {
+        if (message != null && undoSnackbar == null) {
             onMessageConsumed(message.id)
             snackbarHostState.showSnackbar(message.text)
+        }
+    }
+    LaunchedEffect(undoSnackbar?.localId, undoSnackbar?.deadline) {
+        if (undoSnackbar != null) {
+            snackbarHostState.currentSnackbarData?.dismiss()
+            val result = snackbarHostState.showSnackbar(
+                message = "${undoSnackbar.userName} deleted",
+                actionLabel = "Undo",
+                duration = SnackbarDuration.Indefinite,
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                onUndoDelete(undoSnackbar.localId)
+            }
         }
     }
 
@@ -139,7 +164,12 @@ fun UserFeedScreen(
                 when {
                     state.initialLoading -> LoadingFeed()
                     state.emptyState != null -> EmptyFeed(state.emptyState, onRetry)
-                    else -> UserList(state.users, state.banner, onRetryUserCreation)
+                    else -> UserList(
+                        users = state.users,
+                        banner = state.banner,
+                        onRetryUserCreation = onRetryUserCreation,
+                        onUserLongClick = onUserLongClick,
+                    )
                 }
             }
         }
@@ -186,6 +216,15 @@ fun UserFeedScreen(
                 }
             }
         }
+    }
+
+    state.deleteConfirmation?.let { user ->
+        DeleteConfirmationDialog(
+            user = user,
+            deleting = state.deleteInProgress,
+            onCancel = onDeleteCancel,
+            onConfirm = onDeleteConfirm,
+        )
     }
 }
 
@@ -236,6 +275,7 @@ private fun UserList(
     users: List<UserItemUiModel>,
     banner: UserFeedBanner?,
     onRetryUserCreation: (String) -> Unit,
+    onUserLongClick: (String) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -249,9 +289,52 @@ private fun UserList(
             UserCard(
                 user = user,
                 onRetryCreation = { onRetryUserCreation(user.localId) },
+                onLongClick = { onUserLongClick(user.localId) },
+                modifier = Modifier.animateItem(),
             )
         }
     }
+}
+
+@Composable
+private fun DeleteConfirmationDialog(
+    user: UserItemUiModel,
+    deleting: Boolean,
+    onCancel: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Delete user?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(user.name, fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = user.email,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onCancel,
+                enabled = !deleting,
+            ) {
+                Text("Cancel")
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                enabled = !deleting,
+            ) {
+                Text(
+                    text = if (deleting) "Deleting…" else "Delete",
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        },
+    )
 }
 
 @Composable

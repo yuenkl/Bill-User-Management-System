@@ -1,6 +1,7 @@
 package com.bill.usermanagmentsystem.ui.users.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +37,7 @@ import com.bill.usermanagmentsystem.ui.users.UserItemUiModel
 fun UserCard(
     user: UserItemUiModel,
     onRetryCreation: () -> Unit,
+    onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Card(
@@ -43,7 +45,12 @@ fun UserCard(
             .fillMaxWidth()
             .semantics {
                 contentDescription = "${user.name}, ${user.email}, ${user.relativeTime}"
-            },
+            }
+            .combinedClickable(
+                onClick = {},
+                onLongClickLabel = "Delete user",
+                onLongClick = onLongClick,
+            ),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         ),

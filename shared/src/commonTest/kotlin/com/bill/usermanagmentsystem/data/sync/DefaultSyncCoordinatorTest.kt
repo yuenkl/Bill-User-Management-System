@@ -207,6 +207,47 @@ class DefaultSyncCoordinatorTest {
     }
 
     @Test
+    fun retryableDeleteFailureKeepsDurableMutationScheduled() = runTest {
+        val fixture = fixture(now = 1_000)
+        fixture.local.dueMutations += dueDelete(
+            mutationId = "retry-delete",
+            localId = "hidden-user",
+            remoteId = 77,
+        )
+        fixture.remote.deleteHandler = { RemoteResult.RetryableFailure("HTTP 503") }
+
+        val result = fixture.coordinator.sync()
+
+        assertIs<UserDataError.RetryScheduled>(result.exceptionOrNull()?.userDataErrorOrNull())
+        assertEquals("retry-delete", fixture.local.retrySchedules.single().mutationId)
+        assertTrue(fixture.local.completedDeletes.isEmpty())
+        assertTrue(fixture.local.restoredDeletes.isEmpty())
+    }
+
+    @Test
+    fun authenticationDeleteFailureRestoresUserAndRemovesAutomaticRetry() = runTest {
+        val fixture = fixture()
+        fixture.local.dueMutations += dueDelete(
+            mutationId = "auth-delete",
+            localId = "restore-user",
+        )
+        fixture.remote.deleteHandler = { RemoteResult.AuthenticationFailure }
+
+        val result = fixture.coordinator.sync()
+
+        assertEquals(UserDataError.AuthenticationRequired, result.exceptionOrNull()?.userDataErrorOrNull())
+        assertEquals(
+            Triple(
+                "auth-delete",
+                "restore-user",
+                "Authentication is required before deletion can continue.",
+            ),
+            fixture.local.restoredDeletes.single(),
+        )
+        assertTrue(fixture.local.blockedMutations.isEmpty())
+    }
+
+    @Test
     fun emptyRemoteSnapshotIsCommittedAfterOutboxDrains() = runTest {
         val fixture = fixture()
         fixture.remote.fetchHandler = { RemoteResult.Success(emptyList()) }

@@ -34,6 +34,11 @@ data class UserRecord(
     val synchronization: UserSynchronization,
 )
 
+data class UndoableDeletion(
+    val user: User,
+    val deadline: Instant,
+)
+
 sealed interface UserSynchronization {
     data object Synced : UserSynchronization
     data object PendingCreate : UserSynchronization

@@ -4,6 +4,7 @@ import androidx.lifecycle.viewModelScope
 import com.bill.usermanagmentsystem.domain.model.AddUserInput
 import com.bill.usermanagmentsystem.domain.model.Gender
 import com.bill.usermanagmentsystem.domain.model.SyncState
+import com.bill.usermanagmentsystem.domain.model.UndoableDeletion
 import com.bill.usermanagmentsystem.domain.model.User
 import com.bill.usermanagmentsystem.domain.model.UserDataError
 import com.bill.usermanagmentsystem.domain.model.UserDataException
@@ -12,11 +13,15 @@ import com.bill.usermanagmentsystem.domain.model.UserStatus
 import com.bill.usermanagmentsystem.domain.model.UserSynchronization
 import com.bill.usermanagmentsystem.domain.usecase.AddUser
 import com.bill.usermanagmentsystem.domain.usecase.AddUserValidator
+import com.bill.usermanagmentsystem.domain.usecase.DeleteUserWithUndo
+import com.bill.usermanagmentsystem.domain.usecase.FinalizeExpiredDeletions
 import com.bill.usermanagmentsystem.domain.usecase.ObserveSyncState
+import com.bill.usermanagmentsystem.domain.usecase.ObserveUndoableDeletions
 import com.bill.usermanagmentsystem.domain.usecase.ObserveUsers
 import com.bill.usermanagmentsystem.domain.usecase.RefreshUsers
 import com.bill.usermanagmentsystem.domain.usecase.RelativeTimeFormatter
 import com.bill.usermanagmentsystem.domain.usecase.RetryUserCreation
+import com.bill.usermanagmentsystem.domain.usecase.UndoUserDeletion
 import com.bill.usermanagmentsystem.platform.AppLifecycleObserver
 import com.bill.usermanagmentsystem.platform.AppLifecycleState
 import com.bill.usermanagmentsystem.platform.ConnectivityObserver
@@ -42,6 +47,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -247,6 +253,113 @@ class UserFeedViewModelTest {
         }
     }
 
+    @Test
+    fun selectionResolvesLatestUserAndCancelDoesNotDelete() = runTest {
+        withFixture {
+            users.value = listOf(
+                userRecord(),
+                userRecord(localId = "local-2", name = "Grace Hopper"),
+            )
+            runCurrent()
+
+            viewModel.selectUserForDeletion("local-2")
+            runCurrent()
+            assertEquals("Grace Hopper", viewModel.uiState.value.deleteConfirmation?.name)
+
+            users.value = listOf(userRecord())
+            runCurrent()
+            assertNull(viewModel.uiState.value.deleteConfirmation)
+
+            viewModel.cancelDelete()
+            runCurrent()
+            assertTrue(deleteRequests.isEmpty())
+        }
+    }
+
+    @Test
+    fun confirmUsesSelectedLocalIdAndDeduplicatesRepeatedTaps() = runTest {
+        val gate = CompletableDeferred<Result<Instant>>()
+        withFixture {
+            users.value = listOf(userRecord())
+            deleteHandler = { gate.await() }
+            runCurrent()
+
+            viewModel.selectUserForDeletion("local-1")
+            viewModel.confirmDelete()
+            viewModel.confirmDelete()
+            runCurrent()
+
+            assertEquals(listOf("local-1"), deleteRequests)
+            assertTrue(viewModel.uiState.value.deleteInProgress)
+
+            gate.complete(Result.success(clock.current + 5.seconds))
+            runCurrent()
+            assertNull(viewModel.uiState.value.deleteConfirmation)
+            assertTrue(!viewModel.uiState.value.deleteInProgress)
+        }
+    }
+
+    @Test
+    fun undoForCurrentSnackbarCallsRepositoryOnce() = runTest {
+        withFixture {
+            undoableDeletions.value = listOf(undoableDeletion())
+            undoHandler = { localId ->
+                undoableDeletions.value = emptyList()
+                Result.success(Unit)
+            }
+            runCurrent()
+
+            viewModel.undoDelete("local-1")
+            viewModel.undoDelete("local-1")
+            runCurrent()
+
+            assertEquals(listOf("local-1"), undoRequests)
+            assertNull(viewModel.uiState.value.undoSnackbar)
+        }
+    }
+
+    @Test
+    fun deadlineFinalizesDurableDeletionExactlyOnce() = runTest {
+        withFixture {
+            undoableDeletions.value = listOf(undoableDeletion())
+            finalizeHandler = {
+                undoableDeletions.value = emptyList()
+                Result.success(1)
+            }
+            runCurrent()
+            assertEquals("local-1", viewModel.uiState.value.undoSnackbar?.localId)
+
+            clock.current += 5.seconds
+            advanceTimeBy(5.seconds.inWholeMilliseconds)
+            runCurrent()
+
+            assertEquals(1, finalizeCalls)
+            assertNull(viewModel.uiState.value.undoSnackbar)
+        }
+    }
+
+    @Test
+    fun multipleDeletionsShowNextOnlyAfterFirstIsFinalized() = runTest {
+        withFixture {
+            val first = undoableDeletion(localId = "local-1", name = "Ada", secondsFromNow = 5)
+            val second = undoableDeletion(localId = "local-2", name = "Grace", secondsFromNow = 8)
+            undoableDeletions.value = listOf(first, second)
+            finalizeHandler = {
+                undoableDeletions.value = undoableDeletions.value.drop(1)
+                Result.success(1)
+            }
+            runCurrent()
+            assertEquals("local-1", viewModel.uiState.value.undoSnackbar?.localId)
+
+            clock.current += 5.seconds
+            advanceTimeBy(5.seconds.inWholeMilliseconds)
+            runCurrent()
+
+            assertEquals(1, finalizeCalls)
+            assertEquals("local-2", viewModel.uiState.value.undoSnackbar?.localId)
+        }
+    }
+
     private suspend fun kotlinx.coroutines.test.TestScope.withFixture(
         connectivityStatus: ConnectivityStatus = ConnectivityStatus.Available,
         initialRefreshHandler: suspend () -> Result<Unit> = { Result.success(Unit) },
@@ -269,19 +382,29 @@ class UserFeedViewModelTest {
         initialRefreshHandler: suspend () -> Result<Unit>,
     ) {
         val users = MutableStateFlow<List<UserRecord>>(emptyList())
+        val undoableDeletions = MutableStateFlow<List<UndoableDeletion>>(emptyList())
         val syncState = MutableStateFlow<SyncState>(SyncState.Idle)
         val connectivity = FakeConnectivityObserver(connectivityStatus)
         val lifecycle = FakeLifecycleObserver()
         val clock = FakeTimeProvider(Instant.parse("2026-08-26T12:00:00Z"))
         var refreshCalls = 0
+        var finalizeCalls = 0
+        val deleteRequests = mutableListOf<String>()
+        val undoRequests = mutableListOf<String>()
         var refreshHandler: suspend () -> Result<Unit> = initialRefreshHandler
         val addInputs = mutableListOf<AddUserInput>()
         var addHandler: suspend (AddUserInput) -> Result<String> = { Result.success("local-created") }
         val retryIds = mutableListOf<String>()
         var retryHandler: suspend (String) -> Result<Unit> = { Result.success(Unit) }
+        var deleteHandler: suspend (String) -> Result<Instant> = {
+            Result.success(clock.current + 5.seconds)
+        }
+        var undoHandler: suspend (String) -> Result<Unit> = { Result.success(Unit) }
+        var finalizeHandler: suspend () -> Result<Int> = { Result.success(0) }
         val viewModel = UserFeedViewModel(
             observeUsers = ObserveUsers { users },
             observeSyncState = ObserveSyncState { syncState },
+            observeUndoableDeletions = ObserveUndoableDeletions { undoableDeletions },
             refreshUsers = RefreshUsers {
                 refreshCalls += 1
                 refreshHandler()
@@ -295,6 +418,18 @@ class UserFeedViewModelTest {
                 retryHandler(localId)
             },
             addUserValidator = AddUserValidator(),
+            deleteUserWithUndo = DeleteUserWithUndo { localId ->
+                deleteRequests += localId
+                deleteHandler(localId)
+            },
+            undoUserDeletion = UndoUserDeletion { localId ->
+                undoRequests += localId
+                undoHandler(localId)
+            },
+            finalizeExpiredDeletions = FinalizeExpiredDeletions {
+                finalizeCalls += 1
+                finalizeHandler()
+            },
             connectivityObserver = connectivity,
             lifecycleObserver = lifecycle,
             timeProvider = clock,
@@ -318,16 +453,27 @@ class UserFeedViewModelTest {
 
     private fun userRecord(
         observedAt: Instant = Instant.parse("2026-08-26T12:00:00Z"),
+        localId: String = "local-1",
+        name: String = "Ada Lovelace",
     ): UserRecord = UserRecord(
         user = User(
-            localId = "local-1",
+            localId = localId,
             remoteId = 42,
-            name = "Ada Lovelace",
+            name = name,
             email = "ada@example.com",
             gender = Gender.Female,
             status = UserStatus.Active,
             observedAt = observedAt,
         ),
         synchronization = UserSynchronization.Synced,
+    )
+
+    private fun Fixture.undoableDeletion(
+        localId: String = "local-1",
+        name: String = "Ada Lovelace",
+        secondsFromNow: Int = 5,
+    ): UndoableDeletion = UndoableDeletion(
+        user = userRecord(localId = localId, name = name).user,
+        deadline = clock.current + secondsFromNow.seconds,
     )
 }

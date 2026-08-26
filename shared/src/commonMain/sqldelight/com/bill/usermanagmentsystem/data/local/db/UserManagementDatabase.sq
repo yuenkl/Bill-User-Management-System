@@ -43,6 +43,15 @@ SELECT *
 FROM users
 WHERE local_id = ?;
 
+selectUndoableUsers:
+SELECT *
+FROM users
+WHERE
+    hidden = 1
+    AND sync_status = 'SYNCED'
+    AND undo_deadline_epoch_ms IS NOT NULL
+ORDER BY undo_deadline_epoch_ms ASC, local_id ASC;
+
 selectSyncedRemoteUsers:
 SELECT local_id, remote_id
 FROM users
