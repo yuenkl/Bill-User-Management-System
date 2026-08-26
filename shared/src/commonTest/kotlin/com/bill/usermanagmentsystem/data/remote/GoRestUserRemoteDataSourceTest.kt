@@ -4,11 +4,13 @@ import com.bill.usermanagmentsystem.platform.AppConfig
 import com.bill.usermanagmentsystem.platform.TimeProvider
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.plugins.logging.Logger
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Instant
@@ -209,11 +211,52 @@ class GoRestUserRemoteDataSourceTest {
         assertEquals(1, requestCount)
     }
 
+    @Test
+    fun apiLoggingRedactsAuthorizationAndExcludesRequestBodies() = runRemoteTest { _ ->
+        val logger = RecordingLogger()
+        val testToken = "test-api-token-not-for-logs"
+        val source = source(
+            engine = engine {
+                respond(
+                    content = userJson(7),
+                    status = HttpStatusCode.Created,
+                    headers = jsonHeaders(),
+                )
+            },
+            apiToken = testToken,
+            enableApiLogging = true,
+            logger = logger,
+        )
+
+        assertIs<RemoteResult.Success<RemoteUser>>(
+            source.createUser(
+                CreateUserRequest(
+                    name = "Ada Lovelace",
+                    email = "ada@example.com",
+                    gender = com.bill.usermanagmentsystem.domain.model.Gender.Female,
+                    status = com.bill.usermanagmentsystem.domain.model.UserStatus.Active,
+                ),
+            ),
+        )
+
+        val messages = logger.messages.joinToString(separator = "\n")
+        assertTrue(messages.contains("POST"))
+        assertTrue(messages.contains("Authorization: ***"))
+        assertFalse(messages.contains(testToken))
+        assertFalse(messages.contains("Ada Lovelace"))
+    }
+
     private fun source(
         engine: MockEngine,
         apiToken: String = "secret",
+        enableApiLogging: Boolean = false,
+        logger: Logger = NoOpLogger,
     ): GoRestUserRemoteDataSource = GoRestUserRemoteDataSource(
-        httpClient = createGoRestHttpClient(engine),
+        httpClient = createGoRestHttpClient(
+            engine = engine,
+            enableApiLogging = enableApiLogging,
+            logger = logger,
+        ),
         appConfig = AppConfig(apiToken = apiToken, baseUrl = "https://example.test/public/v2/"),
         timeProvider = object : TimeProvider {
             override fun now() = kotlin.time.Instant.fromEpochSeconds(1_000)
@@ -244,7 +287,22 @@ class GoRestUserRemoteDataSourceTest {
         prefix = "[",
         postfix = "]",
     ) { id ->
+        userJson(id)
+    }
+
+    private fun userJson(id: Long): String =
         """{"id":$id,"name":"User $id","email":"user$id@example.com","gender":"female","status":"active"}"""
+
+    private class RecordingLogger : Logger {
+        val messages = mutableListOf<String>()
+
+        override fun log(message: String) {
+            messages += message
+        }
+    }
+
+    private object NoOpLogger : Logger {
+        override fun log(message: String) = Unit
     }
 
     private fun runRemoteTest(block: suspend (MutableList<String>) -> Unit) =

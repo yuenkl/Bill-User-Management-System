@@ -11,6 +11,9 @@ import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.plugins.logging.LogLevel
+import io.ktor.client.plugins.logging.Logger
+import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -36,10 +39,20 @@ private const val MAX_PAGE_NUMBER = Long.MAX_VALUE / PAGE_SIZE
 private const val PAGINATION_PAGES_HEADER = "X-Pagination-Pages"
 private const val RATE_LIMIT_RESET_HEADER = "X-RateLimit-Reset"
 
-internal fun createGoRestHttpClient(engineFactory: NetworkEngineFactory): HttpClient =
-    createGoRestHttpClient(engineFactory.create())
+internal fun createGoRestHttpClient(
+    engineFactory: NetworkEngineFactory,
+    enableApiLogging: Boolean = false,
+): HttpClient = createGoRestHttpClient(
+    engine = engineFactory.create(),
+    enableApiLogging = enableApiLogging,
+    logger = engineFactory.apiLogger,
+)
 
-internal fun createGoRestHttpClient(engine: HttpClientEngine): HttpClient = HttpClient(engine) {
+internal fun createGoRestHttpClient(
+    engine: HttpClientEngine,
+    enableApiLogging: Boolean = false,
+    logger: Logger = NoOpLogger,
+): HttpClient = HttpClient(engine) {
     expectSuccess = false
     install(ContentNegotiation) {
         json(goRestJson)
@@ -49,7 +62,17 @@ internal fun createGoRestHttpClient(engine: HttpClientEngine): HttpClient = Http
         connectTimeoutMillis = 10.seconds.inWholeMilliseconds
         socketTimeoutMillis = 15.seconds.inWholeMilliseconds
     }
-    // Deliberately omit HTTP logging: Authorization headers can never reach debug output.
+    if (enableApiLogging) {
+        install(Logging) {
+            this.logger = logger
+            level = LogLevel.HEADERS
+            sanitizeHeader { header -> header.equals(HttpHeaders.Authorization, ignoreCase = true) }
+        }
+    }
+}
+
+private object NoOpLogger : Logger {
+    override fun log(message: String) = Unit
 }
 
 internal class GoRestUserRemoteDataSource(
