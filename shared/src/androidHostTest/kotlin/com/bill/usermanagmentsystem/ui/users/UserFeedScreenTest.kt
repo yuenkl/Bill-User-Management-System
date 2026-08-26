@@ -211,6 +211,29 @@ class UserFeedScreenTest {
     }
 
     @Test
+    @Config(qualifiers = "w800dp-h1000dp")
+    fun compactFormShowsSubmitAction() = runComposeUiTest {
+        var submissions = 0
+        val form = AddUserFormUiState(
+            name = "Ada Lovelace",
+            email = "ada@example.com",
+            gender = Gender.Female,
+            isValid = true,
+        )
+        setContent {
+            Box(Modifier.size(width = 500.dp, height = 800.dp)) {
+                screen(
+                    state = UserFeedUiState(initialLoading = false, addUserForm = form),
+                    onAddUserSubmitted = { submissions += 1 },
+                )
+            }
+        }
+
+        onNodeWithContentDescription("Submit user").performClick()
+        assertEquals(1, submissions)
+    }
+
+    @Test
     fun adaptiveFormPresentationSwitchesAtSixHundredDp() {
         assertEquals(AdaptiveLayoutMode.Compact, adaptiveLayoutMode(599.dp))
         assertEquals(AdaptiveLayoutMode.Wide, adaptiveLayoutMode(600.dp))
@@ -479,6 +502,7 @@ class UserFeedScreenTest {
         state: UserFeedUiState,
         onLoadNextPage: () -> Unit = {},
         onRetryNextPage: () -> Unit = {},
+        onAddUserSubmitted: () -> Unit = {},
     ) {
         UserManagementTheme {
             UserFeedScreen(
@@ -491,7 +515,7 @@ class UserFeedScreenTest {
                 onAddUserEmailChanged = {},
                 onAddUserGenderSelected = {},
                 onAddUserStatusSelected = {},
-                onAddUserSubmitted = {},
+                onAddUserSubmitted = onAddUserSubmitted,
                 onRetryUserCreation = {},
                 onMessageConsumed = {},
                 onLoadNextPage = onLoadNextPage,

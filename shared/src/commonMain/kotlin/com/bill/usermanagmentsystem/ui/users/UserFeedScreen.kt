@@ -248,7 +248,6 @@ fun UserFeedScreen(
                         onCancel = onAddUserDismissed,
                         onSubmit = onAddUserSubmitted,
                         modifier = Modifier
-                            .navigationBarsPadding()
                             .imePadding(),
                     )
                 }
