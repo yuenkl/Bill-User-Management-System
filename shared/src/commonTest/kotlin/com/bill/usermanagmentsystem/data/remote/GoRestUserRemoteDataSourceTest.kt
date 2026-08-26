@@ -22,6 +22,7 @@ class GoRestUserRemoteDataSourceTest {
             engine = engine { request ->
                 requests += request.url.parameters["page"].orEmpty()
                 assertEquals("20", request.url.parameters["per_page"])
+                assertEquals("no-cache", request.headers[HttpHeaders.CacheControl])
                 jsonResponse(usersJson(9, 3), pageCount = "1")
             },
         )

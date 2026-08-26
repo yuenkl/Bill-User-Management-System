@@ -154,6 +154,7 @@ internal class GoRestUserRemoteDataSource(
         requirePageCount: Boolean,
     ): PageResult {
         val response = httpClient.get(usersUrl) {
+            header(HttpHeaders.CacheControl, "no-cache")
             parameter("page", page)
             parameter("per_page", PAGE_SIZE)
         }
