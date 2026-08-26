@@ -11,9 +11,12 @@ import com.bill.usermanagmentsystem.data.sync.DefaultSyncCoordinator
 import com.bill.usermanagmentsystem.data.sync.RetryPolicy
 import com.bill.usermanagmentsystem.data.sync.SyncCoordinator
 import com.bill.usermanagmentsystem.domain.repository.UserRepository
+import com.bill.usermanagmentsystem.domain.usecase.AddUser
+import com.bill.usermanagmentsystem.domain.usecase.AddUserValidator
 import com.bill.usermanagmentsystem.domain.usecase.ObserveSyncState
 import com.bill.usermanagmentsystem.domain.usecase.ObserveUsers
 import com.bill.usermanagmentsystem.domain.usecase.RefreshUsers
+import com.bill.usermanagmentsystem.domain.usecase.RetryUserCreation
 import com.bill.usermanagmentsystem.platform.SqlDriverFactory
 import com.bill.usermanagmentsystem.ui.users.UserFeedViewModel
 import kotlinx.coroutines.CoroutineDispatcher
@@ -84,11 +87,23 @@ internal fun offlineDataModule(
         val repository = get<UserRepository>()
         RefreshUsers(repository::refresh)
     }
+    factory {
+        val repository = get<UserRepository>()
+        AddUser(repository::addUser)
+    }
+    factory {
+        val repository = get<UserRepository>()
+        RetryUserCreation(repository::retryCreate)
+    }
+    factory { AddUserValidator() }
     viewModel {
         UserFeedViewModel(
             observeUsers = get(),
             observeSyncState = get(),
             refreshUsers = get(),
+            addUser = get(),
+            retryUserCreationUseCase = get(),
+            addUserValidator = get(),
             connectivityObserver = get(),
             lifecycleObserver = get(),
             timeProvider = get(),

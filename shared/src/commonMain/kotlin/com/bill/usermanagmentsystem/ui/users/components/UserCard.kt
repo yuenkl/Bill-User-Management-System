@@ -17,6 +17,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,12 +35,13 @@ import com.bill.usermanagmentsystem.ui.users.UserItemUiModel
 @Composable
 fun UserCard(
     user: UserItemUiModel,
+    onRetryCreation: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .semantics(mergeDescendants = true) {
+            .semantics {
                 contentDescription = "${user.name}, ${user.email}, ${user.relativeTime}"
             },
         colors = CardDefaults.cardColors(
@@ -102,6 +104,15 @@ fun UserCard(
                         text = "Sync failed: ${synchronization.reason}",
                         isError = true,
                     )
+                }
+                val failure = user.synchronization as? UserItemSynchronization.Failed
+                if (failure != null) {
+                    TextButton(
+                        onClick = onRetryCreation,
+                        enabled = !failure.retrying,
+                    ) {
+                        Text(if (failure.retrying) "Retrying…" else "Retry sync")
+                    }
                 }
             }
         }
