@@ -82,4 +82,9 @@ internal interface UserLocalDataSource {
         users: List<SnapshotUser>,
         observedAt: Instant,
     )
+
+    suspend fun mergePage(
+        users: List<SnapshotUser>,
+        observedAt: Instant,
+    )
 }

@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.MaterialTheme
@@ -85,6 +86,8 @@ fun UserFeedRoute(
         onDeleteCancel = viewModel::cancelDelete,
         onDeleteConfirm = viewModel::confirmDelete,
         onUndoDelete = viewModel::undoDelete,
+        onLoadNextPage = viewModel::loadNextPage,
+        onRetryNextPage = viewModel::retryNextPage,
         modifier = modifier,
     )
 }
@@ -108,6 +111,8 @@ fun UserFeedScreen(
     onDeleteCancel: () -> Unit = {},
     onDeleteConfirm: () -> Unit = {},
     onUndoDelete: (String) -> Unit = {},
+    onLoadNextPage: () -> Unit = {},
+    onRetryNextPage: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
@@ -185,13 +190,18 @@ fun UserFeedScreen(
             ) {
                 when {
                     state.initialLoading -> LoadingFeed(layoutMode)
-                    state.emptyState != null -> EmptyFeed(state.emptyState, onRetry)
+                    state.emptyState != null && !state.canLoadMore -> EmptyFeed(state.emptyState, onRetry)
                     else -> UserList(
                         users = state.users,
                         banner = state.banner,
                         layoutMode = layoutMode,
+                        loadingMore = state.loadingMore,
+                        canLoadMore = state.canLoadMore,
+                        loadMoreError = state.loadMoreError,
                         onRetryUserCreation = onRetryUserCreation,
                         onUserLongClick = onUserLongClick,
+                        onLoadNextPage = onLoadNextPage,
+                        onRetryNextPage = onRetryNextPage,
                     )
                 }
             }
@@ -315,8 +325,13 @@ private fun UserList(
     users: List<UserItemUiModel>,
     banner: UserFeedBanner?,
     layoutMode: AdaptiveLayoutMode,
+    loadingMore: Boolean,
+    canLoadMore: Boolean,
+    loadMoreError: String?,
     onRetryUserCreation: (String) -> Unit,
     onUserLongClick: (String) -> Unit,
+    onLoadNextPage: () -> Unit,
+    onRetryNextPage: () -> Unit,
 ) {
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
@@ -327,7 +342,10 @@ private fun UserList(
         when (layoutMode) {
             AdaptiveLayoutMode.Compact -> LazyColumn(
                 state = listState,
-                modifier = Modifier.widthIn(max = MAX_FEED_WIDTH).fillMaxSize(),
+                modifier = Modifier
+                    .widthIn(max = MAX_FEED_WIDTH)
+                    .fillMaxSize()
+                    .semantics { contentDescription = "Users" },
                 contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 96.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
@@ -342,12 +360,25 @@ private fun UserList(
                         modifier = Modifier.animateItem(),
                     )
                 }
+                if (canLoadMore || loadMoreError != null) {
+                    item(key = "pagination-${users.size}-${loadMoreError != null}") {
+                        PaginationFooter(
+                            loading = loadingMore,
+                            error = loadMoreError,
+                            onLoad = onLoadNextPage,
+                            onRetry = onRetryNextPage,
+                        )
+                    }
+                }
             }
 
             AdaptiveLayoutMode.Wide -> LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 state = gridState,
-                modifier = Modifier.widthIn(max = MAX_FEED_WIDTH).fillMaxSize(),
+                modifier = Modifier
+                    .widthIn(max = MAX_FEED_WIDTH)
+                    .fillMaxSize()
+                    .semantics { contentDescription = "Users" },
                 contentPadding = PaddingValues(start = 20.dp, top = 16.dp, end = 20.dp, bottom = 104.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -366,6 +397,64 @@ private fun UserList(
                         modifier = Modifier.animateItem(),
                     )
                 }
+                if (canLoadMore || loadMoreError != null) {
+                    item(
+                        key = "pagination-${users.size}-${loadMoreError != null}",
+                        span = { GridItemSpan(maxLineSpan) },
+                    ) {
+                        PaginationFooter(
+                            loading = loadingMore,
+                            error = loadMoreError,
+                            onLoad = onLoadNextPage,
+                            onRetry = onRetryNextPage,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaginationFooter(
+    loading: Boolean,
+    error: String?,
+    onLoad: () -> Unit,
+    onRetry: () -> Unit,
+) {
+    if (error == null) {
+        LaunchedEffect(loading) {
+            if (!loading) onLoad()
+        }
+        Box(
+            modifier = Modifier.fillMaxWidth().padding(20.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (loading) {
+                CircularProgressIndicator(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .semantics { contentDescription = "Loading more users" },
+                )
+            }
+        }
+    } else {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics { liveRegion = LiveRegionMode.Polite },
+            color = MaterialTheme.colorScheme.errorContainer,
+            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+            shape = MaterialTheme.shapes.medium,
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("Couldn't load more users", fontWeight = FontWeight.SemiBold)
+                Text(error, textAlign = TextAlign.Center)
+                TextButton(onClick = onRetry) { Text("Retry") }
             }
         }
     }

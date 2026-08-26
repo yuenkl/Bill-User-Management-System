@@ -5,12 +5,20 @@ import com.bill.usermanagmentsystem.domain.model.UserStatus
 import kotlin.time.Instant
 
 internal interface UserRemoteDataSource {
-    suspend fun fetchLastPage(): RemoteResult<List<RemoteUser>>
+    suspend fun fetchLastPage(): RemoteResult<RemotePage>
+
+    suspend fun fetchPage(page: Long): RemoteResult<List<RemoteUser>>
 
     suspend fun createUser(request: CreateUserRequest): RemoteResult<RemoteUser>
 
     suspend fun deleteUser(remoteId: Long): RemoteResult<Unit>
 }
+
+internal data class RemotePage(
+    val users: List<RemoteUser>,
+    val page: Long,
+    val totalPages: Long,
+)
 
 internal data class CreateUserRequest(
     val name: String,

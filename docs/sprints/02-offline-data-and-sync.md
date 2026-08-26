@@ -35,10 +35,10 @@ Make SQLDelight the durable source of truth and implement the offline mutation o
 
 ### Remote and synchronization contracts
 
-- Define a fakeable `UserRemoteDataSource` with fetch-last-page, create, and delete operations. Its responses never escape directly to UI/ViewModel state.
+- Define a fakeable `UserRemoteDataSource` with last/preceding-page, create, and delete operations. Its responses never escape directly to UI/ViewModel state.
 - Implement `SyncCoordinator` with an active-run handle. Use a coroutine `Mutex` only to inspect/publish/clear that handle; run the actual sync outside the lock. Overlapping triggers await the same handle and must not serialize into later full sync runs.
 - Always finalize expired undo records before processing the outbox.
-- Process mutations FIFO, then refresh the last-page snapshot.
+- Process mutations FIFO, then refresh the last-page snapshot; preceding pages append through the serialized pagination path.
 - Stop on connectivity loss without dropping or duplicating mutations.
 
 ### Mutation rules

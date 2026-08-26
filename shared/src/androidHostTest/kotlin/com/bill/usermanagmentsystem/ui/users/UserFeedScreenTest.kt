@@ -17,6 +17,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
@@ -308,6 +309,76 @@ class UserFeedScreenTest {
     }
 
     @Test
+    @Config(qualifiers = "w500dp-h800dp")
+    fun reachingTheEndOfTheFeedRequestsTheNextPageOnce() = runComposeUiTest {
+        var pageCalls = 0
+        val users = users(20)
+        setContent {
+            screen(
+                state = UserFeedUiState(
+                    users = users,
+                    initialLoading = false,
+                    canLoadMore = true,
+                ),
+                onLoadNextPage = { pageCalls += 1 },
+            )
+        }
+
+        onNodeWithContentDescription("Users").performScrollToIndex(users.size)
+        waitForIdle()
+
+        assertEquals(1, pageCalls)
+    }
+
+    @Test
+    fun emptyReportedLastPageContinuesWithThePrecedingPage() = runComposeUiTest {
+        var pageCalls = 0
+        var state by mutableStateOf(
+            UserFeedUiState(
+                initialLoading = false,
+                canLoadMore = true,
+                emptyState = UserFeedEmptyState.Empty,
+            ),
+        )
+        setContent {
+            screen(
+                state = state,
+                onLoadNextPage = {
+                    pageCalls += 1
+                    if (pageCalls == 1) state = state.copy(loadingMore = true)
+                },
+            )
+        }
+
+        waitForIdle()
+        state = state.copy(loadingMore = false)
+        waitForIdle()
+
+        assertEquals(2, pageCalls)
+    }
+
+    @Test
+    fun pageFailureShowsAnExplicitRetryAction() = runComposeUiTest {
+        var retryCalls = 0
+        setContent {
+            screen(
+                state = UserFeedUiState(
+                    users = listOf(user()),
+                    initialLoading = false,
+                    canLoadMore = true,
+                    loadMoreError = "You're offline.",
+                ),
+                onRetryNextPage = { retryCalls += 1 },
+            )
+        }
+
+        onNodeWithText("Couldn't load more users").fetchSemanticsNode()
+        onNodeWithText("Retry").performClick()
+
+        assertEquals(1, retryCalls)
+    }
+
+    @Test
     fun longClickOpensIdentityConfirmationAndCancelDoesNotDelete() = runComposeUiTest {
         var state by mutableStateOf(
             UserFeedUiState(
@@ -399,7 +470,11 @@ class UserFeedScreenTest {
     }
 
     @Composable
-    private fun screen(state: UserFeedUiState) {
+    private fun screen(
+        state: UserFeedUiState,
+        onLoadNextPage: () -> Unit = {},
+        onRetryNextPage: () -> Unit = {},
+    ) {
         UserManagementTheme {
             UserFeedScreen(
                 state = state,
@@ -414,6 +489,8 @@ class UserFeedScreenTest {
                 onAddUserSubmitted = {},
                 onRetryUserCreation = {},
                 onMessageConsumed = {},
+                onLoadNextPage = onLoadNextPage,
+                onRetryNextPage = onRetryNextPage,
             )
         }
     }
@@ -437,6 +514,14 @@ class UserFeedScreenTest {
         user(localId = "local-2", name = "Grace Hopper", email = "grace@example.com"),
         user(localId = "local-3", name = "Katherine Johnson", email = "katherine@example.com"),
     )
+
+    private fun users(count: Int): List<UserItemUiModel> = (1..count).map { index ->
+        user(
+            localId = "local-$index",
+            name = "User $index",
+            email = "user$index@example.com",
+        )
+    }
 
     private fun UserItemUiModel.accessibilityLabel(): String =
         "$name, $email, $relativeTime"

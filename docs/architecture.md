@@ -160,8 +160,8 @@ Create/delete state changes and their outbox rows occur in the same database tra
 3. For each `CREATE`, POST the current local row. On 201, attach the remote ID, mark synchronized, and remove the mutation transactionally.
 4. For each `DELETE`, skip the network when no remote ID exists. Otherwise call DELETE; treat 204/404 as success and remove the row/mutation transactionally.
 5. Stop processing on connectivity loss. Keep remaining work durable.
-6. After mutations, fetch page 1 with `per_page=20`, read `X-Pagination-Pages`, and fetch the last page when different.
-7. Transactionally merge the snapshot. Preserve pending/failed local rows and remove only stale rows belonging to the replaceable remote snapshot.
+6. After mutations, probe page 1 with `per_page=20`, read `X-Pagination-Pages`, and fetch the reported last page.
+7. Transactionally replace the remote snapshot with the last page while preserving pending/failed local rows. As the user scrolls, serialize `last-1`, `last-2`, and earlier pages against synchronization and append each page transactionally.
 
 Failure policy:
 
@@ -179,7 +179,7 @@ The complete transition contract is defined in [state-transitions.md](state-tran
 
 - Ktor common client configuration: JSON content negotiation, Kotlin serialization, timeouts, default GoRest base URL, bearer authentication, and status-to-domain error mapping.
 - Android provides the OkHttp engine; iOS provides Darwin.
-- The remote data source returns typed payloads plus pagination metadata. Header parsing is case-insensitive and rejects missing/invalid page counts with a controlled error.
+- The page-1 probe returns typed pagination metadata. Header parsing is case-insensitive and rejects missing/invalid page counts with a controlled error; the last page and each preceding page retain newest-to-oldest display order.
 - Network logging is debug-only and must redact `Authorization`.
 
 ## Connectivity and lifecycle

@@ -243,29 +243,45 @@ internal class SqlDelightUserLocalDataSource(
     ) = withContext(queryDispatcher) {
         queries.transaction {
             val snapshotRemoteIds = users.mapTo(mutableSetOf(), SnapshotUser::remoteId)
-            users.forEach { user ->
-                queries.insertRemoteUserIfAbsent(
-                    local_id = idGenerator.nextId(),
-                    remote_id = user.remoteId,
-                    name = user.name,
-                    email = user.email,
-                    gender = user.gender.apiValue,
-                    status = user.status.apiValue,
-                    observed_at_epoch_ms = observedAt.toEpochMilliseconds(),
-                    server_position = user.serverPosition,
-                )
-                queries.updateSyncedRemoteUser(
-                    name = user.name,
-                    email = user.email,
-                    gender = user.gender.apiValue,
-                    status = user.status.apiValue,
-                    server_position = user.serverPosition,
-                    remote_id = user.remoteId,
-                )
-            }
+            mergeUsers(users, observedAt)
             queries.selectSyncedRemoteUsers().executeAsList()
                 .filterNot { it.remote_id in snapshotRemoteIds }
                 .forEach { queries.deleteUser(it.local_id) }
+        }
+    }
+
+    override suspend fun mergePage(
+        users: List<SnapshotUser>,
+        observedAt: Instant,
+    ) = withContext(queryDispatcher) {
+        queries.transaction {
+            mergeUsers(users, observedAt)
+        }
+    }
+
+    private fun mergeUsers(
+        users: List<SnapshotUser>,
+        observedAt: Instant,
+    ) {
+        users.forEach { user ->
+            queries.insertRemoteUserIfAbsent(
+                local_id = idGenerator.nextId(),
+                remote_id = user.remoteId,
+                name = user.name,
+                email = user.email,
+                gender = user.gender.apiValue,
+                status = user.status.apiValue,
+                observed_at_epoch_ms = observedAt.toEpochMilliseconds(),
+                server_position = user.serverPosition,
+            )
+            queries.updateSyncedRemoteUser(
+                name = user.name,
+                email = user.email,
+                gender = user.gender.apiValue,
+                status = user.status.apiValue,
+                server_position = user.serverPosition,
+                remote_id = user.remoteId,
+            )
         }
     }
 }

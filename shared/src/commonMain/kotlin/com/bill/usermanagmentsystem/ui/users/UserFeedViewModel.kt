@@ -16,6 +16,7 @@ import com.bill.usermanagmentsystem.domain.usecase.AddUserValidator
 import com.bill.usermanagmentsystem.domain.usecase.DeleteUserWithUndo
 import com.bill.usermanagmentsystem.domain.usecase.EmailValidationError
 import com.bill.usermanagmentsystem.domain.usecase.FinalizeExpiredDeletions
+import com.bill.usermanagmentsystem.domain.usecase.LoadNextUsersPage
 import com.bill.usermanagmentsystem.domain.usecase.NameValidationError
 import com.bill.usermanagmentsystem.domain.usecase.ObserveSyncState
 import com.bill.usermanagmentsystem.domain.usecase.ObserveUndoableDeletions
@@ -54,6 +55,7 @@ class UserFeedViewModel(
     observeSyncState: ObserveSyncState,
     observeUndoableDeletions: ObserveUndoableDeletions,
     private val refreshUsers: RefreshUsers,
+    private val loadNextUsersPage: LoadNextUsersPage,
     private val addUser: AddUser,
     private val retryUserCreationUseCase: RetryUserCreation,
     private val addUserValidator: AddUserValidator,
@@ -68,6 +70,7 @@ class UserFeedViewModel(
 ) : ViewModel() {
     private val presentation = MutableStateFlow(PresentationState())
     private var synchronizationJob: Job? = null
+    private var pageLoadJob: Job? = null
     private var deletionJob: Job? = null
     private var undoJob: Job? = null
     private var undoDeadlineJob: Job? = null
@@ -111,17 +114,29 @@ class UserFeedViewModel(
         requestSynchronization(manual = true)
     }
 
+    fun loadNextPage() {
+        requestNextPage(force = false)
+    }
+
+    fun retryNextPage() {
+        requestNextPage(force = true)
+    }
+
     fun openAddUserForm() {
         if (presentation.value.addUserForm == null) {
-            presentation.value = presentation.value.copy(
-                addUserForm = createFormState(),
-            )
+            presentation.update { state ->
+                state.copy(
+                    addUserForm = createFormState(),
+                )
+            }
         }
     }
 
     fun dismissAddUserForm() {
         if (presentation.value.addUserForm?.submitting != true) {
-            presentation.value = presentation.value.copy(addUserForm = null)
+            presentation.update { state ->
+                state.copy(addUserForm = null)
+            }
         }
     }
 
@@ -193,12 +208,16 @@ class UserFeedViewModel(
             ),
         )
         if (!validated.canSubmit) {
-            presentation.value = presentation.value.copy(addUserForm = validated)
+            presentation.update { state ->
+                state.copy(addUserForm = validated)
+            }
             return
         }
 
         val submitting = validated.copy(submitting = true)
-        presentation.value = presentation.value.copy(addUserForm = submitting)
+        presentation.update { state ->
+            state.copy(addUserForm = submitting)
+        }
         viewModelScope.launch(dispatcher) {
             val result = addUser(
                 AddUserInput(
@@ -209,21 +228,25 @@ class UserFeedViewModel(
                 ),
             )
             val activeForm = presentation.value.addUserForm ?: return@launch
-            presentation.value = if (result.isSuccess) {
-                presentation.value.copy(addUserForm = null)
-            } else {
-                presentation.value.copy(
-                    addUserForm = activeForm.withSubmissionFailure(result.exceptionOrNull()),
-                )
+            presentation.update { state ->
+                if (result.isSuccess) {
+                    state.copy(addUserForm = null)
+                } else {
+                    state.copy(
+                        addUserForm = activeForm.withSubmissionFailure(result.exceptionOrNull()),
+                    )
+                }
             }
         }
     }
 
     fun retryUserCreation(localId: String) {
         if (localId in presentation.value.retryingUserIds) return
-        presentation.value = presentation.value.copy(
-            retryingUserIds = presentation.value.retryingUserIds + localId,
-        )
+        presentation.update { state ->
+            state.copy(
+                retryingUserIds = presentation.value.retryingUserIds + localId,
+            )
+        }
         viewModelScope.launch(dispatcher) {
             val result = retryUserCreationUseCase(localId)
             presentation.update { current ->
@@ -289,6 +312,7 @@ class UserFeedViewModel(
 
     private fun requestSynchronization(manual: Boolean) {
         if (synchronizationJob?.isActive == true) return
+        pageLoadJob?.cancel()
         synchronizationJob = viewModelScope.launch(dispatcher) {
             presentation.update { it.copy(refreshing = manual) }
             val result = refreshUsers()
@@ -297,13 +321,56 @@ class UserFeedViewModel(
                     current.withFailureMessage(result.exceptionOrNull()).copy(
                         initialAttemptFinished = true,
                         refreshing = false,
+                        loadingNextPage = false,
+                        canLoadNextPage = false,
+                        nextPageError = null,
                     )
                 } else {
                     current.copy(
                         initialAttemptFinished = true,
                         refreshing = false,
+                        loadingNextPage = false,
+                        canLoadNextPage = result.isSuccess,
+                        nextPageError = null,
                     )
                 }
+            }
+        }
+    }
+
+    private fun requestNextPage(force: Boolean) {
+        val current = presentation.value
+        if (
+            pageLoadJob?.isActive == true ||
+            !current.canLoadNextPage ||
+            (!force && current.nextPageError != null)
+        ) {
+            return
+        }
+        presentation.update {
+            it.copy(
+                loadingNextPage = true,
+                nextPageError = null,
+            )
+        }
+        pageLoadJob = viewModelScope.launch(dispatcher) {
+            val result = loadNextUsersPage()
+            presentation.update { active ->
+                result.fold(
+                    onSuccess = { page ->
+                        active.copy(
+                            loadingNextPage = false,
+                            canLoadNextPage = page.hasMore,
+                            nextPageError = null,
+                        )
+                    },
+                    onFailure = { failure ->
+                        active.copy(
+                            loadingNextPage = false,
+                            nextPageError = failure.toUserMessage(),
+                        )
+                    },
+                )
             }
         }
     }
@@ -387,6 +454,9 @@ class UserFeedViewModel(
             users = items,
             initialLoading = initialLoading,
             refreshing = presentationState.refreshing,
+            loadingMore = presentationState.loadingNextPage,
+            canLoadMore = presentationState.canLoadNextPage,
+            loadMoreError = presentationState.nextPageError,
             emptyState = emptyState,
             banner = banner,
             message = presentationState.message,
@@ -446,7 +516,9 @@ class UserFeedViewModel(
 
     private fun updateForm(transform: (AddUserFormUiState) -> AddUserFormUiState) {
         val current = presentation.value.addUserForm ?: return
-        presentation.value = presentation.value.copy(addUserForm = transform(current))
+        presentation.update {
+            presentation.value.copy(addUserForm = transform(current))
+        }
     }
 
     private fun createFormState(
@@ -492,6 +564,9 @@ class UserFeedViewModel(
     private data class PresentationState(
         val initialAttemptFinished: Boolean = false,
         val refreshing: Boolean = false,
+        val loadingNextPage: Boolean = false,
+        val canLoadNextPage: Boolean = false,
+        val nextPageError: String? = null,
         val message: UserFeedMessage? = null,
         val addUserForm: AddUserFormUiState? = null,
         val retryingUserIds: Set<String> = emptySet(),

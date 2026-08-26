@@ -2,7 +2,7 @@
 
 ## Objective
 
-Deliver the real GoRest-backed feed with last-page pagination, durable caching, shared relative time, polished loading/error states, and a reusable user-card presentation.
+Deliver the real GoRest-backed feed with incremental pagination, durable caching, shared relative time, polished loading/error states, and a reusable user-card presentation.
 
 ## Prerequisites
 
@@ -15,7 +15,7 @@ Deliver the real GoRest-backed feed with last-page pagination, durable caching, 
 
 - Add Kotlinx-serializable DTOs for users and API field errors.
 - Configure Ktor JSON to ignore unknown fields and reject structurally invalid required fields.
-- Fetch page 1 with `per_page=20`, parse `X-Pagination-Pages`, and fetch the last page if it is not page 1.
+- Probe page 1 with `per_page=20` to parse `X-Pagination-Pages`, display the last page, and fetch each preceding page when the feed reaches its end.
 - Record response order as `serverPosition` and use the current injected clock only for newly observed rows.
 - Map I/O, timeout, 401/403, 422, 429, 5xx, serialization, and malformed-pagination failures into typed data/domain errors.
 - Redact bearer tokens from debug logging.
@@ -49,7 +49,7 @@ Deliver the real GoRest-backed feed with last-page pagination, durable caching, 
 ## Tests
 
 - DTO and error payload serialization fixtures.
-- Pagination pages: 1, multiple pages, missing header, non-numeric header, and changed/empty last page.
+- Pagination pages: last-page discovery, ordered preceding pages, missing/non-numeric headers, empty pages, retry, and end-of-list behavior.
 - Remote order is preserved in the database.
 - Observed time is preserved on later refresh.
 - Relative-time boundaries, pluralization, future times, and older dates.
@@ -58,7 +58,7 @@ Deliver the real GoRest-backed feed with last-page pagination, durable caching, 
 
 ## Acceptance criteria
 
-- Online cold start displays the current last page from GoRest.
+- Online cold start displays the last page and scrolling appends `last-1`, `last-2`, and earlier pages from GoRest.
 - Offline cold start displays cache or the explicit offline state.
 - A failed refresh never removes valid cached content.
 - Every visible user shows name, email, and a shared-logic relative timestamp.

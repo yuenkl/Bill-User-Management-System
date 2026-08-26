@@ -16,11 +16,11 @@ All behaviour must preserve the [engineering invariants](README.md#engineering-i
 
 ### Behaviour
 
-- Fetch users from the last page of `GET /public/v2/users`.
-- Request 20 users per page. Read `X-Pagination-Pages` from the first response, then request that last page.
+- Discover and fetch the last page from `GET /public/v2/users`, then load `last-1`, `last-2`, and earlier pages as the user reaches the end of the feed.
+- Request 20 users per page. Read `X-Pagination-Pages` from the first response, use it as the initial page, and stop after page 1.
 - Persist the remote snapshot before exposing it to the UI. The UI observes SQLDelight only and never displays a network response directly.
 - Each row displays name, email, gender/status indicators where useful, and a relative timestamp based on when the record was first observed locally.
-- Preserve server order for the fetched page. Locally created users appear above the remote snapshot.
+- Preserve server order across appended pages. Locally created users appear above the remote snapshot.
 - Refresh is available through pull-to-refresh or an equivalent explicit Material 3 action.
 
 ### Loading and failure states
@@ -34,7 +34,7 @@ All behaviour must preserve the [engineering invariants](README.md#engineering-i
 
 ### Acceptance criteria
 
-- Cold start online eventually displays the last-page users.
+- Cold start online displays the last page and scrolling progressively appends every earlier page in descending page order.
 - Cold start offline displays cached users, or the offline empty state if no cache exists.
 - Refresh never clears valid cached content before replacement data is committed.
 - Relative-time boundaries are correct and update while the screen remains open.

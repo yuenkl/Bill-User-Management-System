@@ -89,6 +89,82 @@ class DefaultSyncCoordinatorTest {
     }
 
     @Test
+    fun successfulSyncStartsAtLastPageAndLoadsEarlierPagesInOrder() = runTest {
+        val fixture = fixture()
+        fixture.remote.totalPages = 3
+        fixture.remote.fetchHandler = {
+            RemoteResult.Success(listOf(remoteUser(remoteId = 3, serverPosition = -60)))
+        }
+        fixture.remote.pageHandler = { page ->
+            RemoteResult.Success(
+                listOf(remoteUser(remoteId = page, serverPosition = -(page * 20))),
+            )
+        }
+
+        assertTrue(fixture.coordinator.sync().isSuccess)
+        val second = fixture.coordinator.loadNextPage().getOrThrow()
+        val third = fixture.coordinator.loadNextPage().getOrThrow()
+        val finished = fixture.coordinator.loadNextPage().getOrThrow()
+
+        assertEquals(listOf(2L, 1L), fixture.remote.pageRequests)
+        assertEquals(1, second.loadedCount)
+        assertTrue(second.hasMore)
+        assertTrue(!third.hasMore)
+        assertEquals(0, finished.loadedCount)
+        assertEquals(2, fixture.local.mergedPages.size)
+    }
+
+    @Test
+    fun failedPageLoadDoesNotAdvanceTheCursor() = runTest {
+        val fixture = fixture()
+        fixture.remote.totalPages = 2
+        var attempts = 0
+        fixture.remote.pageHandler = {
+            attempts += 1
+            if (attempts == 1) {
+                RemoteResult.RetryableFailure("HTTP 503")
+            } else {
+                RemoteResult.Success(listOf(remoteUser(remoteId = 1, serverPosition = -20)))
+            }
+        }
+
+        assertTrue(fixture.coordinator.sync().isSuccess)
+        assertTrue(fixture.coordinator.loadNextPage().isFailure)
+        assertTrue(fixture.coordinator.loadNextPage().isSuccess)
+
+        assertEquals(listOf(1L, 1L), fixture.remote.pageRequests)
+        assertEquals(1, fixture.local.mergedPages.size)
+    }
+
+    @Test
+    fun pageLoadingWaitsForActiveSyncAndUsesItsPublishedCursor() = runTest {
+        val fixture = fixture()
+        val fetchStarted = CompletableDeferred<Unit>()
+        val releaseFetch = CompletableDeferred<Unit>()
+        fixture.remote.totalPages = 2
+        fixture.remote.fetchHandler = {
+            fetchStarted.complete(Unit)
+            releaseFetch.await()
+            RemoteResult.Success(listOf(remoteUser(remoteId = 2, serverPosition = -40)))
+        }
+        fixture.remote.pageHandler = { page ->
+            RemoteResult.Success(listOf(remoteUser(remoteId = page, serverPosition = -20)))
+        }
+
+        val sync = async { fixture.coordinator.sync() }
+        fetchStarted.await()
+        val page = async { fixture.coordinator.loadNextPage() }
+        runCurrent()
+
+        assertTrue(fixture.remote.pageRequests.isEmpty())
+        releaseFetch.complete(Unit)
+
+        assertTrue(sync.await().isSuccess)
+        assertTrue(page.await().isSuccess)
+        assertEquals(listOf(1L), fixture.remote.pageRequests)
+    }
+
+    @Test
     fun retryableCreatePersistsBackoffAndStopsFifoProcessing() = runTest {
         val fixture = fixture(now = 1_000)
         fixture.local.dueMutations += listOf(
@@ -311,13 +387,17 @@ class DefaultSyncCoordinatorTest {
     private companion object {
         fun instant(value: Long): Instant = Instant.fromEpochMilliseconds(value)
 
-        fun remoteUser(remoteId: Long, name: String = "Remote user") = RemoteUser(
+        fun remoteUser(
+            remoteId: Long,
+            name: String = "Remote user",
+            serverPosition: Long = 0,
+        ) = RemoteUser(
             remoteId = remoteId,
             name = name,
             email = "remote@example.com",
             gender = Gender.Female,
             status = UserStatus.Active,
-            serverPosition = 0,
+            serverPosition = serverPosition,
         )
     }
 }

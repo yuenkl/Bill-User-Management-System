@@ -283,6 +283,26 @@ class SqlDelightUserLocalDataSourceTest {
     }
 
     @Test
+    fun pageMergeAppendsPrecedingPageWithoutRemovingTheLastPage() = runTest {
+        withFixture("page-merge") {
+            source.mergeSnapshot(
+                listOf(snapshot(remoteId = 41, name = "Page three", position = -60)),
+                instant(1_000),
+            )
+
+            source.mergePage(
+                listOf(snapshot(remoteId = 21, name = "Page two", position = -40)),
+                instant(2_000),
+            )
+
+            val visible = source.observeVisibleUsers().first()
+            assertEquals(listOf("Page three", "Page two"), visible.map { it.user.name })
+            assertEquals(instant(1_000), visible.first().user.observedAt)
+            assertEquals(instant(2_000), visible.last().user.observedAt)
+        }
+    }
+
+    @Test
     fun retryableMutationBecomesDueAtPersistedTimeAfterReopen() = runTest {
         withFixture("retry-reopen") {
             source.insertPendingCreate(

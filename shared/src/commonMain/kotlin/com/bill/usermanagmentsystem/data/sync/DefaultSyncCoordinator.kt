@@ -11,6 +11,7 @@ import com.bill.usermanagmentsystem.data.remote.UserRemoteDataSource
 import com.bill.usermanagmentsystem.domain.model.SyncState
 import com.bill.usermanagmentsystem.domain.model.UserDataError
 import com.bill.usermanagmentsystem.domain.model.UserDataException
+import com.bill.usermanagmentsystem.domain.repository.PageLoadResult
 import com.bill.usermanagmentsystem.platform.ConnectivityObserver
 import com.bill.usermanagmentsystem.platform.ConnectivityStatus
 import com.bill.usermanagmentsystem.platform.TimeProvider
@@ -35,7 +36,9 @@ internal class DefaultSyncCoordinator(
     private val applicationScope: CoroutineScope,
 ) : SyncCoordinator {
     private val coordinationMutex = Mutex()
+    private val operationMutex = Mutex()
     private var activeRun: Deferred<Result<Unit>>? = null
+    private var nextPage: Long? = null
     private val mutableState = MutableStateFlow<SyncState>(SyncState.Idle)
 
     override val state: StateFlow<SyncState> = mutableState.asStateFlow()
@@ -69,9 +72,71 @@ internal class DefaultSyncCoordinator(
         return handle.deferred.await()
     }
 
-    private suspend fun performSync(): Result<Unit> {
+    override suspend fun loadNextPage(): Result<PageLoadResult> = operationMutex.withLock {
+        val page = nextPage ?: return@withLock Result.success(
+            PageLoadResult(loadedCount = 0, hasMore = false),
+        )
+        if (!hasValidatedConnection()) {
+            return@withLock Result.failure(UserDataException(UserDataError.Offline))
+        }
+
+        try {
+            when (val result = remoteDataSource.fetchPage(page)) {
+                is RemoteResult.Success -> {
+                    localDataSource.mergePage(
+                        users = result.value.map(RemoteUser::toSnapshotUser),
+                        observedAt = timeProvider.now(),
+                    )
+                    nextPage = (page - 1).takeIf { it >= 1 }
+                    Result.success(
+                        PageLoadResult(
+                            loadedCount = result.value.size,
+                            hasMore = nextPage != null,
+                        ),
+                    )
+                }
+
+                is RemoteResult.RetryableFailure -> Result.failure(
+                    UserDataException(
+                        UserDataError.RetryScheduled(
+                            reason = result.reason,
+                            retryAt = retryPolicy.nextRetryAt(
+                                now = timeProvider.now(),
+                                previousAttemptCount = 0,
+                                serverRetryAt = result.serverRetryAt,
+                            ),
+                        ),
+                    ),
+                )
+
+                RemoteResult.AuthenticationFailure -> Result.failure(
+                    UserDataException(UserDataError.AuthenticationRequired),
+                )
+                is RemoteResult.ValidationFailure -> Result.failure(
+                    UserDataException(UserDataError.RemoteContract(result.reason)),
+                )
+                RemoteResult.NotFound -> Result.failure(
+                    UserDataException(UserDataError.RemoteContract("The requested users page was not found.")),
+                )
+                is RemoteResult.PermanentFailure -> Result.failure(
+                    UserDataException(UserDataError.RemoteContract(result.reason)),
+                )
+            }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (failure: Throwable) {
+            Result.failure(
+                failure as? UserDataException ?: UserDataException(
+                    UserDataError.Unexpected(failure.message ?: "The next users page could not be loaded."),
+                    failure,
+                ),
+            )
+        }
+    }
+
+    private suspend fun performSync(): Result<Unit> = operationMutex.withLock {
         mutableState.value = SyncState.Running
-        return try {
+        try {
             performSyncSteps().also { result ->
                 mutableState.value = result.fold(
                     onSuccess = { SyncState.Idle },
@@ -97,6 +162,7 @@ internal class DefaultSyncCoordinator(
     }
 
     private suspend fun performSyncSteps(): Result<Unit> {
+        nextPage = null
         localDataSource.finalizeExpiredDeletes(timeProvider.now())
         if (!hasValidatedConnection()) return offlineFailure()
 
@@ -113,10 +179,14 @@ internal class DefaultSyncCoordinator(
 
         if (!hasValidatedConnection()) return offlineFailure()
         when (val snapshotResult = remoteDataSource.fetchLastPage()) {
-            is RemoteResult.Success -> localDataSource.mergeSnapshot(
-                users = snapshotResult.value.map(RemoteUser::toSnapshotUser),
-                observedAt = timeProvider.now(),
-            )
+            is RemoteResult.Success -> {
+                val page = snapshotResult.value
+                localDataSource.mergeSnapshot(
+                    users = page.users.map(RemoteUser::toSnapshotUser),
+                    observedAt = timeProvider.now(),
+                )
+                nextPage = (page.page - 1).takeIf { it >= 1 }
+            }
 
             is RemoteResult.RetryableFailure -> return retryableFailure(
                 reason = snapshotResult.reason,

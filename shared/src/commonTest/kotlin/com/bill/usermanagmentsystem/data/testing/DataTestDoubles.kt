@@ -10,6 +10,7 @@ import com.bill.usermanagmentsystem.data.local.StoredUser
 import com.bill.usermanagmentsystem.data.local.UserLocalDataSource
 import com.bill.usermanagmentsystem.data.remote.CreateUserRequest
 import com.bill.usermanagmentsystem.data.remote.RemoteResult
+import com.bill.usermanagmentsystem.data.remote.RemotePage
 import com.bill.usermanagmentsystem.data.remote.RemoteUser
 import com.bill.usermanagmentsystem.data.remote.UserRemoteDataSource
 import com.bill.usermanagmentsystem.data.sync.SyncCoordinator
@@ -17,6 +18,7 @@ import com.bill.usermanagmentsystem.domain.model.AddUserInput
 import com.bill.usermanagmentsystem.domain.model.SyncState
 import com.bill.usermanagmentsystem.domain.model.UserRecord
 import com.bill.usermanagmentsystem.domain.model.UndoableDeletion
+import com.bill.usermanagmentsystem.domain.repository.PageLoadResult
 import com.bill.usermanagmentsystem.platform.ConnectivityObserver
 import com.bill.usermanagmentsystem.platform.ConnectivityStatus
 import com.bill.usermanagmentsystem.platform.TimeProvider
@@ -39,6 +41,7 @@ internal class FakeUserLocalDataSource : UserLocalDataSource {
     val retrySchedules = mutableListOf<RetrySchedule>()
     val blockedMutations = mutableListOf<Pair<String, String>>()
     val mergedSnapshots = mutableListOf<List<SnapshotUser>>()
+    val mergedPages = mutableListOf<List<SnapshotUser>>()
     val deleteRequests = mutableListOf<Pair<String, Instant>>()
     val undoRequests = mutableListOf<Pair<String, Instant>>()
     val retriedBlockedMutations = mutableListOf<String>()
@@ -126,12 +129,20 @@ internal class FakeUserLocalDataSource : UserLocalDataSource {
     override suspend fun mergeSnapshot(users: List<SnapshotUser>, observedAt: Instant) {
         mergedSnapshots += users
     }
+
+    override suspend fun mergePage(users: List<SnapshotUser>, observedAt: Instant) {
+        mergedPages += users
+    }
 }
 
 internal class FakeUserRemoteDataSource : UserRemoteDataSource {
     var fetchHandler: suspend () -> RemoteResult<List<RemoteUser>> = {
         RemoteResult.Success(emptyList())
     }
+    var pageHandler: suspend (Long) -> RemoteResult<List<RemoteUser>> = {
+        error("No page response configured.")
+    }
+    var totalPages: Long = 1
     var createHandler: suspend (CreateUserRequest) -> RemoteResult<RemoteUser> = {
         error("No create response configured.")
     }
@@ -139,14 +150,34 @@ internal class FakeUserRemoteDataSource : UserRemoteDataSource {
         error("No delete response configured.")
     }
     var fetchCalls = 0
+    val pageRequests = mutableListOf<Long>()
     val createRequests = mutableListOf<CreateUserRequest>()
     val deleteRequests = mutableListOf<Long>()
     val requestOrder = mutableListOf<String>()
 
-    override suspend fun fetchLastPage(): RemoteResult<List<RemoteUser>> {
+    override suspend fun fetchLastPage(): RemoteResult<RemotePage> {
         fetchCalls += 1
         requestOrder += "FETCH"
-        return fetchHandler()
+        val response: RemoteResult<RemotePage> = when (val result = fetchHandler()) {
+            is RemoteResult.Success -> RemoteResult.Success(
+                RemotePage(result.value, page = totalPages, totalPages = totalPages),
+            )
+            is RemoteResult.RetryableFailure -> RemoteResult.RetryableFailure(
+                result.reason,
+                result.serverRetryAt,
+            )
+            RemoteResult.AuthenticationFailure -> RemoteResult.AuthenticationFailure
+            is RemoteResult.ValidationFailure -> RemoteResult.ValidationFailure(result.reason)
+            RemoteResult.NotFound -> RemoteResult.NotFound
+            is RemoteResult.PermanentFailure -> RemoteResult.PermanentFailure(result.reason)
+        }
+        return response
+    }
+
+    override suspend fun fetchPage(page: Long): RemoteResult<List<RemoteUser>> {
+        pageRequests += page
+        requestOrder += "FETCH:$page"
+        return pageHandler(page)
     }
 
     override suspend fun createUser(request: CreateUserRequest): RemoteResult<RemoteUser> {
@@ -189,10 +220,19 @@ internal class FakeSyncCoordinator(
     private val mutableState = MutableStateFlow<SyncState>(SyncState.Idle)
     override val state: StateFlow<SyncState> = mutableState
     var syncCalls = 0
+    var pageResult: Result<PageLoadResult> = Result.success(
+        PageLoadResult(loadedCount = 0, hasMore = false),
+    )
+    var pageCalls = 0
 
     override suspend fun sync(): Result<Unit> {
         syncCalls += 1
         return result
+    }
+
+    override suspend fun loadNextPage(): Result<PageLoadResult> {
+        pageCalls += 1
+        return pageResult
     }
 }
 

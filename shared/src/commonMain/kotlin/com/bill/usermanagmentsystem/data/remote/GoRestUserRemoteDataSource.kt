@@ -32,6 +32,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 private const val PAGE_SIZE = 20
+private const val MAX_PAGE_NUMBER = Long.MAX_VALUE / PAGE_SIZE
 private const val PAGINATION_PAGES_HEADER = "X-Pagination-Pages"
 private const val RATE_LIMIT_RESET_HEADER = "X-RateLimit-Reset"
 
@@ -58,21 +59,35 @@ internal class GoRestUserRemoteDataSource(
 ) : UserRemoteDataSource {
     private val usersUrl = "${appConfig.baseUrl.trimEnd('/')}/users"
 
-    override suspend fun fetchLastPage(): RemoteResult<List<RemoteUser>> = remoteCall {
-        when (val firstPage = fetchPage(page = 1, requirePageCount = true)) {
+    override suspend fun fetchLastPage(): RemoteResult<RemotePage> = remoteCall {
+        when (val firstPage = fetchPageResponse(page = 1, requirePageCount = true)) {
             is PageResult.Failure -> firstPage.failure
             is PageResult.Success -> {
                 val lastPageNumber = requireNotNull(firstPage.pageCount)
-                val lastPage = if (lastPageNumber == 1L) {
+                val lastPageUsers = if (lastPageNumber == 1L) {
                     firstPage.users
                 } else {
-                    when (val result = fetchPage(page = lastPageNumber, requirePageCount = false)) {
-                        is PageResult.Failure -> return@remoteCall result.failure
-                        is PageResult.Success -> result.users
+                    when (val lastPage = fetchPageResponse(page = lastPageNumber, requirePageCount = false)) {
+                        is PageResult.Failure -> return@remoteCall lastPage.failure
+                        is PageResult.Success -> lastPage.users
                     }
                 }
-                RemoteResult.Success(lastPage.mapIndexed { index, dto -> dto.toRemoteUser(index) })
+                RemoteResult.Success(
+                    RemotePage(
+                        users = lastPageUsers.toRemoteUsers(page = lastPageNumber),
+                        page = lastPageNumber,
+                        totalPages = lastPageNumber,
+                    ),
+                )
             }
+        }
+    }
+
+    override suspend fun fetchPage(page: Long): RemoteResult<List<RemoteUser>> = remoteCall {
+        require(page in 1..MAX_PAGE_NUMBER) { "Page number is outside the supported range." }
+        when (val result = fetchPageResponse(page = page, requirePageCount = false)) {
+            is PageResult.Failure -> result.failure
+            is PageResult.Success -> RemoteResult.Success(result.users.toRemoteUsers(page))
         }
     }
 
@@ -111,7 +126,7 @@ internal class GoRestUserRemoteDataSource(
         }
     }
 
-    private suspend fun fetchPage(
+    private suspend fun fetchPageResponse(
         page: Long,
         requirePageCount: Boolean,
     ): PageResult {
@@ -127,7 +142,7 @@ internal class GoRestUserRemoteDataSource(
             response.headers[PAGINATION_PAGES_HEADER]
                 ?.trim()
                 ?.toLongOrNull()
-                ?.takeIf { it >= 1L }
+                ?.takeIf { it in 1..MAX_PAGE_NUMBER }
                 ?: return PageResult.Failure(
                     RemoteResult.PermanentFailure("The server returned invalid pagination metadata."),
                 )
@@ -222,8 +237,13 @@ private fun GoRestUserDto.toRemoteUser(serverPosition: Long?): RemoteUser {
     )
 }
 
-private fun GoRestUserDto.toRemoteUser(serverPosition: Int): RemoteUser =
-    toRemoteUser(serverPosition.toLong())
+private fun List<GoRestUserDto>.toRemoteUsers(page: Long): List<RemoteUser> =
+    mapIndexed { index, user ->
+        // Pages are loaded newest-to-oldest. Negative page offsets keep the
+        // first displayed page ahead of earlier pages in the ascending DB order.
+        val serverPosition = -(page * PAGE_SIZE) + index
+        user.toRemoteUser(serverPosition)
+    }
 
 private val goRestJson = Json {
     ignoreUnknownKeys = true

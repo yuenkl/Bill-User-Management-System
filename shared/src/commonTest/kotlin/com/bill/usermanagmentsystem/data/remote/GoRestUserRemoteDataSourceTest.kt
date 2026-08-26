@@ -24,15 +24,17 @@ class GoRestUserRemoteDataSourceTest {
             },
         )
 
-        val users = assertIs<RemoteResult.Success<List<RemoteUser>>>(source.fetchLastPage()).value
+        val page = assertIs<RemoteResult.Success<RemotePage>>(source.fetchLastPage()).value
 
         assertEquals(listOf("1"), requests)
-        assertEquals(listOf(9L, 3L), users.map(RemoteUser::remoteId))
-        assertEquals(listOf(0L, 1L), users.map(RemoteUser::serverPosition))
+        assertEquals(1L, page.page)
+        assertEquals(1L, page.totalPages)
+        assertEquals(listOf(9L, 3L), page.users.map(RemoteUser::remoteId))
+        assertEquals(listOf(-20L, -19L), page.users.map(RemoteUser::serverPosition))
     }
 
     @Test
-    fun multiplePagesFetchesReportedLastPage() = runRemoteTest { requests ->
+    fun pageCountProbeFetchesAndReturnsTheLastPage() = runRemoteTest { requests ->
         val source = source(
             engine = engine { request ->
                 val page = request.url.parameters["page"].orEmpty()
@@ -40,15 +42,18 @@ class GoRestUserRemoteDataSourceTest {
                 if (page == "1") {
                     jsonResponse(usersJson(1), pageCount = "4")
                 } else {
-                    jsonResponse(usersJson(40, 41), pageCount = "4")
+                    jsonResponse(usersJson(40), pageCount = null)
                 }
             },
         )
 
-        val users = assertIs<RemoteResult.Success<List<RemoteUser>>>(source.fetchLastPage()).value
+        val page = assertIs<RemoteResult.Success<RemotePage>>(source.fetchLastPage()).value
 
         assertEquals(listOf("1", "4"), requests)
-        assertEquals(listOf(40L, 41L), users.map(RemoteUser::remoteId))
+        assertEquals(4L, page.page)
+        assertEquals(4L, page.totalPages)
+        assertEquals(listOf(40L), page.users.map(RemoteUser::remoteId))
+        assertEquals(listOf(-80L), page.users.map(RemoteUser::serverPosition))
     }
 
     @Test
@@ -66,7 +71,24 @@ class GoRestUserRemoteDataSourceTest {
     }
 
     @Test
-    fun changedPaginationMetadataAndEmptyLastPageCommitAnEmptySnapshot() = runRemoteTest { requests ->
+    fun requestedPageUsesItsNumberAndDoesNotRequirePaginationHeader() = runRemoteTest { requests ->
+        val source = source(
+            engine = engine { request ->
+                val page = request.url.parameters["page"].orEmpty()
+                requests += page
+                jsonResponse(usersJson(40, 41), pageCount = null)
+            },
+        )
+
+        val result = assertIs<RemoteResult.Success<List<RemoteUser>>>(source.fetchPage(3)).value
+
+        assertEquals(listOf("3"), requests)
+        assertEquals(listOf(40L, 41L), result.map(RemoteUser::remoteId))
+        assertEquals(listOf(-60L, -59L), result.map(RemoteUser::serverPosition))
+    }
+
+    @Test
+    fun changedPaginationMetadataCanReturnAnEmptyLastPage() = runRemoteTest { requests ->
         val source = source(
             engine = engine { request ->
                 val page = request.url.parameters["page"].orEmpty()
@@ -79,10 +101,11 @@ class GoRestUserRemoteDataSourceTest {
             },
         )
 
-        val result = assertIs<RemoteResult.Success<List<RemoteUser>>>(source.fetchLastPage())
+        val page = assertIs<RemoteResult.Success<RemotePage>>(source.fetchLastPage()).value
 
         assertEquals(listOf("1", "3"), requests)
-        assertTrue(result.value.isEmpty())
+        assertEquals(3L, page.page)
+        assertTrue(page.users.isEmpty())
     }
 
     @Test
@@ -171,7 +194,7 @@ class GoRestUserRemoteDataSourceTest {
             apiToken = "",
         )
 
-        assertIs<RemoteResult.Success<List<RemoteUser>>>(source.fetchLastPage())
+        assertIs<RemoteResult.Success<RemotePage>>(source.fetchLastPage())
         assertEquals(
             RemoteResult.AuthenticationFailure,
             source.createUser(

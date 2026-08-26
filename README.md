@@ -33,7 +33,7 @@ flowchart TD
     C --> B
 ```
 
-The synchronization coordinator finalizes expired deletions, processes due mutations in FIFO order, then fetches and transactionally merges the latest GoRest page. Concurrent triggers join the active run instead of starting or queuing another full synchronization. The detailed contract is in [`docs/state-transitions.md`](docs/state-transitions.md); architectural boundaries are in [`docs/architecture.md`](docs/architecture.md).
+The synchronization coordinator finalizes expired deletions, processes due mutations in FIFO order, then discovers and transactionally merges the last GoRest page. Reaching the feed end appends earlier pages (`last-1`, `last-2`, and so on) through the same serialized data path. Concurrent triggers join the active run instead of starting or queuing another full synchronization. The detailed contract is in [`docs/state-transitions.md`](docs/state-transitions.md); architectural boundaries are in [`docs/architecture.md`](docs/architecture.md).
 
 ## Prerequisites
 
@@ -89,7 +89,7 @@ Run the required verification suite from the repository root:
 ./gradlew :androidApp:assembleDebug
 ```
 
-Coverage includes the compact/wide breakpoint, light/dark tokens, accessibility semantics, ViewModel state, Ktor parsing and HTTP failure classes, retry/backoff, synchronization coalescing, SQLDelight transitions, process-reopen scenarios, and Android/iOS Koin graphs. Tests use controlled dispatchers, clocks, mock HTTP engines, fakes, and temporary databases rather than the live API or real delays.
+Coverage includes incremental pagination and Retry, the compact/wide breakpoint, light/dark tokens, accessibility semantics, ViewModel state, Ktor parsing and HTTP failure classes, retry/backoff, synchronization coalescing, SQLDelight transitions, process-reopen scenarios, and Android/iOS Koin graphs. Tests use controlled dispatchers, clocks, mock HTTP engines, fakes, and temporary databases rather than the live API or real delays.
 
 ## Offline synchronization and Undo
 
@@ -99,6 +99,7 @@ Coverage includes the compact/wide breakpoint, light/dark tokens, accessibility 
 - Delete first hides the row and persists a five-second deadline. Undo before the deadline restores it without a network DELETE.
 - When the deadline expires, one durable DELETE mutation is created. HTTP 204 and 404 complete it; retryable failures keep it queued; permanent failures restore the user and explain the problem.
 - Refresh never clears a good cache because of an offline, authentication, rate-limit, 5xx, or malformed-response failure.
+- The last page replaces the refreshable remote snapshot; earlier pages append in descending page order when scrolled into view. A page failure keeps all loaded users visible and exposes an explicit Retry without advancing the cursor.
 
 ## Technology choices and tradeoffs
 
@@ -118,7 +119,7 @@ AI assistance was used to explore implementation options, draft focused changes,
 - GoRest is a public demonstration service and may reset or change its data independently of this app.
 - The token is compiled into each demo binary. Ignored local files prevent source-control leakage, but this is not appropriate secret storage for a production-distributed client; a backend should own privileged credentials.
 - Relative user time is based on local observation because the API provides no timestamp.
-- The product intentionally targets Android and iOS only; desktop, web, user editing, pagination beyond the latest page, and production deployment are out of scope.
+- The product intentionally targets Android and iOS only; desktop, web, user editing, and production deployment are out of scope.
 
 ## Repository map
 

@@ -12,6 +12,7 @@ import com.bill.usermanagmentsystem.domain.model.Gender
 import com.bill.usermanagmentsystem.domain.model.UserDataError
 import com.bill.usermanagmentsystem.domain.model.UserStatus
 import com.bill.usermanagmentsystem.domain.model.userDataErrorOrNull
+import com.bill.usermanagmentsystem.domain.repository.PageLoadResult
 import com.bill.usermanagmentsystem.domain.usecase.DefaultDeleteUserWithUndo
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runCurrent
@@ -145,6 +146,19 @@ class OfflineFirstUserRepositoryTest {
 
         assertEquals(listOf("blocked"), local.retriedBlockedMutations)
         assertEquals(1, sync.syncCalls)
+    }
+
+    @Test
+    fun pageLoadingDelegatesToTheSharedCoordinator() = runTest {
+        val sync = FakeSyncCoordinator().apply {
+            pageResult = Result.success(PageLoadResult(loadedCount = 20, hasMore = true))
+        }
+        val repository = repository(FakeUserLocalDataSource(), sync)
+
+        val result = repository.loadNextPage().getOrThrow()
+
+        assertEquals(PageLoadResult(loadedCount = 20, hasMore = true), result)
+        assertEquals(1, sync.pageCalls)
     }
 
     private fun kotlinx.coroutines.test.TestScope.repository(
