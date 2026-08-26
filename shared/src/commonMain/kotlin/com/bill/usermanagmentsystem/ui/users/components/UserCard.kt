@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -45,6 +46,7 @@ fun UserCard(
             .fillMaxWidth()
             .semantics {
                 contentDescription = "${user.name}, ${user.email}, ${user.relativeTime}"
+                stateDescription = user.synchronization.accessibilityDescription()
             }
             .combinedClickable(
                 onClick = {},
@@ -98,18 +100,21 @@ fun UserCard(
                 ) {
                     UserTag(user.gender.displayName())
                     UserTag(user.status.displayName())
-                    Text(
-                        text = user.relativeTime,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.labelMedium,
-                    )
                 }
+                Text(
+                    text = user.relativeTime,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelMedium,
+                )
                 when (val synchronization = user.synchronization) {
                     UserItemSynchronization.Synced -> Unit
-                    UserItemSynchronization.Pending -> SyncText("Waiting to sync")
-                    is UserItemSynchronization.Failed -> SyncText(
+                    UserItemSynchronization.Pending -> SyncStatus(
+                        text = "Pending sync",
+                        failed = false,
+                    )
+                    is UserItemSynchronization.Failed -> SyncStatus(
                         text = "Sync failed: ${synchronization.reason}",
-                        isError = true,
+                        failed = true,
                     )
                 }
                 val failure = user.synchronization as? UserItemSynchronization.Failed
@@ -142,17 +147,37 @@ private fun UserTag(text: String) {
 }
 
 @Composable
-private fun SyncText(
+private fun SyncStatus(
     text: String,
-    isError: Boolean = false,
+    failed: Boolean,
 ) {
-    Text(
-        text = text,
-        color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary,
-        maxLines = 2,
-        overflow = TextOverflow.Ellipsis,
-        style = MaterialTheme.typography.labelMedium,
-    )
+    Surface(
+        color = if (failed) {
+            MaterialTheme.colorScheme.errorContainer
+        } else {
+            MaterialTheme.colorScheme.tertiaryContainer
+        },
+        contentColor = if (failed) {
+            MaterialTheme.colorScheme.onErrorContainer
+        } else {
+            MaterialTheme.colorScheme.onTertiaryContainer
+        },
+        shape = RoundedCornerShape(8.dp),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.labelMedium,
+        )
+    }
+}
+
+private fun UserItemSynchronization.accessibilityDescription(): String = when (this) {
+    UserItemSynchronization.Synced -> "Synchronized"
+    UserItemSynchronization.Pending -> "Pending synchronization"
+    is UserItemSynchronization.Failed -> "Synchronization failed: $reason"
 }
 
 private fun Gender.displayName(): String = when (this) {

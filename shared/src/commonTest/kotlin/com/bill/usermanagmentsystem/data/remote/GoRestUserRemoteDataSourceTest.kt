@@ -11,6 +11,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 
 class GoRestUserRemoteDataSourceTest {
     @Test
@@ -112,6 +113,25 @@ class GoRestUserRemoteDataSourceTest {
             val source = source(engine { respond("{}", status) })
             assertTrue(expectedType.isInstance(source.fetchLastPage()))
         }
+    }
+
+    @Test
+    fun rateLimitFailureHonorsServerRetryAfterTiming() = runRemoteTest { _ ->
+        val source = source(
+            engine = engine {
+                respond(
+                    content = "{}",
+                    status = HttpStatusCode.TooManyRequests,
+                    headers = Headers.build {
+                        append(HttpHeaders.RetryAfter, "7")
+                    },
+                )
+            },
+        )
+
+        val result = assertIs<RemoteResult.RetryableFailure>(source.fetchLastPage())
+
+        assertEquals(Instant.fromEpochSeconds(1_007), result.serverRetryAt)
     }
 
     @Test

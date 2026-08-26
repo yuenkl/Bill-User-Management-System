@@ -138,6 +138,41 @@ class UserFeedViewModelTest {
     }
 
     @Test
+    fun startupConnectivityForegroundAndManualTriggersShareOneActiveSynchronization() = runTest {
+        val gate = CompletableDeferred<Result<Unit>>()
+        withFixture(initialRefreshHandler = { gate.await() }) {
+            runCurrent()
+
+            connectivity.status.value = ConnectivityStatus.Unavailable
+            runCurrent()
+            connectivity.status.value = ConnectivityStatus.Available
+            lifecycle.mutableState.value = AppLifecycleState.Foreground
+            viewModel.refresh()
+            runCurrent()
+
+            assertEquals(1, refreshCalls)
+            gate.complete(Result.success(Unit))
+            runCurrent()
+        }
+    }
+
+    @Test
+    fun connectivityAndForegroundTriggersSynchronizeWhenTheCoordinatorIsIdle() = runTest {
+        withFixture(connectivityStatus = ConnectivityStatus.Unavailable) {
+            runCurrent()
+            assertEquals(1, refreshCalls)
+
+            connectivity.status.value = ConnectivityStatus.Available
+            runCurrent()
+            assertEquals(2, refreshCalls)
+
+            lifecycle.mutableState.value = AppLifecycleState.Foreground
+            runCurrent()
+            assertEquals(3, refreshCalls)
+        }
+    }
+
+    @Test
     fun minuteTickRefreshesRelativeLabelsWithoutChangingDatabase() = runTest {
         withFixture {
             users.value = listOf(userRecord(observedAt = clock.current))
@@ -443,8 +478,8 @@ class UserFeedViewModelTest {
     }
 
     private class FakeLifecycleObserver : AppLifecycleObserver {
-        override val state: StateFlow<AppLifecycleState> =
-            MutableStateFlow(AppLifecycleState.Background)
+        val mutableState = MutableStateFlow(AppLifecycleState.Background)
+        override val state: StateFlow<AppLifecycleState> = mutableState
     }
 
     private class FakeTimeProvider(var current: Instant) : TimeProvider {
