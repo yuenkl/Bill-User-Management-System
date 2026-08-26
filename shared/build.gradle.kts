@@ -77,9 +77,12 @@ kotlin {
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.ktor.client.mock)
         }
         getByName("androidHostTest").dependencies {
+            implementation(libs.androidx.activity.compose)
             implementation(libs.androidx.test.core)
+            implementation(libs.compose.ui.test)
             implementation(libs.junit)
             implementation(libs.kotlin.test)
             implementation(libs.robolectric)

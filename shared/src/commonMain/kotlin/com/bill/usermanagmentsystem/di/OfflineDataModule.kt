@@ -11,13 +11,18 @@ import com.bill.usermanagmentsystem.data.sync.DefaultSyncCoordinator
 import com.bill.usermanagmentsystem.data.sync.RetryPolicy
 import com.bill.usermanagmentsystem.data.sync.SyncCoordinator
 import com.bill.usermanagmentsystem.domain.repository.UserRepository
+import com.bill.usermanagmentsystem.domain.usecase.ObserveSyncState
+import com.bill.usermanagmentsystem.domain.usecase.ObserveUsers
+import com.bill.usermanagmentsystem.domain.usecase.RefreshUsers
 import com.bill.usermanagmentsystem.platform.SqlDriverFactory
+import com.bill.usermanagmentsystem.ui.users.UserFeedViewModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import org.koin.core.module.Module
+import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
 import org.koin.dsl.onClose
 
@@ -65,6 +70,30 @@ internal fun offlineDataModule(
             idGenerator = get(),
             timeProvider = get(),
             applicationScope = get(),
+        )
+    }
+    factory {
+        val repository = get<UserRepository>()
+        ObserveUsers(repository::observeUsers)
+    }
+    factory {
+        val repository = get<UserRepository>()
+        ObserveSyncState(repository::observeSyncState)
+    }
+    factory {
+        val repository = get<UserRepository>()
+        RefreshUsers(repository::refresh)
+    }
+    viewModel {
+        UserFeedViewModel(
+            observeUsers = get(),
+            observeSyncState = get(),
+            refreshUsers = get(),
+            connectivityObserver = get(),
+            lifecycleObserver = get(),
+            timeProvider = get(),
+            relativeTimeFormatter = get(),
+            dispatcher = get(),
         )
     }
 }

@@ -41,6 +41,7 @@ class AndroidPlatformModuleTest {
         try {
             assertNotNull(application.koin.get<ConnectivityObserver>())
             assertNotNull(application.koin.get<AppLifecycleObserver>())
+            assertNotNull(application.koin.get<UserRemoteDataSource>())
         } finally {
             driver.close()
             engine.close()

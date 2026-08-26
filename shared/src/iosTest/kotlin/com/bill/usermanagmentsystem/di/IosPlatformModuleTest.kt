@@ -31,6 +31,8 @@ class IosPlatformModuleTest {
             name = "foundation-platform-test.db",
         )
 
+        assertNotNull(application.koin.get<UserRemoteDataSource>())
+
         driver.close()
         engine.close()
         application.close()
