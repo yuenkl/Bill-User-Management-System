@@ -33,8 +33,8 @@ class OfflineFirstUserRepositoryTest {
         val result = repository.addUser(input())
         runCurrent()
 
-        assertEquals("local-id", result.getOrNull())
-        assertEquals("local-id", local.insertedCreates.single().localId)
+        assertEquals("1", result.getOrNull())
+        assertEquals("1", local.insertedCreates.single().localId)
         assertEquals("mutation-id", local.insertedCreates.single().mutationId)
         assertEquals(1, sync.syncCalls)
     }
@@ -48,7 +48,7 @@ class OfflineFirstUserRepositoryTest {
         val result = repository.addUser(input())
         runCurrent()
 
-        assertEquals("local-id", result.getOrNull())
+        assertEquals("1", result.getOrNull())
         assertEquals(1, local.insertedCreates.size)
         assertEquals(1, sync.syncCalls)
     }
@@ -127,7 +127,7 @@ class OfflineFirstUserRepositoryTest {
         runCurrent()
 
         val mutation = local.storedMutations.single()
-        assertEquals("local-id", mutation.mutationId)
+        assertEquals("mutation-id", mutation.mutationId)
         assertEquals("failed-user", mutation.userLocalId)
         assertEquals(1, sync.syncCalls)
     }
@@ -167,7 +167,7 @@ class OfflineFirstUserRepositoryTest {
     ) = OfflineFirstUserRepository(
         localDataSource = local,
         syncCoordinator = sync,
-        idGenerator = QueueIdGenerator("local-id", "mutation-id"),
+        idGenerator = QueueIdGenerator("mutation-id"),
         timeProvider = FakeTimeProvider(instant(1_000)),
         applicationScope = backgroundScope,
     )

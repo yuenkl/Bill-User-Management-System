@@ -1,5 +1,5 @@
 CREATE TABLE users (
-    local_id TEXT NOT NULL PRIMARY KEY,
+    local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     remote_id INTEGER UNIQUE,
     name TEXT NOT NULL,
     email TEXT NOT NULL,
@@ -17,7 +17,7 @@ CREATE TABLE users (
 
 CREATE TABLE pending_mutations (
     mutation_id TEXT NOT NULL PRIMARY KEY,
-    user_local_id TEXT NOT NULL,
+    user_local_id INTEGER NOT NULL,
     kind TEXT NOT NULL CHECK (kind IN ('CREATE', 'DELETE')),
     created_at_epoch_ms INTEGER NOT NULL,
     attempt_count INTEGER NOT NULL DEFAULT 0,
@@ -102,7 +102,6 @@ WHERE
 
 insertPendingUser:
 INSERT INTO users (
-    local_id,
     remote_id,
     name,
     email,
@@ -114,7 +113,10 @@ INSERT INTO users (
     hidden,
     undo_deadline_epoch_ms,
     last_sync_error
-) VALUES (?, NULL, ?, ?, ?, ?, ?, NULL, 'PENDING_CREATE', 0, NULL, NULL);
+) VALUES (NULL, ?, ?, ?, ?, ?, NULL, 'PENDING_CREATE', 0, NULL, NULL);
+
+selectLastInsertedUserId:
+SELECT last_insert_rowid();
 
 insertMutation:
 INSERT INTO pending_mutations (
@@ -142,7 +144,6 @@ INSERT OR IGNORE INTO pending_mutations (
 
 insertRemoteUserIfAbsent:
 INSERT OR IGNORE INTO users (
-    local_id,
     remote_id,
     name,
     email,
@@ -154,7 +155,7 @@ INSERT OR IGNORE INTO users (
     hidden,
     undo_deadline_epoch_ms,
     last_sync_error
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'SYNCED', 0, NULL, NULL);
+) VALUES (?, ?, ?, ?, ?, ?, ?, 'SYNCED', 0, NULL, NULL);
 
 updatePagedRemoteUser:
 UPDATE users

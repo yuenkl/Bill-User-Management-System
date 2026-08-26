@@ -45,8 +45,7 @@ class OfflineSyncIntegrationTest {
         )
 
         try {
-            local.insertPendingCreate(
-                localId = "stable-local-id",
+            val localId = local.insertPendingCreate(
                 mutationId = "durable-create",
                 input = AddUserInput(
                     name = "Offline user",
@@ -84,7 +83,7 @@ class OfflineSyncIntegrationTest {
 
             assertTrue(coordinator.sync().isSuccess)
 
-            val stored = local.getUser("stable-local-id")!!
+            val stored = local.getUser(localId)!!
             assertEquals(44, stored.remoteId)
             assertEquals(instant(1_000), stored.observedAt)
             assertEquals(
@@ -114,7 +113,8 @@ class OfflineSyncIntegrationTest {
 
         try {
             local.mergeSnapshot(listOf(remoteUser(77).toSnapshot()), instant(1_000))
-            local.requestDelete("remote-local-id", instant(6_000))
+            val localId = local.observeVisibleUsers().first().single().user.localId
+            local.requestDelete(localId, instant(6_000))
             val offlineCoordinator = DefaultSyncCoordinator(
                 localDataSource = local,
                 remoteDataSource = FakeUserRemoteDataSource(),
@@ -126,7 +126,7 @@ class OfflineSyncIntegrationTest {
 
             val offlineResult = offlineCoordinator.sync()
             assertEquals(UserDataError.Offline, offlineResult.exceptionOrNull()?.userDataErrorOrNull())
-            assertTrue(local.getUser("remote-local-id")!!.hidden)
+            assertTrue(local.getUser(localId)!!.hidden)
             assertEquals(1, local.getAllMutations().size)
 
             driver.close()
@@ -152,7 +152,7 @@ class OfflineSyncIntegrationTest {
             assertTrue(onlineCoordinator.sync().isSuccess)
 
             assertEquals(listOf(77L), remote.deleteRequests)
-            assertEquals(null, local.getUser("remote-local-id"))
+            assertEquals(null, local.getUser(localId))
             assertTrue(local.getAllMutations().isEmpty())
         } finally {
             driver.close()
@@ -172,8 +172,7 @@ class OfflineSyncIntegrationTest {
             queryDispatcher = UnconfinedTestDispatcher(testScheduler),
         )
         try {
-            local.insertPendingCreate(
-                localId = "local-only",
+            val localId = local.insertPendingCreate(
                 mutationId = "pending-create",
                 input = AddUserInput(
                     name = "Local only",
@@ -183,7 +182,7 @@ class OfflineSyncIntegrationTest {
                 ),
                 observedAt = instant(1_000),
             )
-            local.requestDelete("local-only", instant(6_000))
+            local.requestDelete(localId, instant(6_000))
             val remote = FakeUserRemoteDataSource().apply {
                 fetchHandler = { RemoteResult.Success(emptyList()) }
             }
@@ -200,7 +199,7 @@ class OfflineSyncIntegrationTest {
 
             assertTrue(remote.createRequests.isEmpty())
             assertTrue(remote.deleteRequests.isEmpty())
-            assertEquals(null, local.getUser("local-only"))
+            assertEquals(null, local.getUser(localId))
         } finally {
             driver.close()
             application.deleteDatabase(databaseName)

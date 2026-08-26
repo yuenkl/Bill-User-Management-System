@@ -1,0 +1,85 @@
+CREATE TABLE users_new (
+    local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    remote_id INTEGER UNIQUE,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    gender TEXT NOT NULL,
+    status TEXT NOT NULL,
+    observed_at_epoch_ms INTEGER NOT NULL,
+    server_position INTEGER,
+    sync_status TEXT NOT NULL CHECK (
+        sync_status IN ('SYNCED', 'PENDING_CREATE', 'CREATE_FAILED', 'PENDING_DELETE')
+    ),
+    hidden INTEGER NOT NULL DEFAULT 0,
+    undo_deadline_epoch_ms INTEGER,
+    last_sync_error TEXT
+);
+
+INSERT INTO users_new (
+    local_id,
+    remote_id,
+    name,
+    email,
+    gender,
+    status,
+    observed_at_epoch_ms,
+    server_position,
+    sync_status,
+    hidden,
+    undo_deadline_epoch_ms,
+    last_sync_error
+)
+SELECT
+    rowid,
+    remote_id,
+    name,
+    email,
+    gender,
+    status,
+    observed_at_epoch_ms,
+    server_position,
+    sync_status,
+    hidden,
+    undo_deadline_epoch_ms,
+    last_sync_error
+FROM users;
+
+CREATE TABLE pending_mutations_new (
+    mutation_id TEXT NOT NULL PRIMARY KEY,
+    user_local_id INTEGER NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('CREATE', 'DELETE')),
+    created_at_epoch_ms INTEGER NOT NULL,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    state TEXT NOT NULL CHECK (state IN ('PENDING', 'RETRYABLE_WAIT', 'BLOCKED')),
+    retry_at_epoch_ms INTEGER,
+    last_error TEXT,
+    FOREIGN KEY (user_local_id) REFERENCES users_new(local_id) ON DELETE CASCADE,
+    UNIQUE (user_local_id, kind)
+);
+
+INSERT INTO pending_mutations_new (
+    mutation_id,
+    user_local_id,
+    kind,
+    created_at_epoch_ms,
+    attempt_count,
+    state,
+    retry_at_epoch_ms,
+    last_error
+)
+SELECT
+    pending_mutations.mutation_id,
+    users.rowid,
+    pending_mutations.kind,
+    pending_mutations.created_at_epoch_ms,
+    pending_mutations.attempt_count,
+    pending_mutations.state,
+    pending_mutations.retry_at_epoch_ms,
+    pending_mutations.last_error
+FROM pending_mutations
+JOIN users ON users.local_id = pending_mutations.user_local_id;
+
+DROP TABLE pending_mutations;
+DROP TABLE users;
+ALTER TABLE users_new RENAME TO users;
+ALTER TABLE pending_mutations_new RENAME TO pending_mutations;

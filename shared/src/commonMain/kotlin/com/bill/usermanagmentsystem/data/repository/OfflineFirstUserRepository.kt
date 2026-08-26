@@ -39,14 +39,11 @@ internal class OfflineFirstUserRepository(
 
     override suspend fun addUser(input: AddUserInput): Result<String> {
         val result = durableOperation {
-            val localId = idGenerator.nextId()
             localDataSource.insertPendingCreate(
-                localId = localId,
                 mutationId = idGenerator.nextId(),
                 input = input,
                 observedAt = timeProvider.now(),
             )
-            localId
         }
         triggerSyncAfter(result)
         return result

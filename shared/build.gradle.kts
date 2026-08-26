@@ -99,6 +99,7 @@ sqldelight {
     databases {
         create("UserManagementDatabase") {
             packageName.set("com.bill.usermanagmentsystem.data.local.db")
+            schemaOutputDirectory.set(file("src/commonMain/sqldelight"))
             verifyMigrations.set(true)
         }
     }

@@ -131,6 +131,28 @@ class DefaultSyncCoordinatorTest {
     }
 
     @Test
+    fun refreshReadsTheLatestPageCountAndResetsTheDescendingCursor() = runTest {
+        val fixture = fixture()
+        fixture.remote.totalPages = 148
+        fixture.remote.fetchHandler = {
+            RemoteResult.Success(listOf(remoteUser(remoteId = 148, serverPosition = -2_960)))
+        }
+        fixture.remote.pageHandler = { page ->
+            RemoteResult.Success(listOf(remoteUser(remoteId = page, serverPosition = -(page * 20))))
+        }
+
+        assertTrue(fixture.coordinator.sync().isSuccess)
+        assertTrue(fixture.coordinator.loadNextPage().isSuccess)
+
+        fixture.remote.totalPages = 149
+        assertTrue(fixture.coordinator.sync().isSuccess)
+        assertTrue(fixture.coordinator.loadNextPage().isSuccess)
+
+        assertEquals(listOf(147L, 148L), fixture.remote.pageRequests)
+        assertEquals(2, fixture.local.mergedSnapshots.size)
+    }
+
+    @Test
     fun failedPageLoadDoesNotAdvanceTheCursor() = runTest {
         val fixture = fixture()
         fixture.remote.totalPages = 2

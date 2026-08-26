@@ -49,6 +49,7 @@ internal class FakeUserLocalDataSource : UserLocalDataSource {
     var finalizedDeleteCalls = 0
     var finalizedDeleteResult = 0
     var insertFailure: Throwable? = null
+    var nextInsertedLocalId: String = "1"
 
     override fun observeVisibleUsers(): Flow<List<UserRecord>> = visibleUsers
 
@@ -59,13 +60,14 @@ internal class FakeUserLocalDataSource : UserLocalDataSource {
     override suspend fun getAllMutations(): List<StoredMutation> = storedMutations.toList()
 
     override suspend fun insertPendingCreate(
-        localId: String,
         mutationId: String,
         input: AddUserInput,
         observedAt: Instant,
-    ) {
+    ): String {
         insertFailure?.let { throw it }
-        insertedCreates += InsertedCreate(localId, mutationId, input, observedAt)
+        return nextInsertedLocalId.also { localId ->
+            insertedCreates += InsertedCreate(localId, mutationId, input, observedAt)
+        }
     }
 
     override suspend fun requestDelete(localId: String, undoDeadline: Instant) {

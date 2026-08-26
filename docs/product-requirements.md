@@ -21,7 +21,7 @@ All behaviour must preserve the [engineering invariants](README.md#engineering-i
 - Persist the remote snapshot before exposing it to the UI. The UI observes SQLDelight only and never displays a network response directly.
 - Each row displays name, email, gender/status indicators where useful, and a relative timestamp based on when the record was first observed locally.
 - Preserve server order across appended pages. Locally created users appear above the remote snapshot.
-- Refresh is available through pull-to-refresh or an equivalent explicit Material 3 action.
+- Refresh is available through pull-to-refresh or an equivalent explicit Material 3 action; it rereads the current page count and refreshes the snapshot before restarting earlier-page loading.
 
 ### Loading and failure states
 

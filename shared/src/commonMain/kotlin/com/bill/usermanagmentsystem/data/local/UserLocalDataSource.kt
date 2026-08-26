@@ -16,11 +16,10 @@ internal interface UserLocalDataSource {
     suspend fun getAllMutations(): List<StoredMutation>
 
     suspend fun insertPendingCreate(
-        localId: String,
         mutationId: String,
         input: AddUserInput,
         observedAt: Instant,
-    )
+    ): String
 
     suspend fun requestDelete(
         localId: String,
