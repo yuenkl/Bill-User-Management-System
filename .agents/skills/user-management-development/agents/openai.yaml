@@ -1,0 +1,4 @@
+interface:
+  display_name: "User Management Development"
+  short_description: "Build and verify the KMP challenge app"
+  default_prompt: "Use $user-management-development to implement the requested User Management System task."
