@@ -289,24 +289,40 @@ class UserFeedViewModel(
         deletionJob = viewModelScope.launch(dispatcher) {
             presentation.update { it.copy(deleteInProgress = true) }
             val result = deleteUserWithUndo(localId)
-            if (result.isFailure) publishFailure(result.exceptionOrNull())
-            presentation.update {
-                it.copy(
+            presentation.update { current ->
+                val completed = current.copy(
                     selectedUserId = null,
                     deleteInProgress = false,
+                )
+                result.fold(
+                    onSuccess = { deleted ->
+                        completed.copy(
+                            undoSnackbar = DeleteUndoUiModel(
+                                userName = deleted.userName,
+                                input = deleted.input,
+                            ),
+                        )
+                    },
+                    onFailure = { completed.withFailureMessage(it) },
                 )
             }
         }
     }
 
-    fun undoDelete(localId: String) {
+    fun undoDelete(input: AddUserInput) {
         if (undoJob?.isActive == true) return
-        val current = feedData.value.undoableDeletions.firstOrNull() ?: return
-        if (current.user.localId != localId) return
+        if (presentation.value.undoSnackbar?.input != input) return
 
         undoJob = viewModelScope.launch(dispatcher) {
-            val result = undoUserDeletion(localId)
+            val result = undoUserDeletion(input)
+            presentation.update { it.copy(undoSnackbar = null) }
             if (result.isFailure) publishFailure(result.exceptionOrNull())
+        }
+    }
+
+    fun dismissUndoDelete(input: AddUserInput) {
+        presentation.update { current ->
+            if (current.undoSnackbar?.input == input) current.copy(undoSnackbar = null) else current
         }
     }
 
@@ -465,17 +481,7 @@ class UserFeedViewModel(
                 it.localId == presentationState.selectedUserId
             },
             deleteInProgress = presentationState.deleteInProgress,
-            undoSnackbar = data.undoableDeletions.firstOrNull()?.let { deletion ->
-                if (deletion.deadline > now) {
-                    DeleteUndoUiModel(
-                        localId = deletion.user.localId,
-                        userName = deletion.user.name,
-                        deadline = deletion.deadline,
-                    )
-                } else {
-                    null
-                }
-            },
+            undoSnackbar = presentationState.undoSnackbar,
         )
     }
 
@@ -573,6 +579,7 @@ class UserFeedViewModel(
         val messageSequence: Long = 0,
         val selectedUserId: String? = null,
         val deleteInProgress: Boolean = false,
+        val undoSnackbar: DeleteUndoUiModel? = null,
     )
 
     private data class FeedData(

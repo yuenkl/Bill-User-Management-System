@@ -3,9 +3,14 @@ package com.bill.usermanagmentsystem.data.repository
 import com.bill.usermanagmentsystem.data.local.MutationKind
 import com.bill.usermanagmentsystem.data.local.MutationState
 import com.bill.usermanagmentsystem.data.local.StoredMutation
+import com.bill.usermanagmentsystem.data.local.StoredUser
+import com.bill.usermanagmentsystem.data.local.StoredUserSyncStatus
+import com.bill.usermanagmentsystem.data.remote.RemoteResult
+import com.bill.usermanagmentsystem.data.remote.RemoteUser
 import com.bill.usermanagmentsystem.data.testing.FakeSyncCoordinator
 import com.bill.usermanagmentsystem.data.testing.FakeTimeProvider
 import com.bill.usermanagmentsystem.data.testing.FakeUserLocalDataSource
+import com.bill.usermanagmentsystem.data.testing.FakeUserRemoteDataSource
 import com.bill.usermanagmentsystem.data.testing.QueueIdGenerator
 import com.bill.usermanagmentsystem.domain.model.AddUserInput
 import com.bill.usermanagmentsystem.domain.model.Gender
@@ -13,7 +18,6 @@ import com.bill.usermanagmentsystem.domain.model.UserDataError
 import com.bill.usermanagmentsystem.domain.model.UserStatus
 import com.bill.usermanagmentsystem.domain.model.userDataErrorOrNull
 import com.bill.usermanagmentsystem.domain.repository.PageLoadResult
-import com.bill.usermanagmentsystem.domain.usecase.DefaultDeleteUserWithUndo
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -72,31 +76,59 @@ class OfflineFirstUserRepositoryTest {
     }
 
     @Test
-    fun deleteAndUndoUseDurableLocalStateAndInjectedClock() = runTest {
-        val local = FakeUserLocalDataSource()
-        val repository = repository(local, FakeSyncCoordinator())
-        val deadline = instant(6_000)
+    fun confirmedDeleteWaitsForRemoteSuccessBeforeRemovingTheLocalUser() = runTest {
+        val local = FakeUserLocalDataSource().apply {
+            storedUsers["1"] = storedUser()
+        }
+        val remote = FakeUserRemoteDataSource().apply {
+            deleteHandler = { RemoteResult.Success(Unit) }
+        }
+        val repository = repository(local, FakeSyncCoordinator(), remote)
 
-        assertTrue(repository.requestDelete("user-id", deadline).isSuccess)
-        assertTrue(repository.undoDelete("user-id").isSuccess)
+        val deleted = repository.deleteImmediately("1").getOrThrow()
 
-        assertEquals("user-id" to deadline, local.deleteRequests.single())
-        assertEquals("user-id" to instant(1_000), local.undoRequests.single())
+        assertEquals(listOf(42L), remote.deleteRequests)
+        assertEquals("Local user", deleted.userName)
+        assertTrue("1" !in local.storedUsers)
     }
 
     @Test
-    fun deleteUseCaseCalculatesExactFiveSecondDeadline() = runTest {
+    fun failedRemoteDeleteKeepsTheLocalUserVisible() = runTest {
+        val local = FakeUserLocalDataSource().apply {
+            storedUsers["1"] = storedUser()
+        }
+        val remote = FakeUserRemoteDataSource().apply {
+            deleteHandler = { RemoteResult.RetryableFailure("Offline") }
+        }
+
+        val result = repository(local, FakeSyncCoordinator(), remote).deleteImmediately("1")
+
+        assertTrue(result.isFailure)
+        assertEquals(storedUser(), local.storedUsers["1"])
+    }
+
+    @Test
+    fun undoRecreatesTheUserThroughPostAndMergesTheResponse() = runTest {
         val local = FakeUserLocalDataSource()
-        val repository = repository(local, FakeSyncCoordinator())
-        val useCase = DefaultDeleteUserWithUndo(
-            repository = repository,
-            timeProvider = FakeTimeProvider(instant(1_000)),
-        )
+        val remote = FakeUserRemoteDataSource().apply {
+            createHandler = {
+                RemoteResult.Success(
+                    RemoteUser(
+                        remoteId = 99,
+                        name = it.name,
+                        email = it.email,
+                        gender = it.gender,
+                        status = it.status,
+                        serverPosition = null,
+                    ),
+                )
+            }
+        }
+        val repository = repository(local, FakeSyncCoordinator(), remote)
 
-        val result = useCase("user-id")
-
-        assertEquals(instant(6_000), result.getOrThrow())
-        assertEquals("user-id" to instant(6_000), local.deleteRequests.single())
+        assertEquals("99", repository.restoreDeletedUser(input()).getOrThrow())
+        assertEquals(1, remote.createRequests.size)
+        assertEquals(99, local.mergedPages.single().single().remoteId)
     }
 
     @Test
@@ -164,8 +196,10 @@ class OfflineFirstUserRepositoryTest {
     private fun kotlinx.coroutines.test.TestScope.repository(
         local: FakeUserLocalDataSource,
         sync: FakeSyncCoordinator,
+        remote: FakeUserRemoteDataSource = FakeUserRemoteDataSource(),
     ) = OfflineFirstUserRepository(
         localDataSource = local,
+        remoteDataSource = remote,
         syncCoordinator = sync,
         idGenerator = QueueIdGenerator("mutation-id"),
         timeProvider = FakeTimeProvider(instant(1_000)),
@@ -180,6 +214,21 @@ class OfflineFirstUserRepositoryTest {
             email = "local@example.com",
             gender = Gender.Female,
             status = UserStatus.Active,
+        )
+
+        fun storedUser() = StoredUser(
+            localId = "1",
+            remoteId = 42,
+            name = "Local user",
+            email = "local@example.com",
+            gender = Gender.Female,
+            status = UserStatus.Active,
+            observedAt = instant(1_000),
+            serverPosition = null,
+            synchronization = StoredUserSyncStatus.Synced,
+            hidden = false,
+            undoDeadline = null,
+            lastSyncError = null,
         )
 
         fun storedMutation(

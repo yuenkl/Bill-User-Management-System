@@ -44,15 +44,10 @@ Snapshot results affect UI only after their database transaction commits.
 
 | Current state | Event | Success | Retryable failure | Permanent failure / edge case |
 | --- | --- | --- | --- | --- |
-| Visible synchronized user | Confirm delete | Persist hidden undoable state and five-second deadline; DB removes row from visible query | Local transaction failure leaves row visible and reports error | Repeated confirmation is ignored |
-| Undoable, before deadline | Undo | Clear hidden/deadline state; DB restores row | Local transaction failure reports error and keeps durable state | No DELETE mutation exists |
-| Undoable, at/after deadline | Undo | None | Not applicable | Return `TooLate`; finalization owns the next transition |
-| Undoable, deadline expires | Finalize | Transaction creates one DELETE mutation and marks pending delete | Local transaction failure remains undoable/expired for next finalization | Unique constraint prevents duplicate DELETE mutation |
-| Pending delete | Sync DELETE | HTTP 204/404 removes row and mutation | Persist `RETRYABLE_WAIT`; row remains hidden | 401/403 -> `BLOCKED`; other permanent failure removes mutation, restores row, surfaces reason |
-| Pending delete | Remote snapshot contains user | Keep local row hidden/pending | Not applicable | Snapshot merge must not resurrect it |
-| Undoable | Process death/restart | Before deadline remains undoable; after deadline finalizes once | Database remains authoritative | Snackbar may be recreated only when deadline is still active |
-
-If multiple users are deleted, each deadline is persisted independently. UI Snackbar sequencing must never discard a durable deadline.
+| Visible synchronized user | Confirm delete | Call DELETE; HTTP 204/404 removes the local row and presents Undo | Keep the row visible and show the failure | Repeated confirmation is ignored while the request runs |
+| Visible local-only user | Confirm delete | Remove the local row and its CREATE mutation; no DELETE is needed | Local transaction failure leaves the row visible | No remote request is made |
+| Successfully deleted user | Undo | POST the saved user data, merge the response, and show the new remote ID | Keep the row deleted and show the failure | Authentication, validation, and permanent failures keep the row deleted |
+| Successfully deleted user | Snackbar dismissed or process restart | Keep the deletion; Undo is no longer available | Not applicable | Undo is an in-memory UI affordance, not a durable deletion state |
 
 ## Synchronization coordinator
 
@@ -64,7 +59,7 @@ If multiple users are deleted, each deadline is persisted independently. UI Snac
 | Running | Retryable mutation failure | Persist retry schedule; continue only when ordering and dependency safety allow |
 | Running | Authentication blocked | Mark affected work blocked and stop remote processing |
 | Running | Outbox drained | Discover and transactionally merge the last page; preceding pages load through the serialized pagination path |
-| Any | Process death | No intent is lost because users, deadlines, mutations, attempts, and retry times are persisted |
+| Any | Process death | No create intent is lost because users, mutations, attempts, and retry times are persisted; a dismissed Undo is not restored |
 
 ## Presentation states
 

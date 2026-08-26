@@ -2,6 +2,7 @@ package com.bill.usermanagmentsystem.ui.users
 
 import androidx.lifecycle.viewModelScope
 import com.bill.usermanagmentsystem.domain.model.AddUserInput
+import com.bill.usermanagmentsystem.domain.model.DeletedUserUndo
 import com.bill.usermanagmentsystem.domain.model.Gender
 import com.bill.usermanagmentsystem.domain.model.SyncState
 import com.bill.usermanagmentsystem.domain.model.UndoableDeletion
@@ -362,7 +363,7 @@ class UserFeedViewModelTest {
 
     @Test
     fun confirmUsesSelectedLocalIdAndDeduplicatesRepeatedTaps() = runTest {
-        val gate = CompletableDeferred<Result<Instant>>()
+        val gate = CompletableDeferred<Result<DeletedUserUndo>>()
         withFixture {
             users.value = listOf(userRecord())
             deleteHandler = { gate.await() }
@@ -376,7 +377,7 @@ class UserFeedViewModelTest {
             assertEquals(listOf("local-1"), deleteRequests)
             assertTrue(viewModel.uiState.value.deleteInProgress)
 
-            gate.complete(Result.success(clock.current + 5.seconds))
+            gate.complete(Result.success(deletedUserUndo()))
             runCurrent()
             assertNull(viewModel.uiState.value.deleteConfirmation)
             assertTrue(!viewModel.uiState.value.deleteInProgress)
@@ -386,61 +387,20 @@ class UserFeedViewModelTest {
     @Test
     fun undoForCurrentSnackbarCallsRepositoryOnce() = runTest {
         withFixture {
-            undoableDeletions.value = listOf(undoableDeletion())
-            undoHandler = { localId ->
-                undoableDeletions.value = emptyList()
-                Result.success(Unit)
-            }
+            users.value = listOf(userRecord())
+            deleteHandler = { Result.success(deletedUserUndo()) }
             runCurrent()
 
-            viewModel.undoDelete("local-1")
-            viewModel.undoDelete("local-1")
+            viewModel.selectUserForDeletion("local-1")
+            viewModel.confirmDelete()
+            runCurrent()
+            val input = viewModel.uiState.value.undoSnackbar!!.input
+            viewModel.undoDelete(input)
+            viewModel.undoDelete(input)
             runCurrent()
 
-            assertEquals(listOf("local-1"), undoRequests)
+            assertEquals(listOf(input), undoRequests)
             assertNull(viewModel.uiState.value.undoSnackbar)
-        }
-    }
-
-    @Test
-    fun deadlineFinalizesDurableDeletionExactlyOnce() = runTest {
-        withFixture {
-            undoableDeletions.value = listOf(undoableDeletion())
-            finalizeHandler = {
-                undoableDeletions.value = emptyList()
-                Result.success(1)
-            }
-            runCurrent()
-            assertEquals("local-1", viewModel.uiState.value.undoSnackbar?.localId)
-
-            clock.current += 5.seconds
-            advanceTimeBy(5.seconds.inWholeMilliseconds)
-            runCurrent()
-
-            assertEquals(1, finalizeCalls)
-            assertNull(viewModel.uiState.value.undoSnackbar)
-        }
-    }
-
-    @Test
-    fun multipleDeletionsShowNextOnlyAfterFirstIsFinalized() = runTest {
-        withFixture {
-            val first = undoableDeletion(localId = "local-1", name = "Ada", secondsFromNow = 5)
-            val second = undoableDeletion(localId = "local-2", name = "Grace", secondsFromNow = 8)
-            undoableDeletions.value = listOf(first, second)
-            finalizeHandler = {
-                undoableDeletions.value = undoableDeletions.value.drop(1)
-                Result.success(1)
-            }
-            runCurrent()
-            assertEquals("local-1", viewModel.uiState.value.undoSnackbar?.localId)
-
-            clock.current += 5.seconds
-            advanceTimeBy(5.seconds.inWholeMilliseconds)
-            runCurrent()
-
-            assertEquals(1, finalizeCalls)
-            assertEquals("local-2", viewModel.uiState.value.undoSnackbar?.localId)
         }
     }
 
@@ -474,7 +434,16 @@ class UserFeedViewModelTest {
         var refreshCalls = 0
         var finalizeCalls = 0
         val deleteRequests = mutableListOf<String>()
-        val undoRequests = mutableListOf<String>()
+        val undoRequests = mutableListOf<AddUserInput>()
+        fun deletedUserUndo() = DeletedUserUndo(
+            userName = "Ada Lovelace",
+            input = AddUserInput(
+                name = "Ada Lovelace",
+                email = "ada@example.com",
+                gender = Gender.Female,
+                status = UserStatus.Active,
+            ),
+        )
         var refreshHandler: suspend () -> Result<Unit> = initialRefreshHandler
         var pageCalls = 0
         var pageHandler: suspend () -> Result<PageLoadResult> = {
@@ -484,10 +453,10 @@ class UserFeedViewModelTest {
         var addHandler: suspend (AddUserInput) -> Result<String> = { Result.success("local-created") }
         val retryIds = mutableListOf<String>()
         var retryHandler: suspend (String) -> Result<Unit> = { Result.success(Unit) }
-        var deleteHandler: suspend (String) -> Result<Instant> = {
-            Result.success(clock.current + 5.seconds)
+        var deleteHandler: suspend (String) -> Result<DeletedUserUndo> = {
+            Result.success(deletedUserUndo())
         }
-        var undoHandler: suspend (String) -> Result<Unit> = { Result.success(Unit) }
+        var undoHandler: suspend (AddUserInput) -> Result<String> = { Result.success("restored") }
         var finalizeHandler: suspend () -> Result<Int> = { Result.success(0) }
         val viewModel = UserFeedViewModel(
             observeUsers = ObserveUsers { users },
@@ -514,9 +483,9 @@ class UserFeedViewModelTest {
                 deleteRequests += localId
                 deleteHandler(localId)
             },
-            undoUserDeletion = UndoUserDeletion { localId ->
-                undoRequests += localId
-                undoHandler(localId)
+            undoUserDeletion = UndoUserDeletion { input ->
+                undoRequests += input
+                undoHandler(input)
             },
             finalizeExpiredDeletions = FinalizeExpiredDeletions {
                 finalizeCalls += 1
@@ -568,4 +537,5 @@ class UserFeedViewModelTest {
         user = userRecord(localId = localId, name = name).user,
         deadline = clock.current + secondsFromNow.seconds,
     )
+
 }

@@ -57,6 +57,9 @@ internal class FakeUserLocalDataSource : UserLocalDataSource {
 
     override suspend fun getUser(localId: String): StoredUser? = storedUsers[localId]
 
+    override suspend fun deleteImmediately(localId: String): StoredUser =
+        storedUsers.remove(localId) ?: error("No stored user for $localId")
+
     override suspend fun getAllMutations(): List<StoredMutation> = storedMutations.toList()
 
     override suspend fun insertPendingCreate(

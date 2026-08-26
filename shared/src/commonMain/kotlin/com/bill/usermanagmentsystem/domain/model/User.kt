@@ -19,6 +19,11 @@ data class AddUserInput(
     val status: UserStatus,
 )
 
+data class DeletedUserUndo(
+    val userName: String,
+    val input: AddUserInput,
+)
+
 enum class Gender(val apiValue: String) {
     Female("female"),
     Male("male"),

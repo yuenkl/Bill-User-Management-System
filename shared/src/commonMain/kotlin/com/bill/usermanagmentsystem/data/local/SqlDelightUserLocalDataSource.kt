@@ -44,6 +44,19 @@ internal class SqlDelightUserLocalDataSource(
         queries.selectUserByLocalId(localId.toDatabaseLocalId()).executeAsOneOrNull()?.toStoredUser()
     }
 
+    override suspend fun deleteImmediately(localId: String): StoredUser = withContext(queryDispatcher) {
+        var deletedUser: StoredUser? = null
+        queries.transaction {
+            val databaseLocalId = localId.toDatabaseLocalId()
+            val user = queries.selectUserByLocalId(databaseLocalId).executeAsOneOrNull()
+                ?: throw UserDataException(UserDataError.UserNotFound(localId))
+            queries.deleteMutationsForUser(databaseLocalId)
+            queries.deleteUser(databaseLocalId)
+            deletedUser = user.toStoredUser()
+        }
+        requireNotNull(deletedUser)
+    }
+
     override suspend fun getAllMutations(): List<StoredMutation> = withContext(queryDispatcher) {
         queries.selectAllMutations().executeAsList().map(Pending_mutations::toStoredMutation)
     }

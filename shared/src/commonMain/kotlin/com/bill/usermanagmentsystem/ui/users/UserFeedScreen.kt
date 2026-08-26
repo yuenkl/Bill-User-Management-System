@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.bill.usermanagmentsystem.domain.model.AddUserInput
 import com.bill.usermanagmentsystem.domain.model.Gender
 import com.bill.usermanagmentsystem.domain.model.UserStatus
 import com.bill.usermanagmentsystem.ui.users.components.UserCard
@@ -86,6 +87,7 @@ fun UserFeedRoute(
         onDeleteCancel = viewModel::cancelDelete,
         onDeleteConfirm = viewModel::confirmDelete,
         onUndoDelete = viewModel::undoDelete,
+        onUndoDeleteDismissed = viewModel::dismissUndoDelete,
         onLoadNextPage = viewModel::loadNextPage,
         onRetryNextPage = viewModel::retryNextPage,
         modifier = modifier,
@@ -110,7 +112,8 @@ fun UserFeedScreen(
     onUserLongClick: (String) -> Unit = {},
     onDeleteCancel: () -> Unit = {},
     onDeleteConfirm: () -> Unit = {},
-    onUndoDelete: (String) -> Unit = {},
+    onUndoDelete: (AddUserInput) -> Unit = {},
+    onUndoDeleteDismissed: (AddUserInput) -> Unit = {},
     onLoadNextPage: () -> Unit = {},
     onRetryNextPage: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -118,13 +121,13 @@ fun UserFeedScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val message = state.message
     val undoSnackbar = state.undoSnackbar
-    LaunchedEffect(message?.id, undoSnackbar?.localId) {
+    LaunchedEffect(message?.id, undoSnackbar?.input) {
         if (message != null && undoSnackbar == null) {
             onMessageConsumed(message.id)
             snackbarHostState.showSnackbar(message.text)
         }
     }
-    LaunchedEffect(undoSnackbar?.localId, undoSnackbar?.deadline) {
+    LaunchedEffect(undoSnackbar?.input) {
         if (undoSnackbar != null) {
             snackbarHostState.currentSnackbarData?.dismiss()
             val result = snackbarHostState.showSnackbar(
@@ -133,7 +136,9 @@ fun UserFeedScreen(
                 duration = SnackbarDuration.Indefinite,
             )
             if (result == SnackbarResult.ActionPerformed) {
-                onUndoDelete(undoSnackbar.localId)
+                onUndoDelete(undoSnackbar.input)
+            } else {
+                onUndoDeleteDismissed(undoSnackbar.input)
             }
         }
     }

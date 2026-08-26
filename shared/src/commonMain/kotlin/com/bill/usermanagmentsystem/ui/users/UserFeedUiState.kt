@@ -1,8 +1,8 @@
 package com.bill.usermanagmentsystem.ui.users
 
+import com.bill.usermanagmentsystem.domain.model.AddUserInput
 import com.bill.usermanagmentsystem.domain.model.Gender
 import com.bill.usermanagmentsystem.domain.model.UserStatus
-import kotlin.time.Instant
 
 data class UserFeedUiState(
     val users: List<UserItemUiModel> = emptyList(),
@@ -84,7 +84,6 @@ data class UserFeedMessage(
 )
 
 data class DeleteUndoUiModel(
-    val localId: String,
     val userName: String,
-    val deadline: Instant,
+    val input: AddUserInput,
 )

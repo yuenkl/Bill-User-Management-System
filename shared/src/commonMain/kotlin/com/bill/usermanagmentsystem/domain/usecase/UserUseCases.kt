@@ -1,15 +1,13 @@
 package com.bill.usermanagmentsystem.domain.usecase
 
 import com.bill.usermanagmentsystem.domain.model.AddUserInput
+import com.bill.usermanagmentsystem.domain.model.DeletedUserUndo
 import com.bill.usermanagmentsystem.domain.model.SyncState
 import com.bill.usermanagmentsystem.domain.model.UndoableDeletion
 import com.bill.usermanagmentsystem.domain.model.UserRecord
 import com.bill.usermanagmentsystem.domain.repository.PageLoadResult
 import com.bill.usermanagmentsystem.domain.repository.UserRepository
-import com.bill.usermanagmentsystem.platform.TimeProvider
 import kotlinx.coroutines.flow.Flow
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 fun interface ObserveUsers {
@@ -44,22 +42,18 @@ fun interface RequestUserDeletion {
 }
 
 fun interface DeleteUserWithUndo {
-    suspend operator fun invoke(localId: String): Result<Instant>
+    suspend operator fun invoke(localId: String): Result<DeletedUserUndo>
 }
 
 class DefaultDeleteUserWithUndo(
     private val repository: UserRepository,
-    private val timeProvider: TimeProvider,
-    private val undoWindow: Duration = 5.seconds,
 ) : DeleteUserWithUndo {
-    override suspend fun invoke(localId: String): Result<Instant> {
-        val deadline = timeProvider.now() + undoWindow
-        return repository.requestDelete(localId, deadline).map { deadline }
-    }
+    override suspend fun invoke(localId: String): Result<DeletedUserUndo> =
+        repository.deleteImmediately(localId)
 }
 
 fun interface UndoUserDeletion {
-    suspend operator fun invoke(localId: String): Result<Unit>
+    suspend operator fun invoke(input: AddUserInput): Result<String>
 }
 
 fun interface FinalizeExpiredDeletions {

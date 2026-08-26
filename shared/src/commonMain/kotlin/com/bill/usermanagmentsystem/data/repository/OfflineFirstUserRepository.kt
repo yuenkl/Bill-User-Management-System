@@ -3,8 +3,14 @@ package com.bill.usermanagmentsystem.data.repository
 import com.bill.usermanagmentsystem.data.local.IdGenerator
 import com.bill.usermanagmentsystem.data.local.MutationState
 import com.bill.usermanagmentsystem.data.local.UserLocalDataSource
+import com.bill.usermanagmentsystem.data.local.SnapshotUser
+import com.bill.usermanagmentsystem.data.remote.CreateUserRequest
+import com.bill.usermanagmentsystem.data.remote.RemoteResult
+import com.bill.usermanagmentsystem.data.remote.RemoteUser
+import com.bill.usermanagmentsystem.data.remote.UserRemoteDataSource
 import com.bill.usermanagmentsystem.data.sync.SyncCoordinator
 import com.bill.usermanagmentsystem.domain.model.AddUserInput
+import com.bill.usermanagmentsystem.domain.model.DeletedUserUndo
 import com.bill.usermanagmentsystem.domain.model.SyncState
 import com.bill.usermanagmentsystem.domain.model.UserDataError
 import com.bill.usermanagmentsystem.domain.model.UserDataException
@@ -21,6 +27,7 @@ import kotlin.time.Instant
 
 internal class OfflineFirstUserRepository(
     private val localDataSource: UserLocalDataSource,
+    private val remoteDataSource: UserRemoteDataSource,
     private val syncCoordinator: SyncCoordinator,
     private val idGenerator: IdGenerator,
     private val timeProvider: TimeProvider,
@@ -47,6 +54,60 @@ internal class OfflineFirstUserRepository(
         }
         triggerSyncAfter(result)
         return result
+    }
+
+    override suspend fun deleteImmediately(localId: String): Result<DeletedUserUndo> = durableOperation {
+        val user = localDataSource.getUser(localId)
+            ?: throw UserDataException(UserDataError.UserNotFound(localId))
+        user.remoteId?.let { remoteId ->
+            when (val result = remoteDataSource.deleteUser(remoteId)) {
+                is RemoteResult.Success,
+                RemoteResult.NotFound,
+                -> Unit
+                RemoteResult.AuthenticationFailure -> throw UserDataException(UserDataError.AuthenticationRequired)
+                is RemoteResult.RetryableFailure -> throw UserDataException(
+                    UserDataError.RemoteContract(result.reason),
+                )
+                is RemoteResult.ValidationFailure -> throw UserDataException(UserDataError.RemoteContract(result.reason))
+                is RemoteResult.PermanentFailure -> throw UserDataException(UserDataError.RemoteContract(result.reason))
+            }
+        }
+        val deleted = localDataSource.deleteImmediately(localId)
+        DeletedUserUndo(
+            userName = deleted.name,
+            input = AddUserInput(
+                name = deleted.name,
+                email = deleted.email,
+                gender = deleted.gender,
+                status = deleted.status,
+            ),
+        )
+    }
+
+    override suspend fun restoreDeletedUser(input: AddUserInput): Result<String> = durableOperation {
+        when (val result = remoteDataSource.createUser(
+            CreateUserRequest(
+                name = input.name,
+                email = input.email,
+                gender = input.gender,
+                status = input.status,
+            ),
+        )) {
+            is RemoteResult.Success -> {
+                localDataSource.mergePage(
+                    users = listOf(result.value.toSnapshotUser()),
+                    observedAt = timeProvider.now(),
+                )
+                result.value.remoteId.toString()
+            }
+            RemoteResult.AuthenticationFailure -> throw UserDataException(UserDataError.AuthenticationRequired)
+            is RemoteResult.RetryableFailure -> throw UserDataException(UserDataError.RemoteContract(result.reason))
+            is RemoteResult.ValidationFailure -> throw UserDataException(UserDataError.ValidationRejected(result.reason))
+            RemoteResult.NotFound -> throw UserDataException(
+                UserDataError.RemoteContract("The create-user endpoint was not found."),
+            )
+            is RemoteResult.PermanentFailure -> throw UserDataException(UserDataError.RemoteContract(result.reason))
+        }
     }
 
     override suspend fun requestDelete(
@@ -117,3 +178,12 @@ internal class OfflineFirstUserRepository(
         )
     }
 }
+
+private fun RemoteUser.toSnapshotUser(): SnapshotUser = SnapshotUser(
+    remoteId = remoteId,
+    name = name,
+    email = email,
+    gender = gender,
+    status = status,
+    serverPosition = serverPosition,
+)

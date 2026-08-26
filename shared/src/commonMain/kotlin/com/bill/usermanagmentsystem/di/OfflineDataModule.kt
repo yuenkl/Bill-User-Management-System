@@ -76,6 +76,7 @@ internal fun offlineDataModule(
     single<UserRepository> {
         OfflineFirstUserRepository(
             localDataSource = get(),
+            remoteDataSource = get(),
             syncCoordinator = get(),
             idGenerator = get(),
             timeProvider = get(),
@@ -112,11 +113,11 @@ internal fun offlineDataModule(
         ObserveUndoableDeletions(repository::observeUndoableDeletions)
     }
     factory<DeleteUserWithUndo> {
-        DefaultDeleteUserWithUndo(repository = get(), timeProvider = get())
+        DefaultDeleteUserWithUndo(repository = get())
     }
     factory {
         val repository = get<UserRepository>()
-        UndoUserDeletion(repository::undoDelete)
+        UndoUserDeletion(repository::restoreDeletedUser)
     }
     factory {
         val repository = get<UserRepository>()

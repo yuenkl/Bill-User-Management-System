@@ -9,7 +9,7 @@ The feed reads from the local database at all times. Network work refreshes that
 - One-column feed below 600dp and an exact two-column grid from 600dp upward.
 - Shared Material 3 light/dark presentation and accessible loading, empty, offline, error, pending, and failed states.
 - Offline create with a durable outbox, FIFO synchronization, persisted retry timing, and explicit recovery for permanent failures.
-- Long-press delete with a durable five-second Undo window that survives process restart.
+- Long-press delete that removes the remote user first, then offers Undo to recreate it.
 - Lifecycle- and connectivity-aware synchronization coalesced into one active run.
 - Deterministic shared, persistence, Compose, and platform dependency-injection tests.
 
@@ -33,7 +33,7 @@ flowchart TD
     C --> B
 ```
 
-The synchronization coordinator finalizes expired deletions, processes due mutations in FIFO order, then discovers and transactionally merges the last GoRest page. Reaching the feed end appends earlier pages (`last-1`, `last-2`, and so on) through the same serialized data path. Concurrent triggers join the active run instead of starting or queuing another full synchronization. The detailed contract is in [`docs/state-transitions.md`](docs/state-transitions.md); architectural boundaries are in [`docs/architecture.md`](docs/architecture.md).
+The synchronization coordinator processes due create mutations in FIFO order, then discovers and transactionally merges the last GoRest page. Reaching the feed end appends earlier pages (`last-1`, `last-2`, and so on) through the same serialized data path. Concurrent triggers join the active run instead of starting or queuing another full synchronization. The detailed contract is in [`docs/state-transitions.md`](docs/state-transitions.md); architectural boundaries are in [`docs/architecture.md`](docs/architecture.md).
 
 ## Prerequisites
 
@@ -98,15 +98,15 @@ Coverage includes incremental pagination and Retry, the compact/wide breakpoint,
 - Create writes the user and CREATE mutation in one local transaction. The user appears immediately as pending; synchronization later attaches the remote ID to that same local row.
 - Retryable failures retain intent and persist attempt count plus the next allowed retry. HTTP 429 honors server timing; exponential backoff is bounded at five minutes.
 - Authentication and permanent failures do not loop automatically. Validation failures become visible failed-sync rows with an explicit Retry action.
-- Delete first hides the row and persists a five-second deadline. Undo before the deadline restores it without a network DELETE.
-- When the deadline expires, one durable DELETE mutation is created. HTTP 204 and 404 complete it; retryable failures keep it queued; permanent failures restore the user and explain the problem.
+- Delete calls the remote endpoint first. On HTTP 204 (or an already-absent 404), the local row is removed and the UI offers Undo.
+- Undo sends a new POST with the deleted user's data. A successful response is merged locally with its new remote ID; a failed restore leaves the user deleted and explains the problem.
 - Refresh never clears a good cache because of an offline, authentication, rate-limit, 5xx, or malformed-response failure.
 - The last page replaces the refreshable remote snapshot while retaining locally created rows; earlier pages append in descending page order when scrolled into view. A page failure keeps all loaded users visible and exposes an explicit Retry without advancing the cursor.
 
 ## Technology choices and tradeoffs
 
 - **Compose Multiplatform:** one adaptive feature UI and semantics model on Android and iOS. Native entry points remain intentionally thin.
-- **SQLDelight:** typed shared persistence and transactional state transitions. This adds schema/query code but makes outbox, deadlines, and restart behavior inspectable and deterministic.
+- **SQLDelight:** typed shared persistence and transactional state transitions. This adds schema/query code but makes the create outbox and restart behavior inspectable and deterministic.
 - **Ktor:** one strict GoRest contract with OkHttp and Darwin engines. HTTP logging is deliberately not installed so authorization headers cannot enter debug output.
 - **Koin:** constructor-injected shared modules with small platform composition roots and replaceable test doubles.
 - **Observed local time:** GoRest has no user creation/update timestamp, so the relative label records when a row was first observed locally rather than claiming a server event time.

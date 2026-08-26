@@ -21,6 +21,7 @@ import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
+import com.bill.usermanagmentsystem.domain.model.AddUserInput
 import com.bill.usermanagmentsystem.domain.model.Gender
 import com.bill.usermanagmentsystem.domain.model.UserStatus
 import com.bill.usermanagmentsystem.ui.theme.UserManagementTheme
@@ -434,7 +435,7 @@ class UserFeedScreenTest {
 
     @Test
     fun undoSnackbarNamesUserAndForwardsUndoAction() = runComposeUiTest {
-        var undoLocalId: String? = null
+        var restoredInput: AddUserInput? = null
         setContent {
             UserManagementTheme {
                 UserFeedScreen(
@@ -442,9 +443,13 @@ class UserFeedScreenTest {
                         initialLoading = false,
                         emptyState = UserFeedEmptyState.Empty,
                         undoSnackbar = DeleteUndoUiModel(
-                            localId = "local-1",
                             userName = "Ada Lovelace",
-                            deadline = Instant.parse("2026-08-26T12:00:05Z"),
+                            input = AddUserInput(
+                                name = "Ada Lovelace",
+                                email = "ada@example.com",
+                                gender = Gender.Female,
+                                status = UserStatus.Active,
+                            ),
                         ),
                     ),
                     onRefresh = {},
@@ -458,7 +463,7 @@ class UserFeedScreenTest {
                     onAddUserSubmitted = {},
                     onRetryUserCreation = {},
                     onMessageConsumed = {},
-                    onUndoDelete = { undoLocalId = it },
+                    onUndoDelete = { restoredInput = it },
                 )
             }
         }
@@ -466,7 +471,7 @@ class UserFeedScreenTest {
         onNodeWithText("Ada Lovelace deleted").fetchSemanticsNode()
         onNodeWithText("Undo").performClick()
 
-        assertEquals("local-1", undoLocalId)
+        assertEquals("ada@example.com", restoredInput?.email)
     }
 
     @Composable

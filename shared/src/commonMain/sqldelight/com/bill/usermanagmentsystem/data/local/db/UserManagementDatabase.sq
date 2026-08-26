@@ -255,6 +255,10 @@ deleteMutationForUserKind:
 DELETE FROM pending_mutations
 WHERE user_local_id = ? AND kind = ?;
 
+deleteMutationsForUser:
+DELETE FROM pending_mutations
+WHERE user_local_id = ?;
+
 deleteUser:
 DELETE FROM users
 WHERE local_id = ?;

@@ -13,6 +13,8 @@ internal interface UserLocalDataSource {
 
     suspend fun getUser(localId: String): StoredUser?
 
+    suspend fun deleteImmediately(localId: String): StoredUser
+
     suspend fun getAllMutations(): List<StoredMutation>
 
     suspend fun insertPendingCreate(
