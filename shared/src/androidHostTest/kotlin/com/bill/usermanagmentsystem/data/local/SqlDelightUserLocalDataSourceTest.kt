@@ -106,6 +106,37 @@ class SqlDelightUserLocalDataSourceTest {
     }
 
     @Test
+    fun completedCreatesAppearNewestFirstAfterTheyReceiveRemoteIds() = runTest {
+        withFixture("completed-create-ordering") {
+            val olderLocalId = source.insertPendingCreate(
+                mutationId = "older-create",
+                input = input(name = "Zoe older"),
+                observedAt = instant(1_000),
+            )
+            source.completeCreate(
+                mutationId = "older-create",
+                localId = olderLocalId,
+                remoteUser = snapshot(remoteId = 42, name = "Zoe older", position = null),
+            )
+            val newerLocalId = source.insertPendingCreate(
+                mutationId = "newer-create",
+                input = input(name = "Ada newer"),
+                observedAt = instant(2_000),
+            )
+            source.completeCreate(
+                mutationId = "newer-create",
+                localId = newerLocalId,
+                remoteUser = snapshot(remoteId = 43, name = "Ada newer", position = null),
+            )
+
+            assertEquals(
+                listOf("Ada newer", "Zoe older"),
+                source.observeVisibleUsers().first().map { it.user.name },
+            )
+        }
+    }
+
+    @Test
     fun completedLocalCreateSurvivesALastPageSnapshotThatDoesNotContainIt() = runTest {
         withFixture("completed-create-last-page") {
             val localId = source.insertPendingCreate(

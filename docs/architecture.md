@@ -135,7 +135,7 @@ Actions include initial load, refresh, add-form open/close, field changes, submi
 - `undo_deadline_epoch_ms INTEGER NULL`
 - `last_sync_error TEXT NULL`
 
-Visible-user queries exclude hidden rows and order pending/local creations first, followed by server position. Upserts preserve the original `observed_at` and do not overwrite pending local mutations.
+Visible-user queries exclude hidden rows and order pending or successfully created local users newest-first, followed by server position. Upserts preserve the original `observed_at` and do not overwrite pending local mutations.
 
 ### `pending_mutations`
 
