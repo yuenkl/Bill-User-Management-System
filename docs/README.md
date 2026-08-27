@@ -29,7 +29,7 @@ This directory is the implementation source of truth for the Sliide Kotlin Multi
 | Synchronization | Startup, foreground, connectivity restoration, and manual refresh |
 | Delete undo | Hide locally, allow five seconds to undo, then queue the remote DELETE |
 | Compact layout | Single `LazyColumn` |
-| Wider layout | Two-column `LazyVerticalGrid` at 600dp or wider |
+| Landscape layout | Two-column `LazyVerticalGrid` |
 | Relative timestamp | Time first observed locally, because GoRest supplies no creation timestamp |
 | Secret handling | Bearer token injected from ignored local configuration; never committed |
 

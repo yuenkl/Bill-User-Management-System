@@ -6,7 +6,7 @@ The feed reads from the local database at all times. Network work refreshes that
 
 ## What it demonstrates
 
-- One-column feed below 600dp and an exact two-column grid from 600dp upward.
+- Portrait uses a one-column feed; landscape uses an exact two-column grid.
 - Shared Material 3 light/dark presentation and accessible loading, empty, offline, error, pending, and failed states.
 - Server-confirmed user creation: rows are added only after HTTP 201, and API validation errors are shown in the form.
 - Long-press delete that removes the remote user first, then offers Undo to recreate it.

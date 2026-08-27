@@ -234,16 +234,16 @@ class UserFeedScreenTest {
     }
 
     @Test
-    fun adaptiveFormPresentationSwitchesAtSixHundredDp() {
-        assertEquals(AdaptiveLayoutMode.Compact, adaptiveLayoutMode(599.dp))
-        assertEquals(AdaptiveLayoutMode.Wide, adaptiveLayoutMode(600.dp))
+    fun adaptiveFormPresentationUsesAvailableWindowOrientation() {
+        assertEquals(AdaptiveLayoutMode.Compact, adaptiveLayoutMode(width = 900.dp, height = 1_200.dp))
+        assertEquals(AdaptiveLayoutMode.Wide, adaptiveLayoutMode(width = 700.dp, height = 500.dp))
     }
 
     @Test
     @Config(qualifiers = "w800dp-h1000dp")
-    fun compactFeedUsesOneColumnBelowSixHundredDp() = runComposeUiTest {
+    fun portraitFeedUsesOneColumnRegardlessOfItsWidth() = runComposeUiTest {
         setContent {
-            Box(Modifier.size(width = 599.dp, height = 800.dp)) {
+            Box(Modifier.size(width = 700.dp, height = 800.dp)) {
                 screen(
                     UserFeedUiState(
                         users = threeUsers(),
@@ -263,9 +263,9 @@ class UserFeedScreenTest {
 
     @Test
     @Config(qualifiers = "w800dp-h1000dp")
-    fun wideFeedUsesExactlyTwoColumnsAtSixHundredDp() = runComposeUiTest {
+    fun landscapeFeedUsesExactlyTwoColumnsRegardlessOfItsWidth() = runComposeUiTest {
         setContent {
-            Box(Modifier.size(width = 600.dp, height = 800.dp)) {
+            Box(Modifier.size(width = 500.dp, height = 400.dp)) {
                 screen(
                     UserFeedUiState(
                         users = threeUsers(),

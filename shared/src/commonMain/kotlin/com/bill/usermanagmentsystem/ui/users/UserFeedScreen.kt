@@ -148,7 +148,7 @@ fun UserFeedScreen(
     }
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
-        val layoutMode = adaptiveLayoutMode(maxWidth)
+        val layoutMode = adaptiveLayoutMode(maxWidth, maxHeight)
         val compactFormMaxHeight = maxHeight * 0.7f
         Scaffold(
             modifier = Modifier.fillMaxSize(),
@@ -301,8 +301,12 @@ internal enum class AdaptiveLayoutMode(val columns: Int) {
     Wide(columns = 2),
 }
 
-internal fun adaptiveLayoutMode(width: Dp): AdaptiveLayoutMode =
-    if (width >= 600.dp) AdaptiveLayoutMode.Wide else AdaptiveLayoutMode.Compact
+/**
+ * Uses the available window shape rather than a device-width threshold. This keeps portrait
+ * screens as a single feed and makes every landscape window a two-column grid.
+ */
+internal fun adaptiveLayoutMode(width: Dp, height: Dp): AdaptiveLayoutMode =
+    if (width > height) AdaptiveLayoutMode.Wide else AdaptiveLayoutMode.Compact
 
 @Composable
 private fun UserFormContent(

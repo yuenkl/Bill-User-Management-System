@@ -92,8 +92,8 @@ All behaviour must preserve the [engineering invariants](README.md#engineering-i
 ## Adaptive layout and shared UI
 
 - All feature UI is Compose Multiplatform and shared between Android and iOS.
-- Available width, not device orientation alone, determines layout.
-- Width below 600dp uses a single list. Width at least 600dp uses exactly two grid columns.
+- Available window orientation determines layout. Portrait uses a single list; landscape uses
+  exactly two grid columns.
 - Cards, forms, loading placeholders, error surfaces, dialogs, and empty states are reusable composables.
 - Support system light/dark mode with one shared Material 3 theme. Do not depend on Android-only dynamic colour for core appearance.
 - Interactive elements have semantics, readable contrast, adequate touch targets, and meaningful content descriptions where required.

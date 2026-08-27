@@ -197,7 +197,7 @@ Triggers are startup, foreground, transition to connected, manual refresh, and s
 ## Adaptive Material 3 UI
 
 - Use one screen and one ViewModel across layouts.
-- Below 600dp, render a `LazyColumn`. At 600dp or wider, render a two-column `LazyVerticalGrid`.
+- In portrait, render a `LazyColumn`. In landscape, render a two-column `LazyVerticalGrid`.
 - Reuse `UserCard`, `UserForm`, shimmer card, empty/error surface, sync indicator, and delete confirmation components.
 - Use `AnimatedVisibility` or item placement/removal animation without delaying database truth.
 - Compact add form uses `ModalBottomSheet`; wider form uses a Material 3 dialog/card with the same state and callbacks.
