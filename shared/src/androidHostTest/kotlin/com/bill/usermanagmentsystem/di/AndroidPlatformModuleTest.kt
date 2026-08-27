@@ -62,7 +62,7 @@ class AndroidPlatformModuleTest {
                     module {
                         single<UserRemoteDataSource> { FakeUserRemoteDataSource() }
                     },
-                    offlineDataModule(databaseName),
+                    userDataModule(databaseName),
                 )
             }
 

@@ -19,7 +19,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
-class UserRepositoryTest {
+class UserRepositoryImplTest {
     @Test
     fun refreshStoresTheInitialApiPageAndInitializesPagination() =
         runTest {
@@ -168,7 +168,7 @@ class UserRepositoryTest {
         local: FakeUserLocalDataSource,
         remote: FakeUserRemoteDataSource,
         connectivity: FakeConnectivityObserver = FakeConnectivityObserver(),
-    ) = UserRepository(
+    ) = UserRepositoryImpl(
         localDataSource = local,
         remoteDataSource = remote,
         connectivityObserver = connectivity,

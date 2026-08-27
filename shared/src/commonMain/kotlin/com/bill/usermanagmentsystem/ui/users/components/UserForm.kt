@@ -39,7 +39,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.bill.usermanagmentsystem.domain.model.Gender
 import com.bill.usermanagmentsystem.domain.model.UserStatus
-import com.bill.usermanagmentsystem.ui.users.AddUserField
+import com.bill.usermanagmentsystem.ui.users.AddUserFormEntryType
 import com.bill.usermanagmentsystem.ui.users.AddUserFormUiState
 
 @Composable
@@ -56,9 +56,9 @@ fun UserForm(
     val emailFocusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     val fieldsEnabled = !state.submitting
-    val nameErrorMessage = state.errorMessage(AddUserField.Name)
-    val emailErrorMessage = state.errorMessage(AddUserField.Email)
-    val genderErrorMessage = state.errorMessage(AddUserField.Gender)
+    val nameErrorMessage = state.errorMessage(AddUserFormEntryType.Name)
+    val emailErrorMessage = state.errorMessage(AddUserFormEntryType.Email)
+    val genderErrorMessage = state.errorMessage(AddUserFormEntryType.Gender)
 
     Column(
         modifier =
@@ -89,7 +89,7 @@ fun UserForm(
             }
 
             UserOutlinedTextField(
-                value = state.valueFor(AddUserField.Name).orEmpty(),
+                value = state.valueFor(AddUserFormEntryType.Name).orEmpty(),
                 onValueChange = onNameChange,
                 enabled = fieldsEnabled,
                 label = "Name",
@@ -106,7 +106,7 @@ fun UserForm(
             )
 
             UserOutlinedTextField(
-                value = state.valueFor(AddUserField.Email).orEmpty(),
+                value = state.valueFor(AddUserFormEntryType.Email).orEmpty(),
                 onValueChange = onEmailChange,
                 modifier =
                     Modifier
@@ -187,7 +187,7 @@ fun UserForm(
                 )
             }
 
-            state.errorMessage(AddUserField.Form)?.let { SupportingError(it) }
+            state.errorMessage(AddUserFormEntryType.Form)?.let { SupportingError(it) }
         }
 
         Row(

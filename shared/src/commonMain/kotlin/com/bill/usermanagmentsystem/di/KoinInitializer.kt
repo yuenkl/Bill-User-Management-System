@@ -12,7 +12,7 @@ internal fun initKoin(
         modules(
             commonModule(appConfig),
             platformModule,
-            offlineDataModule(),
+            userDataModule(),
         )
     }
 }

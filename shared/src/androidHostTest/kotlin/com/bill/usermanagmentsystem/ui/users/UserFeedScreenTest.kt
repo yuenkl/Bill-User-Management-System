@@ -303,8 +303,8 @@ class UserFeedScreenTest {
                                 AddUserFormUiState(
                                     details =
                                         listOf(
-                                            UserDetail(
-                                                type = AddUserField.Name,
+                                            AddUserFormEntry(
+                                                type = AddUserFormEntryType.Name,
                                                 value = "A",
                                                 error = "Name must be at least 2 characters.",
                                             ),
@@ -324,12 +324,12 @@ class UserFeedScreenTest {
             onNodeWithContentDescription("Submit user").assertIsNotEnabled()
         }
 
-    private fun validAddUserDetails(): List<UserDetail> =
+    private fun validAddUserDetails(): List<AddUserFormEntry> =
         listOf(
-            UserDetail(AddUserField.Name, value = "Ada Lovelace"),
-            UserDetail(AddUserField.Email, value = "ada@example.com"),
-            UserDetail(AddUserField.Gender, value = Gender.Female.apiValue),
-            UserDetail(AddUserField.Status, value = UserStatus.Active.apiValue),
+            AddUserFormEntry(AddUserFormEntryType.Name, value = "Ada Lovelace"),
+            AddUserFormEntry(AddUserFormEntryType.Email, value = "ada@example.com"),
+            AddUserFormEntry(AddUserFormEntryType.Gender, value = Gender.Female.apiValue),
+            AddUserFormEntry(AddUserFormEntryType.Status, value = UserStatus.Active.apiValue),
         )
 
     @Test
@@ -474,7 +474,7 @@ class UserFeedScreenTest {
                                 initialLoading = false,
                                 emptyState = UserFeedEmptyState.Empty,
                                 undoSnackbar =
-                                    DeleteUndoUiModel(
+                                    UndoDeleteSnackbarUiState(
                                         userName = "Ada Lovelace",
                                         input =
                                             AddUserInput(
@@ -522,7 +522,7 @@ class UserFeedScreenTest {
                     state =
                         UserFeedUiState(
                             initialLoading = false,
-                            undoSnackbar = DeleteUndoUiModel(userName = "Ada Lovelace", input = input),
+                            undoSnackbar = UndoDeleteSnackbarUiState(userName = "Ada Lovelace", input = input),
                         ),
                     onUndoDeleteDismissed = { dismissedInput = it },
                 )

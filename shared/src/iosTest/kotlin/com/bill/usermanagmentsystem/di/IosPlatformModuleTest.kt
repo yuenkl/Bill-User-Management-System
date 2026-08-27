@@ -47,7 +47,7 @@ class IosPlatformModuleTest {
                     module {
                         single<UserRemoteDataSource> { FakeUserRemoteDataSource() }
                     },
-                    offlineDataModule("offline-data-graph-test.db"),
+                    userDataModule("user-data-graph-test.db"),
                 )
             }
 

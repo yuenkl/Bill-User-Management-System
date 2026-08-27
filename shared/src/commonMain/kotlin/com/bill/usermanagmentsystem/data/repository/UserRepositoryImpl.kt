@@ -21,7 +21,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import com.bill.usermanagmentsystem.domain.repository.UserRepository as UserRepositoryContract
 
-internal class UserRepository(
+internal class UserRepositoryImpl(
     private val localDataSource: UserLocalDataSource,
     private val remoteDataSource: UserRemoteDataSource,
     private val connectivityObserver: ConnectivityObserver,
@@ -34,7 +34,7 @@ internal class UserRepository(
 
     override suspend fun refresh(): Result<Unit> =
         operationMutex.withLock {
-            durableOperation {
+            runRepositoryOperation {
                 requireConnection()
                 nextPage = null
                 when (val result = remoteDataSource.fetchInitialPage()) {
@@ -56,7 +56,7 @@ internal class UserRepository(
             val page =
                 nextPage
                     ?: return@withLock Result.success(PageLoadResult(loadedCount = 0, hasMore = false))
-            durableOperation {
+            runRepositoryOperation {
                 requireConnection()
                 when (val result = remoteDataSource.fetchPage(page)) {
                     is RemoteResult.Success -> {
@@ -78,14 +78,14 @@ internal class UserRepository(
 
     override suspend fun addUser(input: AddUserInput): Result<String> =
         operationMutex.withLock {
-            durableOperation {
+            runRepositoryOperation {
                 createUser(input)
             }
         }
 
     override suspend fun deleteImmediately(localId: String): Result<DeletedUserUndo> =
         operationMutex.withLock {
-            durableOperation {
+            runRepositoryOperation {
                 val user =
                     localDataSource.getUser(localId)
                         ?: throw UserDataException(UserDataError.UserNotFound(localId))
@@ -114,7 +114,7 @@ internal class UserRepository(
 
     override suspend fun restoreDeletedUser(input: AddUserInput): Result<String> =
         operationMutex.withLock {
-            durableOperation {
+            runRepositoryOperation {
                 createUser(input)
             }
         }
@@ -150,7 +150,7 @@ internal class UserRepository(
         }
     }
 
-    private suspend fun <T> durableOperation(block: suspend () -> T): Result<T> =
+    private suspend fun <T> runRepositoryOperation(block: suspend () -> T): Result<T> =
         try {
             Result.success(block())
         } catch (cancellation: CancellationException) {

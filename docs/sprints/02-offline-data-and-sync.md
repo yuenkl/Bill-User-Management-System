@@ -13,7 +13,7 @@ Make SQLDelight the durable source of truth and implement the offline mutation o
 
 ### Domain models and contracts
 
-- Add stable `User`, `AddUserInput`, `Gender`, and `UserStatus` models plus separate `UserRecord`, `UserSynchronization`, `SyncState`, and typed domain errors.
+- Add stable `User`, `AddUserInput`, `Gender`, `UserStatus`, `UserRecord`, and typed domain errors.
 - Keep deletion/hidden/deadline fields out of `User`; they are persistence state excluded from visible-user projections.
 - Add the `UserRepository` contract and focused use-case contracts.
 - Keep identifiers explicit: local database IDs are stable, increasing integers; remote IDs are nullable until POST succeeds.

@@ -12,7 +12,7 @@ import com.bill.usermanagmentsystem.domain.model.UserStatus
 import com.bill.usermanagmentsystem.domain.repository.PageLoadResult
 import com.bill.usermanagmentsystem.domain.usecase.AddUser
 import com.bill.usermanagmentsystem.domain.usecase.AddUserValidator
-import com.bill.usermanagmentsystem.domain.usecase.DeleteUserWithUndo
+import com.bill.usermanagmentsystem.domain.usecase.DeleteUser
 import com.bill.usermanagmentsystem.domain.usecase.LoadNextUsersPage
 import com.bill.usermanagmentsystem.domain.usecase.ObserveUsers
 import com.bill.usermanagmentsystem.domain.usecase.RefreshUsers
@@ -180,7 +180,7 @@ class UserFeedViewModelTest {
                 assertEquals(
                     "Enter a name.",
                     viewModel.uiState.value.addUserForm
-                        ?.errorMessage(AddUserField.Name),
+                        ?.errorMessage(AddUserFormEntryType.Name),
                 )
 
                 viewModel.updateAddUserName("  Ada Lovelace  ")
@@ -214,7 +214,7 @@ class UserFeedViewModelTest {
                 assertEquals(
                     "has already been taken",
                     viewModel.uiState.value.addUserForm
-                        ?.errorMessage(AddUserField.Email),
+                        ?.errorMessage(AddUserFormEntryType.Email),
                 )
                 assertEquals(
                     AddUserApiFieldError("email", "has already been taken"),
@@ -306,8 +306,8 @@ class UserFeedViewModelTest {
                         addHandler(input)
                     },
                 addUserValidator = AddUserValidator(),
-                deleteUserWithUndo =
-                    DeleteUserWithUndo { localId ->
+                deleteUser =
+                    DeleteUser { localId ->
                         deleteRequests += localId
                         deleteHandler(localId)
                     },

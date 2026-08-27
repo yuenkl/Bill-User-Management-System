@@ -4,11 +4,12 @@ import app.cash.sqldelight.db.SqlDriver
 import com.bill.usermanagmentsystem.data.local.SqlDelightUserLocalDataSource
 import com.bill.usermanagmentsystem.data.local.UserLocalDataSource
 import com.bill.usermanagmentsystem.data.local.db.UserManagementDatabase
+import com.bill.usermanagmentsystem.data.repository.UserRepositoryImpl
 import com.bill.usermanagmentsystem.domain.repository.UserRepository
 import com.bill.usermanagmentsystem.domain.usecase.AddUser
 import com.bill.usermanagmentsystem.domain.usecase.AddUserValidator
-import com.bill.usermanagmentsystem.domain.usecase.DefaultDeleteUserWithUndo
-import com.bill.usermanagmentsystem.domain.usecase.DeleteUserWithUndo
+import com.bill.usermanagmentsystem.domain.usecase.DefaultDeleteUser
+import com.bill.usermanagmentsystem.domain.usecase.DeleteUser
 import com.bill.usermanagmentsystem.domain.usecase.LoadNextUsersPage
 import com.bill.usermanagmentsystem.domain.usecase.ObserveUsers
 import com.bill.usermanagmentsystem.domain.usecase.RefreshUsers
@@ -21,11 +22,10 @@ import org.koin.core.module.Module
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
 import org.koin.dsl.onClose
-import com.bill.usermanagmentsystem.data.repository.UserRepository as UserRepositoryImplementation
 
 private const val USER_DATABASE_NAME = "user-management.db"
 
-internal fun offlineDataModule(databaseName: String = USER_DATABASE_NAME): Module =
+internal fun userDataModule(databaseName: String = USER_DATABASE_NAME): Module =
     module {
         single<CoroutineDispatcher> { Dispatchers.Default }
 
@@ -44,7 +44,7 @@ internal fun offlineDataModule(databaseName: String = USER_DATABASE_NAME): Modul
             )
         }
         single<UserRepository> {
-            UserRepositoryImplementation(
+            UserRepositoryImpl(
                 localDataSource = get(),
                 remoteDataSource = get(),
                 connectivityObserver = get(),
@@ -68,8 +68,8 @@ internal fun offlineDataModule(databaseName: String = USER_DATABASE_NAME): Modul
             AddUser(repository::addUser)
         }
         factory { AddUserValidator() }
-        factory<DeleteUserWithUndo> {
-            DefaultDeleteUserWithUndo(repository = get())
+        factory<DeleteUser> {
+            DefaultDeleteUser(repository = get())
         }
         factory {
             val repository = get<UserRepository>()
@@ -82,7 +82,7 @@ internal fun offlineDataModule(databaseName: String = USER_DATABASE_NAME): Modul
                 loadNextUsersPage = get(),
                 addUser = get(),
                 addUserValidator = get(),
-                deleteUserWithUndo = get(),
+                deleteUser = get(),
                 undoUserDeletion = get(),
                 connectivityObserver = get(),
                 lifecycleObserver = get(),

@@ -23,13 +23,13 @@ fun interface AddUser {
     suspend operator fun invoke(input: AddUserInput): Result<String>
 }
 
-fun interface DeleteUserWithUndo {
+fun interface DeleteUser {
     suspend operator fun invoke(localId: String): Result<DeletedUserUndo>
 }
 
-class DefaultDeleteUserWithUndo(
+class DefaultDeleteUser(
     private val repository: UserRepository,
-) : DeleteUserWithUndo {
+) : DeleteUser {
     override suspend fun invoke(localId: String): Result<DeletedUserUndo> = repository.deleteImmediately(localId)
 }
 

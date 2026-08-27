@@ -8,7 +8,7 @@ import com.bill.usermanagmentsystem.domain.model.UserStatus
 import com.bill.usermanagmentsystem.domain.model.userDataErrorOrNull
 import com.bill.usermanagmentsystem.domain.usecase.AddUser
 import com.bill.usermanagmentsystem.domain.usecase.AddUserValidator
-import com.bill.usermanagmentsystem.domain.usecase.DeleteUserWithUndo
+import com.bill.usermanagmentsystem.domain.usecase.DeleteUser
 import com.bill.usermanagmentsystem.domain.usecase.LoadNextUsersPage
 import com.bill.usermanagmentsystem.domain.usecase.ObserveUsers
 import com.bill.usermanagmentsystem.domain.usecase.RefreshUsers
@@ -41,7 +41,7 @@ class UserFeedViewModel(
     private val loadNextUsersPage: LoadNextUsersPage,
     private val addUser: AddUser,
     private val addUserValidator: AddUserValidator,
-    private val deleteUserWithUndo: DeleteUserWithUndo,
+    private val deleteUser: DeleteUser,
     private val undoUserDeletion: UndoUserDeletion,
     private val connectivityObserver: ConnectivityObserver,
     private val lifecycleObserver: AppLifecycleObserver,
@@ -135,9 +135,9 @@ class UserFeedViewModel(
                 createAddUserFormState(
                     current
                         .copy(
-                            touchedFields = current.touchedFields + AddUserField.Name,
-                        ).withValue(AddUserField.Name, name)
-                        .withoutError(AddUserField.Form),
+                            touchedFields = current.touchedFields + AddUserFormEntryType.Name,
+                        ).withValue(AddUserFormEntryType.Name, name)
+                        .withoutError(AddUserFormEntryType.Form),
                     validator = addUserValidator,
                 )
             }
@@ -152,9 +152,9 @@ class UserFeedViewModel(
                 createAddUserFormState(
                     current
                         .copy(
-                            touchedFields = current.touchedFields + AddUserField.Email,
-                        ).withValue(AddUserField.Email, email)
-                        .withoutError(AddUserField.Form),
+                            touchedFields = current.touchedFields + AddUserFormEntryType.Email,
+                        ).withValue(AddUserFormEntryType.Email, email)
+                        .withoutError(AddUserFormEntryType.Form),
                     validator = addUserValidator,
                 )
             }
@@ -169,9 +169,9 @@ class UserFeedViewModel(
                 createAddUserFormState(
                     current
                         .copy(
-                            touchedFields = current.touchedFields + AddUserField.Gender,
-                        ).withValue(AddUserField.Gender, gender.apiValue)
-                        .withoutError(AddUserField.Form),
+                            touchedFields = current.touchedFields + AddUserFormEntryType.Gender,
+                        ).withValue(AddUserFormEntryType.Gender, gender.apiValue)
+                        .withoutError(AddUserFormEntryType.Form),
                     validator = addUserValidator,
                 )
             }
@@ -185,8 +185,8 @@ class UserFeedViewModel(
             } else {
                 createAddUserFormState(
                     current
-                        .withValue(AddUserField.Status, status.apiValue)
-                        .withoutError(AddUserField.Form),
+                        .withValue(AddUserFormEntryType.Status, status.apiValue)
+                        .withoutError(AddUserFormEntryType.Form),
                     validator = addUserValidator,
                 )
             }
@@ -204,11 +204,11 @@ class UserFeedViewModel(
                         touchedFields =
                             current.touchedFields +
                                 setOf(
-                                    AddUserField.Name,
-                                    AddUserField.Email,
-                                    AddUserField.Gender,
+                                    AddUserFormEntryType.Name,
+                                    AddUserFormEntryType.Email,
+                                    AddUserFormEntryType.Gender,
                                 ),
-                    ).withoutError(AddUserField.Form),
+                    ).withoutError(AddUserFormEntryType.Form),
                 validator = addUserValidator,
             )
         if (!validated.canSubmit) {
@@ -226,8 +226,8 @@ class UserFeedViewModel(
             val result =
                 addUser(
                     AddUserInput(
-                        name = addUserValidator.normalize(submitting.valueFor(AddUserField.Name).orEmpty()),
-                        email = addUserValidator.normalize(submitting.valueFor(AddUserField.Email).orEmpty()),
+                        name = addUserValidator.normalize(submitting.valueFor(AddUserFormEntryType.Name).orEmpty()),
+                        email = addUserValidator.normalize(submitting.valueFor(AddUserFormEntryType.Email).orEmpty()),
                         gender = checkNotNull(submitting.gender()),
                         status = submitting.status(),
                     ),
@@ -274,7 +274,7 @@ class UserFeedViewModel(
         deletionJob =
             viewModelScope.launch(dispatcher) {
                 presentation.update { it.copy(deleteInProgress = true) }
-                val result = deleteUserWithUndo(localId)
+                val result = deleteUser(localId)
                 presentation.update { current ->
                     val completed =
                         current.copy(
@@ -285,7 +285,7 @@ class UserFeedViewModel(
                         onSuccess = { deleted ->
                             completed.copy(
                                 undoSnackbar =
-                                    DeleteUndoUiModel(
+                                    UndoDeleteSnackbarUiState(
                                         userName = deleted.userName,
                                         input = deleted.input,
                                     ),

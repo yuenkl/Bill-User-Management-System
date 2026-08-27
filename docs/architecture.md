@@ -127,7 +127,7 @@ New create submissions are direct remote operations: only HTTP 201 is merged int
 
 ## Repository operation algorithm
 
-The data-layer `UserRepository` implementation owns remote calls, pagination state, and SQLDelight writes. A `Mutex` serializes refresh, page, create, delete, and restore operations so a response cannot race a database update.
+`UserRepositoryImpl` owns remote calls, pagination state, and SQLDelight writes. A `Mutex` serializes refresh, page, create, delete, and restore operations so a response cannot race a database update.
 
 1. Refresh fetches `GET /users` without pagination parameters, reads `X-Links-Next`, and commits the received snapshot in one database transaction.
 2. Each successful scroll fetch follows the returned `X-Links-Next` value (`page=2`, `page=3`, and so on), appends the page transactionally, and advances the cursor only after the write succeeds.

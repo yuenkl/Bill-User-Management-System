@@ -13,35 +13,35 @@ data class UserFeedUiState(
     val loadMoreError: String? = null,
     val emptyState: UserFeedEmptyState? = null,
     val banner: UserFeedBanner? = null,
-    val message: UserFeedMessage? = null,
+    val message: UserFeedSnackbarMessage? = null,
     val addUserForm: AddUserFormUiState? = null,
     val addUserValidationAlert: AddUserValidationAlert? = null,
     val deleteConfirmation: UserItemUiModel? = null,
     val deleteInProgress: Boolean = false,
-    val undoSnackbar: DeleteUndoUiModel? = null,
+    val undoSnackbar: UndoDeleteSnackbarUiState? = null,
 )
 
 data class AddUserFormUiState(
-    val details: List<UserDetail> = defaultAddUserDetails(),
-    val touchedFields: Set<AddUserField> = emptySet(),
+    val details: List<AddUserFormEntry> = defaultAddUserFormEntries(),
+    val touchedFields: Set<AddUserFormEntryType> = emptySet(),
     val isValid: Boolean = false,
     val submitting: Boolean = false,
 ) {
-    fun valueFor(field: AddUserField): String? = details.firstOrNull { it.type == field }?.value
+    fun valueFor(field: AddUserFormEntryType): String? = details.firstOrNull { it.type == field }?.value
 
-    fun errorMessage(field: AddUserField): String? = details.firstOrNull { it.type == field }?.error
+    fun errorMessage(field: AddUserFormEntryType): String? = details.firstOrNull { it.type == field }?.error
 
-    fun gender(): Gender? = Gender.entries.firstOrNull { it.apiValue == valueFor(AddUserField.Gender) }
+    fun gender(): Gender? = Gender.entries.firstOrNull { it.apiValue == valueFor(AddUserFormEntryType.Gender) }
 
     fun status(): UserStatus =
-        UserStatus.entries.firstOrNull { it.apiValue == valueFor(AddUserField.Status) }
+        UserStatus.entries.firstOrNull { it.apiValue == valueFor(AddUserFormEntryType.Status) }
             ?: UserStatus.Active
 
     val canSubmit: Boolean
-        get() = isValid && details.none { it.type != AddUserField.Form && it.error != null } && !submitting
+        get() = isValid && details.none { it.type != AddUserFormEntryType.Form && it.error != null } && !submitting
 }
 
-enum class AddUserField {
+enum class AddUserFormEntryType {
     Name,
     Email,
     Gender,
@@ -50,22 +50,23 @@ enum class AddUserField {
     ;
 
     companion object {
-        fun fromApiName(value: String): AddUserField? = entries.firstOrNull { it.name.equals(value, ignoreCase = true) && it != Form }
+        fun fromApiName(value: String): AddUserFormEntryType? =
+            entries.firstOrNull { it.name.equals(value, ignoreCase = true) && it != Form }
     }
 }
 
-data class UserDetail(
-    val type: AddUserField,
+data class AddUserFormEntry(
+    val type: AddUserFormEntryType,
     val value: String? = null,
     val error: String? = null,
 )
 
-private fun defaultAddUserDetails(): List<UserDetail> =
+private fun defaultAddUserFormEntries(): List<AddUserFormEntry> =
     listOf(
-        UserDetail(AddUserField.Name),
-        UserDetail(AddUserField.Email),
-        UserDetail(AddUserField.Gender),
-        UserDetail(AddUserField.Status, value = UserStatus.Active.apiValue),
+        AddUserFormEntry(AddUserFormEntryType.Name),
+        AddUserFormEntry(AddUserFormEntryType.Email),
+        AddUserFormEntry(AddUserFormEntryType.Gender),
+        AddUserFormEntry(AddUserFormEntryType.Status, value = UserStatus.Active.apiValue),
     )
 
 data class AddUserValidationAlert(
@@ -108,12 +109,12 @@ sealed interface UserFeedBanner {
     ) : UserFeedBanner
 }
 
-data class UserFeedMessage(
+data class UserFeedSnackbarMessage(
     val id: Long,
     val text: String,
 )
 
-data class DeleteUndoUiModel(
+data class UndoDeleteSnackbarUiState(
     val userName: String,
     val input: AddUserInput,
 )
