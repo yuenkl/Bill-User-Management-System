@@ -149,6 +149,7 @@ internal class GoRestUserRemoteDataSource(
     ): PageResult {
         val response = httpClient.get(usersUrl) {
             header(HttpHeaders.CacheControl, "no-cache")
+            bearerToken()
             page?.let { parameter("page", it) }
         }
         if (response.status.value !in 200..299) {
@@ -163,7 +164,9 @@ internal class GoRestUserRemoteDataSource(
     }
 
     private fun io.ktor.client.request.HttpRequestBuilder.bearerToken() {
-        header(HttpHeaders.Authorization, "Bearer ${appConfig.apiToken}")
+        appConfig.apiToken
+            .takeIf(String::isNotBlank)
+            ?.let { token -> header(HttpHeaders.Authorization, "Bearer $token") }
     }
 
     private suspend fun HttpResponse.toFailure(): RemoteResult<Nothing> = when (status.value) {

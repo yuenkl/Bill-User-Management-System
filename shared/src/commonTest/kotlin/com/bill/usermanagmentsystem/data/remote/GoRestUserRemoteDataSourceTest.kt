@@ -24,6 +24,7 @@ class GoRestUserRemoteDataSourceTest {
                 assertEquals(null, request.url.parameters["page"])
                 assertEquals(null, request.url.parameters["per_page"])
                 assertEquals("no-cache", request.headers[HttpHeaders.CacheControl])
+                assertEquals("Bearer secret", request.headers[HttpHeaders.Authorization])
                 jsonResponse(usersJson(9, 3))
             },
         )
@@ -43,6 +44,7 @@ class GoRestUserRemoteDataSourceTest {
             engine = engine { request ->
                 val page = request.url.parameters["page"].orEmpty()
                 requests += page
+                assertEquals("Bearer secret", request.headers[HttpHeaders.Authorization])
                 jsonResponse(
                     usersJson(1),
                     nextLink = "https://example.test/public/v2/users?page=2",
@@ -192,11 +194,12 @@ class GoRestUserRemoteDataSourceTest {
     }
 
     @Test
-    fun publicFetchWorksWithoutTokenWhileWritesFailFastForAuthentication() = runRemoteTest { _ ->
+    fun publicFetchOmitsBlankTokenWhileWritesFailFastForAuthentication() = runRemoteTest { _ ->
         var requestCount = 0
         val source = source(
-            engine = engine {
+            engine = engine { request ->
                 requestCount += 1
+                assertEquals(null, request.headers[HttpHeaders.Authorization])
                 jsonResponse(usersJson(1))
             },
             apiToken = "",
