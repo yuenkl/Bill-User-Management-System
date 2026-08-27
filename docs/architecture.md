@@ -158,8 +158,8 @@ Create state changes and their outbox rows occur in the same database transactio
 1. Read pending mutations FIFO.
 2. For each `CREATE`, POST the current local row. On 201, attach the remote ID, mark synchronized, and remove the mutation transactionally.
 3. Stop processing on connectivity loss. Keep remaining work durable.
-4. After mutations, probe page 1 with `per_page=20`, read `X-Pagination-Pages`, fetch the reported last page, and set the next-page cursor to `last - 1`.
-5. Transactionally replace the remote snapshot with the last page while preserving pending, failed, and successfully created local rows. Each successful scroll fetch decrements the cursor through `last-1`, `last-2`, and earlier pages. Every refresh reads the headers again and resets the cursor from the current page count.
+4. After mutations, fetch `GET /users` without pagination parameters, read `X-Links-Next`, and set the next-page cursor from that link when it is present.
+5. Transactionally replace the remote snapshot with the initial response while preserving pending, failed, and successfully created local rows. Each successful scroll fetch follows the returned `X-Links-Next` value (`page=2`, `page=3`, and so on). Every refresh fetches the initial response again and resets the cursor from its link.
 
 Failure policy:
 
@@ -177,7 +177,7 @@ The complete transition contract is defined in [state-transitions.md](state-tran
 
 - Ktor common client configuration: JSON content negotiation, Kotlin serialization, timeouts, default GoRest base URL, bearer authentication, and status-to-domain error mapping.
 - Android provides the OkHttp engine; iOS provides Darwin.
-- The page-1 probe returns typed pagination metadata. Header parsing is case-insensitive and rejects missing/invalid page counts with a controlled error; the last page and each preceding page retain newest-to-oldest display order.
+- The initial `/users` response returns typed next-page metadata. Header parsing is case-insensitive; an absent `X-Links-Next` ends pagination and an invalid link is a controlled data-contract error. The initial response and all subsequent pages retain server display order.
 - Network logging is debug-only and must redact `Authorization`.
 
 ## Connectivity and lifecycle

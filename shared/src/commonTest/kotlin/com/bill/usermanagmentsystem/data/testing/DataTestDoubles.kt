@@ -165,12 +165,16 @@ internal class FakeUserRemoteDataSource : UserRemoteDataSource {
     val deleteRequests = mutableListOf<Long>()
     val requestOrder = mutableListOf<String>()
 
-    override suspend fun fetchLastPage(): RemoteResult<RemotePage> {
+    override suspend fun fetchInitialPage(): RemoteResult<RemotePage> {
         fetchCalls += 1
         requestOrder += "FETCH"
         val response: RemoteResult<RemotePage> = when (val result = fetchHandler()) {
             is RemoteResult.Success -> RemoteResult.Success(
-                RemotePage(result.value, page = totalPages, totalPages = totalPages),
+                RemotePage(
+                    users = result.value,
+                    page = 1,
+                    nextPage = 2L.takeIf { it <= totalPages },
+                ),
             )
             is RemoteResult.RetryableFailure -> RemoteResult.RetryableFailure(
                 result.reason,
@@ -184,10 +188,26 @@ internal class FakeUserRemoteDataSource : UserRemoteDataSource {
         return response
     }
 
-    override suspend fun fetchPage(page: Long): RemoteResult<List<RemoteUser>> {
+    override suspend fun fetchPage(page: Long): RemoteResult<RemotePage> {
         pageRequests += page
         requestOrder += "FETCH:$page"
-        return pageHandler(page)
+        return when (val result = pageHandler(page)) {
+            is RemoteResult.Success -> RemoteResult.Success(
+                RemotePage(
+                    users = result.value,
+                    page = page,
+                    nextPage = (page + 1).takeIf { it <= totalPages },
+                ),
+            )
+            is RemoteResult.RetryableFailure -> RemoteResult.RetryableFailure(
+                result.reason,
+                result.serverRetryAt,
+            )
+            RemoteResult.AuthenticationFailure -> RemoteResult.AuthenticationFailure
+            is RemoteResult.ValidationFailure -> RemoteResult.ValidationFailure(result.reason)
+            RemoteResult.NotFound -> RemoteResult.NotFound
+            is RemoteResult.PermanentFailure -> RemoteResult.PermanentFailure(result.reason)
+        }
     }
 
     override suspend fun createUser(request: CreateUserRequest): RemoteResult<RemoteUser> {

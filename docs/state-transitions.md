@@ -19,12 +19,12 @@ Backoff metadata is stored in SQLDelight so process death cannot reset a failing
 
 | Current state | Event | Success | Retryable failure | Permanent failure / edge case |
 | --- | --- | --- | --- | --- |
-| Empty, idle | Initial load | Discover and commit the last-page snapshot; emit visible users and enable the earlier-page cursor when available | Remain empty; show offline/retry state | Show authentication or data-contract error; no loop |
+| Empty, idle | Initial load | Fetch and commit the initial `/users` snapshot; emit visible users and enable the `X-Links-Next` cursor when available | Remain empty; show offline/retry state | Show authentication or data-contract error; no loop |
 | Cached, idle | Initial load/refresh | Commit snapshot; keep original `observedAt` | Keep cached users; show non-blocking stale/offline state | Keep cached users; show blocking reason where relevant |
 | Refreshing | Another refresh trigger | Join/coalesce active sync | Same active result | Never start a second concurrent refresh |
-| Any | Page-count header missing/invalid | None | None | Keep cache; surface data-contract error; do not clear database |
-| Page loaded | Feed reaches end | Fetch and transactionally append the preceding page (`current-1`) in display order | Keep loaded users; show explicit page Retry without advancing the cursor | Stop after page 1; never loop or duplicate a page |
-| Any | Last page is empty | Commit an empty remote snapshot while preserving pending/failed local rows | Keep prior snapshot | Never delete pending local intent |
+| Any | Next-page link invalid | None | None | Keep cache; surface data-contract error; do not clear database |
+| Page loaded | Feed reaches end | Fetch and transactionally append the page named by `X-Links-Next` in display order | Keep loaded users; show explicit page Retry without advancing the cursor | Stop when `X-Links-Next` is absent; never loop or duplicate a page |
+| Any | Initial page is empty | Commit an empty remote snapshot while preserving pending/failed local rows | Keep prior snapshot | Never delete pending local intent |
 
 Snapshot results affect UI only after their database transaction commits.
 
@@ -58,7 +58,7 @@ Snapshot results affect UI only after their database transaction commits.
 | Running | Connectivity lost | Stop after the current safe boundary; persist remaining intent |
 | Running | Retryable mutation failure | Persist retry schedule; continue only when ordering and dependency safety allow |
 | Running | Authentication blocked | Mark affected work blocked and stop remote processing |
-| Running | Outbox drained | Discover and transactionally merge the last page; preceding pages load through the serialized pagination path |
+| Running | Outbox drained | Fetch and transactionally merge the initial `/users` page; subsequent pages load through the serialized pagination path |
 | Any | Process death | No create intent is lost because users, mutations, attempts, and retry times are persisted; a dismissed Undo is not restored |
 
 ## Presentation states

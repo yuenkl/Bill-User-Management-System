@@ -105,7 +105,7 @@ class DefaultSyncCoordinatorTest {
     }
 
     @Test
-    fun successfulSyncStartsAtLastPageAndLoadsEarlierPagesInOrder() = runTest {
+    fun successfulSyncStartsAtFirstPageAndLoadsFollowingPagesInOrder() = runTest {
         val fixture = fixture()
         fixture.remote.totalPages = 3
         fixture.remote.fetchHandler = {
@@ -122,7 +122,7 @@ class DefaultSyncCoordinatorTest {
         val third = fixture.coordinator.loadNextPage().getOrThrow()
         val finished = fixture.coordinator.loadNextPage().getOrThrow()
 
-        assertEquals(listOf(2L, 1L), fixture.remote.pageRequests)
+        assertEquals(listOf(2L, 3L), fixture.remote.pageRequests)
         assertEquals(1, second.loadedCount)
         assertTrue(second.hasMore)
         assertTrue(!third.hasMore)
@@ -131,7 +131,7 @@ class DefaultSyncCoordinatorTest {
     }
 
     @Test
-    fun refreshReadsTheLatestPageCountAndResetsTheDescendingCursor() = runTest {
+    fun refreshResetsTheNextPageCursorFromTheInitialResponse() = runTest {
         val fixture = fixture()
         fixture.remote.totalPages = 148
         fixture.remote.fetchHandler = {
@@ -148,7 +148,7 @@ class DefaultSyncCoordinatorTest {
         assertTrue(fixture.coordinator.sync().isSuccess)
         assertTrue(fixture.coordinator.loadNextPage().isSuccess)
 
-        assertEquals(listOf(147L, 148L), fixture.remote.pageRequests)
+        assertEquals(listOf(2L, 2L), fixture.remote.pageRequests)
         assertEquals(2, fixture.local.mergedSnapshots.size)
     }
 
@@ -170,7 +170,7 @@ class DefaultSyncCoordinatorTest {
         assertTrue(fixture.coordinator.loadNextPage().isFailure)
         assertTrue(fixture.coordinator.loadNextPage().isSuccess)
 
-        assertEquals(listOf(1L, 1L), fixture.remote.pageRequests)
+        assertEquals(listOf(2L, 2L), fixture.remote.pageRequests)
         assertEquals(1, fixture.local.mergedPages.size)
     }
 
@@ -199,7 +199,7 @@ class DefaultSyncCoordinatorTest {
 
         assertTrue(sync.await().isSuccess)
         assertTrue(page.await().isSuccess)
-        assertEquals(listOf(1L), fixture.remote.pageRequests)
+        assertEquals(listOf(2L), fixture.remote.pageRequests)
     }
 
     @Test

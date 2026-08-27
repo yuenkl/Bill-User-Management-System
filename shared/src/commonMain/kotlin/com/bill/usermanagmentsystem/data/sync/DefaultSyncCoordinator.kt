@@ -84,13 +84,13 @@ internal class DefaultSyncCoordinator(
             when (val result = remoteDataSource.fetchPage(page)) {
                 is RemoteResult.Success -> {
                     localDataSource.mergePage(
-                        users = result.value.map(RemoteUser::toSnapshotUser),
+                        users = result.value.users.map(RemoteUser::toSnapshotUser),
                         observedAt = timeProvider.now(),
                     )
-                    nextPage = (page - 1).takeIf { it >= 1 }
+                    nextPage = result.value.nextPage
                     Result.success(
                         PageLoadResult(
-                            loadedCount = result.value.size,
+                            loadedCount = result.value.users.size,
                             hasMore = nextPage != null,
                         ),
                     )
@@ -179,14 +179,14 @@ internal class DefaultSyncCoordinator(
         }
 
         if (!hasValidatedConnection()) return offlineFailure()
-        when (val snapshotResult = remoteDataSource.fetchLastPage()) {
+        when (val snapshotResult = remoteDataSource.fetchInitialPage()) {
             is RemoteResult.Success -> {
                 val page = snapshotResult.value
                 localDataSource.mergeSnapshot(
                     users = page.users.map(RemoteUser::toSnapshotUser),
                     observedAt = timeProvider.now(),
                 )
-                nextPage = (page.page - 1).takeIf { it >= 1 }
+                nextPage = page.nextPage
             }
 
             is RemoteResult.RetryableFailure -> return retryableFailure(

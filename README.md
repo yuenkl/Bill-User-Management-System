@@ -33,7 +33,7 @@ flowchart TD
     C --> B
 ```
 
-The synchronization coordinator processes due create mutations in FIFO order, then discovers and transactionally merges the last GoRest page. Reaching the feed end appends earlier pages (`last-1`, `last-2`, and so on) through the same serialized data path. Concurrent triggers join the active run instead of starting or queuing another full synchronization. The detailed contract is in [`docs/state-transitions.md`](docs/state-transitions.md); architectural boundaries are in [`docs/architecture.md`](docs/architecture.md).
+The synchronization coordinator processes due create mutations in FIFO order, then transactionally merges the initial GoRest `/users` response. Reaching the feed end appends the page named by `X-Links-Next` (`page=2`, `page=3`, and so on) through the same serialized data path. Concurrent triggers join the active run instead of starting or queuing another full synchronization. The detailed contract is in [`docs/state-transitions.md`](docs/state-transitions.md); architectural boundaries are in [`docs/architecture.md`](docs/architecture.md).
 
 ## Prerequisites
 
@@ -101,7 +101,7 @@ Coverage includes incremental pagination and Retry, the compact/wide breakpoint,
 - Delete calls the remote endpoint first. On HTTP 204 (or an already-absent 404), the local row is removed and the UI offers Undo.
 - Undo sends a new POST with the deleted user's data. A successful response is merged locally with its new remote ID; a failed restore leaves the user deleted and explains the problem.
 - Refresh never clears a good cache because of an offline, authentication, rate-limit, 5xx, or malformed-response failure.
-- The last page replaces the refreshable remote snapshot while retaining locally created rows; earlier pages append in descending page order when scrolled into view. A page failure keeps all loaded users visible and exposes an explicit Retry without advancing the cursor.
+- The initial `/users` response replaces the refreshable remote snapshot while retaining locally created rows; pages named by `X-Links-Next` append in server order when scrolled into view. A page failure keeps all loaded users visible and exposes an explicit Retry without advancing the cursor.
 
 ## Technology choices and tradeoffs
 

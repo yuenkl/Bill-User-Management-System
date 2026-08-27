@@ -34,9 +34,9 @@ import kotlinx.serialization.json.Json
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
-private const val PAGE_SIZE = 20
+private const val PAGE_SIZE = 10
 private const val MAX_PAGE_NUMBER = Long.MAX_VALUE / PAGE_SIZE
-private const val PAGINATION_PAGES_HEADER = "X-Pagination-Pages"
+private const val LINKS_NEXT_HEADER = "X-Links-Next"
 private const val RATE_LIMIT_RESET_HEADER = "X-RateLimit-Reset"
 
 internal fun createGoRestHttpClient(
@@ -82,35 +82,30 @@ internal class GoRestUserRemoteDataSource(
 ) : UserRemoteDataSource {
     private val usersUrl = "${appConfig.baseUrl.trimEnd('/')}/users"
 
-    override suspend fun fetchLastPage(): RemoteResult<RemotePage> = remoteCall {
-        when (val firstPage = fetchPageResponse(page = 1, requirePageCount = true)) {
-            is PageResult.Failure -> firstPage.failure
-            is PageResult.Success -> {
-                val lastPageNumber = requireNotNull(firstPage.pageCount)
-                val lastPageUsers = if (lastPageNumber == 1L) {
-                    firstPage.users
-                } else {
-                    when (val lastPage = fetchPageResponse(page = lastPageNumber, requirePageCount = false)) {
-                        is PageResult.Failure -> return@remoteCall lastPage.failure
-                        is PageResult.Success -> lastPage.users
-                    }
-                }
-                RemoteResult.Success(
-                    RemotePage(
-                        users = lastPageUsers.toRemoteUsers(page = lastPageNumber),
-                        page = lastPageNumber,
-                        totalPages = lastPageNumber,
-                    ),
-                )
-            }
+    override suspend fun fetchInitialPage(): RemoteResult<RemotePage> = remoteCall {
+        when (val initialPage = fetchPageResponse(page = null)) {
+            is PageResult.Failure -> initialPage.failure
+            is PageResult.Success -> RemoteResult.Success(
+                RemotePage(
+                    users = initialPage.users.toRemoteUsers(page = 1),
+                    page = 1,
+                    nextPage = initialPage.nextPage.after(page = 1),
+                ),
+            )
         }
     }
 
-    override suspend fun fetchPage(page: Long): RemoteResult<List<RemoteUser>> = remoteCall {
+    override suspend fun fetchPage(page: Long): RemoteResult<RemotePage> = remoteCall {
         require(page in 1..MAX_PAGE_NUMBER) { "Page number is outside the supported range." }
-        when (val result = fetchPageResponse(page = page, requirePageCount = false)) {
+        when (val result = fetchPageResponse(page = page)) {
             is PageResult.Failure -> result.failure
-            is PageResult.Success -> RemoteResult.Success(result.users.toRemoteUsers(page))
+            is PageResult.Success -> RemoteResult.Success(
+                RemotePage(
+                    users = result.users.toRemoteUsers(page),
+                    page = page,
+                    nextPage = result.nextPage.after(page),
+                ),
+            )
         }
     }
 
@@ -150,30 +145,21 @@ internal class GoRestUserRemoteDataSource(
     }
 
     private suspend fun fetchPageResponse(
-        page: Long,
-        requirePageCount: Boolean,
+        page: Long?,
     ): PageResult {
         val response = httpClient.get(usersUrl) {
             header(HttpHeaders.CacheControl, "no-cache")
-            parameter("page", page)
-            parameter("per_page", PAGE_SIZE)
+            page?.let { parameter("page", it) }
         }
         if (response.status.value !in 200..299) {
             return PageResult.Failure(response.toFailure())
         }
 
-        val pageCount = if (requirePageCount) {
-            response.headers[PAGINATION_PAGES_HEADER]
-                ?.trim()
-                ?.toLongOrNull()
-                ?.takeIf { it in 1..MAX_PAGE_NUMBER }
-                ?: return PageResult.Failure(
-                    RemoteResult.PermanentFailure("The server returned invalid pagination metadata."),
-                )
-        } else {
-            null
-        }
-        return PageResult.Success(response.body(), pageCount)
+        val nextPage = response.headers[LINKS_NEXT_HEADER]
+            ?.trim()
+            ?.let(::parseNextPage)
+            ?: return PageResult.Success(response.body(), nextPage = null)
+        return PageResult.Success(response.body(), nextPage)
     }
 
     private fun io.ktor.client.request.HttpRequestBuilder.bearerToken() {
@@ -222,11 +208,27 @@ internal class GoRestUserRemoteDataSource(
     private sealed interface PageResult {
         data class Success(
             val users: List<GoRestUserDto>,
-            val pageCount: Long?,
+            val nextPage: Long?,
         ) : PageResult
 
         data class Failure(val failure: RemoteResult<Nothing>) : PageResult
     }
+}
+
+private fun parseNextPage(nextLink: String): Long {
+    val pageValue = nextLink
+        .substringAfter("?", missingDelimiterValue = "")
+        .split("&")
+        .firstOrNull { it.substringBefore("=") == "page" }
+        ?.substringAfter("=", missingDelimiterValue = "")
+        ?.toLongOrNull()
+    return requireNotNull(pageValue?.takeIf { it in 1..MAX_PAGE_NUMBER }) {
+        "The service returned an invalid next-page link."
+    }
+}
+
+private fun Long?.after(page: Long): Long? = this?.also { nextPage ->
+    require(nextPage > page) { "The service returned a non-forward next-page link." }
 }
 
 private inline fun <T> remoteCall(block: () -> RemoteResult<T>): RemoteResult<T> = try {
@@ -263,9 +265,7 @@ private fun GoRestUserDto.toRemoteUser(serverPosition: Long?): RemoteUser {
 
 private fun List<GoRestUserDto>.toRemoteUsers(page: Long): List<RemoteUser> =
     mapIndexed { index, user ->
-        // Pages are loaded newest-to-oldest. Negative page offsets keep the
-        // first displayed page ahead of earlier pages in the ascending DB order.
-        val serverPosition = -(page * PAGE_SIZE) + index
+        val serverPosition = ((page - 1) * PAGE_SIZE) + index
         user.toRemoteUser(serverPosition)
     }
 

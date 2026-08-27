@@ -16,12 +16,12 @@ All behaviour must preserve the [engineering invariants](README.md#engineering-i
 
 ### Behaviour
 
-- Discover and fetch the last page from `GET /public/v2/users`, then load `last-1`, `last-2`, and earlier pages as the user reaches the end of the feed.
-- Request 20 users per page. Read `X-Pagination-Pages` from the first response, use it as the initial page, and stop after page 1.
+- Fetch `GET /public/v2/users` as the initial, newest page, then follow `X-Links-Next` (`page=2`, `page=3`, and so on) as the user reaches the end of the feed.
+- Read `X-Links-Next` from each response. Its absence marks the end of the feed.
 - Persist the remote snapshot before exposing it to the UI. The UI observes SQLDelight only and never displays a network response directly.
 - Each row displays name, email, gender/status indicators where useful, and a relative timestamp based on when the record was first observed locally.
 - Preserve server order across appended pages. Locally created users appear above the remote snapshot.
-- Refresh is available through pull-to-refresh or an equivalent explicit Material 3 action; it rereads the current page count and refreshes the snapshot before restarting earlier-page loading.
+- Refresh is available through pull-to-refresh or an equivalent explicit Material 3 action; it refreshes the initial response before restarting next-page loading.
 
 ### Loading and failure states
 
@@ -34,7 +34,7 @@ All behaviour must preserve the [engineering invariants](README.md#engineering-i
 
 ### Acceptance criteria
 
-- Cold start online displays the last page and scrolling progressively appends every earlier page in descending page order.
+- Cold start online displays the initial response and scrolling progressively appends each subsequent page in server order.
 - Cold start offline displays cached users, or the offline empty state if no cache exists.
 - Refresh never clears valid cached content before replacement data is committed.
 - Relative-time boundaries are correct and update while the screen remains open.
