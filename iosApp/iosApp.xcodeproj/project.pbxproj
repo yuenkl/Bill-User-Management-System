@@ -75,6 +75,7 @@
 				17EE02C3DE456B43A713129D /* Sources */,
 				E3B02636BBE21E312AB7436E /* Frameworks */,
 				F0DF068986989221879EC29B /* Resources */,
+				A1B2C3D4E5F60718293A4B5C /* Copy GoRest Token */,
 			);
 			buildRules = (
 			);
@@ -135,6 +136,26 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		A1B2C3D4E5F60718293A4B5C /* Copy GoRest Token */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Copy GoRest Token";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/GoRestToken.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\nsource_file=\"$SRCROOT/../local.properties\"\noutput_directory=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\noutput_file=\"$output_directory/GoRestToken.txt\"\nmkdir -p \"$output_directory\"\nif [ -f \"$source_file\" ]; then\n  /usr/bin/sed -n 's/^GOREST_ACCESS_TOKEN=//p' \"$source_file\" | /usr/bin/head -n 1 > \"$output_file\"\nelse\n  : > \"$output_file\"\nfi\n";
+		};
 		DD9552B8B3D975DCF2FBC3D4 /* Compile Kotlin Framework */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
