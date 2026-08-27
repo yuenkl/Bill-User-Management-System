@@ -23,8 +23,11 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flow
@@ -50,10 +53,12 @@ class UserFeedViewModel(
     private val dispatcher: CoroutineDispatcher,
 ) : ViewModel() {
     private val presentation = MutableStateFlow(UserFeedPresentationState())
+    private val mutableEvents = MutableSharedFlow<UserFeedEvent>(extraBufferCapacity = 1)
     private var synchronizationJob: Job? = null
     private var pageLoadJob: Job? = null
     private var deletionJob: Job? = null
     private var undoJob: Job? = null
+    private var pendingUndoInput: AddUserInput? = null
 
     private val feedData =
         observeUsers().stateIn(
@@ -82,6 +87,8 @@ class UserFeedViewModel(
                 started = SharingStarted.Eagerly,
                 initialValue = UserFeedUiState(),
             )
+
+    val events: SharedFlow<UserFeedEvent> = mutableEvents.asSharedFlow()
 
     init {
         requestSynchronization(manual = false)
@@ -247,12 +254,6 @@ class UserFeedViewModel(
         }
     }
 
-    fun consumeMessage(id: Long) {
-        presentation.update { current ->
-            if (current.message?.id == id) current.copy(message = null) else current
-        }
-    }
-
     fun selectUserForDeletion(localId: String) {
         if (feedData.value.none { it.user.localId == localId }) return
         presentation.update { it.copy(selectedUserId = localId) }
@@ -275,44 +276,41 @@ class UserFeedViewModel(
             viewModelScope.launch(dispatcher) {
                 presentation.update { it.copy(deleteInProgress = true) }
                 val result = deleteUser(localId)
-                presentation.update { current ->
-                    val completed =
-                        current.copy(
-                            selectedUserId = null,
-                            deleteInProgress = false,
-                        )
-                    result.fold(
-                        onSuccess = { deleted ->
-                            completed.copy(
-                                undoSnackbar =
-                                    UndoDeleteSnackbarUiState(
-                                        userName = deleted.userName,
-                                        input = deleted.input,
-                                    ),
-                            )
-                        },
-                        onFailure = { completed.withFailureMessage(it) },
+                presentation.update {
+                    it.copy(
+                        selectedUserId = null,
+                        deleteInProgress = false,
                     )
                 }
+                result.fold(
+                    onSuccess = { deleted ->
+                        pendingUndoInput = deleted.input
+                        mutableEvents.emit(
+                            UserFeedEvent.ShowDeleteUndoSnackbar(
+                                userName = deleted.userName,
+                                input = deleted.input,
+                            ),
+                        )
+                    },
+                    onFailure = { emitFailure(it) },
+                )
             }
     }
 
     fun undoDelete(input: AddUserInput) {
         if (undoJob?.isActive == true) return
-        if (presentation.value.undoSnackbar?.input != input) return
+        if (pendingUndoInput != input) return
+        pendingUndoInput = null
 
         undoJob =
             viewModelScope.launch(dispatcher) {
                 val result = undoUserDeletion(input)
-                presentation.update { it.copy(undoSnackbar = null) }
-                if (result.isFailure) publishFailure(result.exceptionOrNull())
+                if (result.isFailure) emitFailure(result.exceptionOrNull())
             }
     }
 
     fun dismissUndoDelete(input: AddUserInput) {
-        presentation.update { current ->
-            if (current.undoSnackbar?.input == input) current.copy(undoSnackbar = null) else current
-        }
+        if (pendingUndoInput == input) pendingUndoInput = null
     }
 
     private fun requestSynchronization(manual: Boolean) {
@@ -322,22 +320,18 @@ class UserFeedViewModel(
             viewModelScope.launch(dispatcher) {
                 presentation.update { it.copy(refreshing = manual) }
                 val result = refreshUsers()
-                presentation.update { current ->
-                    val refreshed =
-                        current.copy(
-                            initialAttemptFinished = true,
-                            refreshing = false,
-                            loadingNextPage = false,
-                            canLoadNextPage = result.isSuccess,
-                            nextPageError = null,
-                            refreshError = result.exceptionOrNull()?.userDataErrorOrNull(),
-                        )
-                    if (manual && result.isFailure) {
-                        refreshed.withFailureMessage(result.exceptionOrNull())
-                    } else {
-                        refreshed
-                    }
+                val failure = result.exceptionOrNull()
+                presentation.update {
+                    it.copy(
+                        initialAttemptFinished = true,
+                        refreshing = false,
+                        loadingNextPage = false,
+                        canLoadNextPage = result.isSuccess,
+                        nextPageError = null,
+                        refreshError = failure?.userDataErrorOrNull(),
+                    )
                 }
+                if (manual && failure != null) emitFailure(failure)
             }
     }
 
@@ -402,8 +396,8 @@ class UserFeedViewModel(
             }
         }.flowOn(dispatcher)
 
-    private fun publishFailure(failure: Throwable?) {
-        presentation.update { it.withFailureMessage(failure) }
+    private suspend fun emitFailure(failure: Throwable?) {
+        mutableEvents.emit(UserFeedEvent.ShowSnackbar(failure.toUserMessage()))
     }
 
     private fun updateForm(transform: (AddUserFormUiState) -> AddUserFormUiState) {

@@ -13,6 +13,7 @@ shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/
 |   `-- users/
 |       |-- components/
 |       |-- UserFeedScreen.kt
+|       |-- UserFeedEvent.kt
 |       |-- UserFeedUiState.kt
 |       `-- UserFeedViewModel.kt
 |-- domain/
@@ -106,11 +107,10 @@ data class UserFeedUiState(
     val emptyState: EmptyState?,
     val addForm: AddUserFormUiState?,
     val deleteConfirmation: UserItemUiModel?,
-    val snackbar: SnackbarMessage?,
 )
 ```
 
-Actions include initial load, refresh, add-form open/close, field changes, submit, user long-press, delete confirm/cancel, Undo, Retry, and message consumption. One-off messages use an explicit event/channel contract and are not encoded as permanently replayed state.
+Actions include initial load, refresh, add-form open/close, field changes, submit, user long-press, delete confirm/cancel, Undo, and Retry. One-off Snackbar effects are emitted as `SharedFlow<UserFeedEvent>` values, so they are not replayed by the screen state after recomposition. The ViewModel keeps only the current Undo input needed to validate a restore action.
 
 ## SQLDelight design
 

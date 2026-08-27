@@ -33,6 +33,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bill.usermanagmentsystem.domain.model.AddUserInput
 import com.bill.usermanagmentsystem.domain.model.Gender
 import com.bill.usermanagmentsystem.domain.model.UserStatus
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.emptyFlow
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
@@ -43,6 +46,7 @@ fun UserFeedRoute(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     UserFeedScreen(
         state = state,
+        events = viewModel.events,
         onRefresh = viewModel::refresh,
         onRetry = viewModel::retry,
         onAddUser = viewModel::openAddUserForm,
@@ -53,7 +57,6 @@ fun UserFeedRoute(
         onAddUserStatusSelected = viewModel::selectAddUserStatus,
         onAddUserSubmitted = viewModel::submitAddUser,
         onAddUserValidationAlertDismissed = viewModel::dismissAddUserValidationAlert,
-        onMessageConsumed = viewModel::consumeMessage,
         onUserLongClick = viewModel::selectUserForDeletion,
         onDeleteCancel = viewModel::cancelDelete,
         onDeleteConfirm = viewModel::confirmDelete,
@@ -69,6 +72,7 @@ fun UserFeedRoute(
 @Composable
 fun UserFeedScreen(
     state: UserFeedUiState,
+    events: Flow<UserFeedEvent> = emptyFlow(),
     onRefresh: () -> Unit,
     onRetry: () -> Unit,
     onAddUser: () -> Unit,
@@ -78,7 +82,6 @@ fun UserFeedScreen(
     onAddUserGenderSelected: (Gender) -> Unit,
     onAddUserStatusSelected: (UserStatus) -> Unit,
     onAddUserSubmitted: () -> Unit,
-    onMessageConsumed: (Long) -> Unit,
     onAddUserValidationAlertDismissed: () -> Unit = {},
     onUserLongClick: (String) -> Unit = {},
     onDeleteCancel: () -> Unit = {},
@@ -90,27 +93,24 @@ fun UserFeedScreen(
     modifier: Modifier = Modifier,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
-    val message = state.message
-    val undoSnackbar = state.undoSnackbar
-    LaunchedEffect(message?.id, undoSnackbar?.input) {
-        if (message != null && undoSnackbar == null) {
-            onMessageConsumed(message.id)
-            snackbarHostState.showSnackbar(message.text)
-        }
-    }
-    LaunchedEffect(undoSnackbar?.input) {
-        if (undoSnackbar != null) {
-            snackbarHostState.currentSnackbarData?.dismiss()
-            val result =
-                snackbarHostState.showSnackbar(
-                    message = "${undoSnackbar.userName} deleted",
-                    actionLabel = "Undo",
-                    duration = SnackbarDuration.Indefinite,
-                )
-            if (result == SnackbarResult.ActionPerformed) {
-                onUndoDelete(undoSnackbar.input)
-            } else {
-                onUndoDeleteDismissed(undoSnackbar.input)
+    LaunchedEffect(events) {
+        events.collect { event ->
+            when (event) {
+                is UserFeedEvent.ShowSnackbar -> snackbarHostState.showSnackbar(event.message)
+                is UserFeedEvent.ShowDeleteUndoSnackbar -> {
+                    snackbarHostState.currentSnackbarData?.dismiss()
+                    val result =
+                        snackbarHostState.showSnackbar(
+                            message = "${event.userName} deleted",
+                            actionLabel = "Undo",
+                            duration = SnackbarDuration.Indefinite,
+                        )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        onUndoDelete(event.input)
+                    } else {
+                        onUndoDeleteDismissed(event.input)
+                    }
+                }
             }
         }
     }

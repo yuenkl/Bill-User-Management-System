@@ -27,9 +27,11 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
@@ -68,6 +70,8 @@ class UserFeedViewModelTest {
                 }
                 runCurrent()
 
+                val event = async { viewModel.events.first() }
+                runCurrent()
                 viewModel.refresh()
                 runCurrent()
 
@@ -78,7 +82,12 @@ class UserFeedViewModelTest {
                         .name,
                 )
                 assertNotNull(viewModel.uiState.value.banner)
-                assertNotNull(viewModel.uiState.value.message)
+                assertEquals(
+                    UserFeedEvent.ShowSnackbar(
+                        message = "The service returned unexpected data. Unavailable",
+                    ),
+                    event.await(),
+                )
             }
         }
 
@@ -232,6 +241,8 @@ class UserFeedViewModelTest {
                 users.value = listOf(userRecord())
                 runCurrent()
 
+                val event = async { viewModel.events.first() }
+                runCurrent()
                 viewModel.selectUserForDeletion("local-1")
                 viewModel.confirmDelete()
                 viewModel.confirmDelete()
@@ -239,14 +250,35 @@ class UserFeedViewModelTest {
 
                 assertEquals(listOf("local-1"), deleteRequests)
                 val input =
-                    viewModel.uiState.value.undoSnackbar!!
+                    (event.await() as UserFeedEvent.ShowDeleteUndoSnackbar)
                         .input
                 viewModel.undoDelete(input)
                 viewModel.undoDelete(input)
                 runCurrent()
 
                 assertEquals(listOf(input), undoRequests)
-                assertNull(viewModel.uiState.value.undoSnackbar)
+            }
+        }
+
+    @Test
+    fun dismissedUndoCannotRestoreDeletedUser() =
+        runTest {
+            withFixture {
+                users.value = listOf(userRecord())
+                runCurrent()
+
+                val event = async { viewModel.events.first() }
+                runCurrent()
+                viewModel.selectUserForDeletion("local-1")
+                viewModel.confirmDelete()
+                runCurrent()
+
+                val input = (event.await() as UserFeedEvent.ShowDeleteUndoSnackbar).input
+                viewModel.dismissUndoDelete(input)
+                viewModel.undoDelete(input)
+                runCurrent()
+
+                assertTrue(undoRequests.isEmpty())
             }
         }
 

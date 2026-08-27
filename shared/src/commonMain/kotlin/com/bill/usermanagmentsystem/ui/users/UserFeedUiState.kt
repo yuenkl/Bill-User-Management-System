@@ -1,6 +1,5 @@
 package com.bill.usermanagmentsystem.ui.users
 
-import com.bill.usermanagmentsystem.domain.model.AddUserInput
 import com.bill.usermanagmentsystem.domain.model.Gender
 import com.bill.usermanagmentsystem.domain.model.UserStatus
 
@@ -13,12 +12,10 @@ data class UserFeedUiState(
     val loadMoreError: String? = null,
     val emptyState: UserFeedEmptyState? = null,
     val banner: UserFeedBanner? = null,
-    val message: UserFeedSnackbarMessage? = null,
     val addUserForm: AddUserFormUiState? = null,
     val addUserValidationAlert: AddUserValidationAlert? = null,
     val deleteConfirmation: UserItemUiModel? = null,
     val deleteInProgress: Boolean = false,
-    val undoSnackbar: UndoDeleteSnackbarUiState? = null,
 )
 
 data class AddUserFormUiState(
@@ -108,13 +105,3 @@ sealed interface UserFeedBanner {
         val message: String,
     ) : UserFeedBanner
 }
-
-data class UserFeedSnackbarMessage(
-    val id: Long,
-    val text: String,
-)
-
-data class UndoDeleteSnackbarUiState(
-    val userName: String,
-    val input: AddUserInput,
-)

@@ -13,14 +13,11 @@ internal data class UserFeedPresentationState(
     val loadingNextPage: Boolean = false,
     val canLoadNextPage: Boolean = false,
     val nextPageError: String? = null,
-    val message: UserFeedSnackbarMessage? = null,
     val addUserForm: AddUserFormUiState? = null,
     val addUserValidationAlert: AddUserValidationAlert? = null,
     val refreshError: UserDataError? = null,
-    val messageSequence: Long = 0,
     val selectedUserId: String? = null,
     val deleteInProgress: Boolean = false,
-    val undoSnackbar: UndoDeleteSnackbarUiState? = null,
 )
 
 internal fun buildUserFeedUiState(
@@ -59,20 +56,10 @@ internal fun buildUserFeedUiState(
         loadMoreError = presentation.nextPageError,
         emptyState = emptyState,
         banner = banner,
-        message = presentation.message,
         addUserForm = presentation.addUserForm,
         addUserValidationAlert = presentation.addUserValidationAlert,
         deleteConfirmation = items.firstOrNull { it.localId == presentation.selectedUserId },
         deleteInProgress = presentation.deleteInProgress,
-        undoSnackbar = presentation.undoSnackbar,
-    )
-}
-
-internal fun UserFeedPresentationState.withFailureMessage(failure: Throwable?): UserFeedPresentationState {
-    val nextSequence = messageSequence + 1
-    return copy(
-        message = UserFeedSnackbarMessage(id = nextSequence, text = failure.toUserMessage()),
-        messageSequence = nextSequence,
     )
 }
 

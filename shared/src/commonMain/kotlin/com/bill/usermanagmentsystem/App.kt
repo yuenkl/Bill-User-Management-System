@@ -81,7 +81,6 @@ private fun PreviewFeed(
             onAddUserGenderSelected = {},
             onAddUserStatusSelected = {},
             onAddUserSubmitted = {},
-            onMessageConsumed = {},
         )
     }
 }

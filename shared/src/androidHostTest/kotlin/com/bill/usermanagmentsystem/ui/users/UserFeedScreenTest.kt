@@ -25,6 +25,9 @@ import com.bill.usermanagmentsystem.domain.model.AddUserInput
 import com.bill.usermanagmentsystem.domain.model.Gender
 import com.bill.usermanagmentsystem.domain.model.UserStatus
 import com.bill.usermanagmentsystem.ui.theme.UserManagementTheme
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.emptyFlow
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -123,7 +126,6 @@ class UserFeedScreenTest {
                         onAddUserGenderSelected = {},
                         onAddUserStatusSelected = {},
                         onAddUserSubmitted = {},
-                        onMessageConsumed = {},
                     )
                 }
             }
@@ -152,7 +154,6 @@ class UserFeedScreenTest {
                         onAddUserGenderSelected = {},
                         onAddUserStatusSelected = {},
                         onAddUserSubmitted = {},
-                        onMessageConsumed = {},
                     )
                 }
             }
@@ -430,7 +431,6 @@ class UserFeedScreenTest {
                         onAddUserGenderSelected = {},
                         onAddUserStatusSelected = {},
                         onAddUserSubmitted = {},
-                        onMessageConsumed = {},
                         onUserLongClick = { localId ->
                             state =
                                 state.copy(
@@ -466,6 +466,14 @@ class UserFeedScreenTest {
     fun undoSnackbarNamesUserAndForwardsUndoAction() =
         runComposeUiTest {
             var restoredInput: AddUserInput? = null
+            val events = MutableSharedFlow<UserFeedEvent>(extraBufferCapacity = 1)
+            val input =
+                AddUserInput(
+                    name = "Ada Lovelace",
+                    email = "ada@example.com",
+                    gender = Gender.Female,
+                    status = UserStatus.Active,
+                )
             setContent {
                 UserManagementTheme {
                     UserFeedScreen(
@@ -473,18 +481,8 @@ class UserFeedScreenTest {
                             UserFeedUiState(
                                 initialLoading = false,
                                 emptyState = UserFeedEmptyState.Empty,
-                                undoSnackbar =
-                                    UndoDeleteSnackbarUiState(
-                                        userName = "Ada Lovelace",
-                                        input =
-                                            AddUserInput(
-                                                name = "Ada Lovelace",
-                                                email = "ada@example.com",
-                                                gender = Gender.Female,
-                                                status = UserStatus.Active,
-                                            ),
-                                    ),
                             ),
+                        events = events,
                         onRefresh = {},
                         onRetry = {},
                         onAddUser = {},
@@ -494,10 +492,12 @@ class UserFeedScreenTest {
                         onAddUserGenderSelected = {},
                         onAddUserStatusSelected = {},
                         onAddUserSubmitted = {},
-                        onMessageConsumed = {},
                         onUndoDelete = { restoredInput = it },
                     )
                 }
+            }
+            runOnIdle {
+                events.tryEmit(UserFeedEvent.ShowDeleteUndoSnackbar("Ada Lovelace", input))
             }
 
             onNodeWithText("Ada Lovelace deleted").fetchSemanticsNode()
@@ -517,15 +517,16 @@ class UserFeedScreenTest {
                     gender = Gender.Female,
                     status = UserStatus.Active,
                 )
+            val events = MutableSharedFlow<UserFeedEvent>(extraBufferCapacity = 1)
             setContent {
                 screen(
-                    state =
-                        UserFeedUiState(
-                            initialLoading = false,
-                            undoSnackbar = UndoDeleteSnackbarUiState(userName = "Ada Lovelace", input = input),
-                        ),
+                    state = UserFeedUiState(initialLoading = false),
+                    events = events,
                     onUndoDeleteDismissed = { dismissedInput = it },
                 )
+            }
+            runOnIdle {
+                events.tryEmit(UserFeedEvent.ShowDeleteUndoSnackbar("Ada Lovelace", input))
             }
 
             onNodeWithText("Dismiss").performClick()
@@ -536,6 +537,7 @@ class UserFeedScreenTest {
     @Composable
     private fun screen(
         state: UserFeedUiState,
+        events: Flow<UserFeedEvent> = emptyFlow(),
         onLoadNextPage: () -> Unit = {},
         onRetryNextPage: () -> Unit = {},
         onAddUserSubmitted: () -> Unit = {},
@@ -545,6 +547,7 @@ class UserFeedScreenTest {
         UserManagementTheme {
             UserFeedScreen(
                 state = state,
+                events = events,
                 onRefresh = {},
                 onRetry = {},
                 onAddUser = {},
@@ -555,7 +558,6 @@ class UserFeedScreenTest {
                 onAddUserStatusSelected = {},
                 onAddUserSubmitted = onAddUserSubmitted,
                 onAddUserValidationAlertDismissed = onAddUserValidationAlertDismissed,
-                onMessageConsumed = {},
                 onUndoDeleteDismissed = onUndoDeleteDismissed,
                 onLoadNextPage = onLoadNextPage,
                 onRetryNextPage = onRetryNextPage,
