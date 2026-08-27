@@ -305,10 +305,10 @@ class UserFeedViewModelTest {
             assertEquals(
                 UserDetail(
                     type = AddUserField.Email,
+                    value = "ada@example.com",
                     error = "has already been taken",
-                    source = AddUserErrorSource.Api,
                 ),
-                failed.errors.single(),
+                failed.details.single { it.type == AddUserField.Email },
             )
             assertEquals(false, failed.canSubmit)
             assertEquals(

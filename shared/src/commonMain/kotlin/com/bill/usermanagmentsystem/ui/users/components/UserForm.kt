@@ -87,7 +87,7 @@ fun UserForm(
             }
 
             OutlinedTextField(
-                value = state.name,
+                value = state.valueFor(AddUserField.Name).orEmpty(),
                 onValueChange = onNameChange,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -109,7 +109,7 @@ fun UserForm(
             )
 
             OutlinedTextField(
-                value = state.email,
+                value = state.valueFor(AddUserField.Email).orEmpty(),
                 onValueChange = onEmailChange,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -144,7 +144,7 @@ fun UserForm(
                 ) {
                     Gender.entries.forEach { gender ->
                         FilterChip(
-                            selected = state.gender == gender,
+                            selected = state.gender() == gender,
                             onClick = { onGenderSelected(gender) },
                             modifier = Modifier.weight(1f),
                             enabled = fieldsEnabled,
@@ -163,7 +163,7 @@ fun UserForm(
                         role = Role.Switch,
                         onClick = {
                             onStatusSelected(
-                                if (state.status == UserStatus.Active) {
+                                if (state.status() == UserStatus.Active) {
                                     UserStatus.Inactive
                                 } else {
                                     UserStatus.Active
@@ -172,7 +172,7 @@ fun UserForm(
                         },
                     )
                     .semantics(mergeDescendants = true) {
-                        stateDescription = if (state.status == UserStatus.Active) "Active" else "Inactive"
+                        stateDescription = if (state.status() == UserStatus.Active) "Active" else "Inactive"
                     },
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
@@ -180,13 +180,13 @@ fun UserForm(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Active user", fontWeight = FontWeight.Medium)
                     Text(
-                        text = if (state.status == UserStatus.Active) "Status: active" else "Status: inactive",
+                        text = if (state.status() == UserStatus.Active) "Status: active" else "Status: inactive",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
                 Switch(
-                    checked = state.status == UserStatus.Active,
+                    checked = state.status() == UserStatus.Active,
                     onCheckedChange = null,
                     enabled = fieldsEnabled,
                 )

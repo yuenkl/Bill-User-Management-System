@@ -22,23 +22,24 @@ data class UserFeedUiState(
 )
 
 data class AddUserFormUiState(
-    val name: String = "",
-    val email: String = "",
-    val gender: Gender? = null,
-    val status: UserStatus = UserStatus.Active,
+    val details: List<UserDetail> = defaultAddUserDetails(),
     val touchedFields: Set<AddUserField> = emptySet(),
-    val errors: List<UserDetail> = emptyList(),
     val isValid: Boolean = false,
     val submitting: Boolean = false,
 ) {
-    fun errorMessage(field: AddUserField): String? =
-        errors
-            .filter { it.type == field }
-            .minByOrNull { it.source.priority }
-            ?.error
+    fun valueFor(field: AddUserField): String? = details.firstOrNull { it.type == field }?.value
+
+    fun errorMessage(field: AddUserField): String? = details.firstOrNull { it.type == field }?.error
+
+    fun gender(): Gender? =
+        Gender.entries.firstOrNull { it.apiValue == valueFor(AddUserField.Gender) }
+
+    fun status(): UserStatus =
+        UserStatus.entries.firstOrNull { it.apiValue == valueFor(AddUserField.Status) }
+            ?: UserStatus.Active
 
     val canSubmit: Boolean
-        get() = isValid && errors.none { it.source == AddUserErrorSource.Api } && !submitting
+        get() = isValid && details.none { it.type != AddUserField.Form && it.error != null } && !submitting
 }
 
 enum class AddUserField {
@@ -55,16 +56,17 @@ enum class AddUserField {
     }
 }
 
-enum class AddUserErrorSource(val priority: Int) {
-    Validation(priority = 0),
-    Api(priority = 1),
-    Submission(priority = 2),
-}
-
 data class UserDetail(
     val type: AddUserField,
+    val value: String? = null,
     val error: String? = null,
-    val source: AddUserErrorSource = AddUserErrorSource.Validation,
+)
+
+private fun defaultAddUserDetails(): List<UserDetail> = listOf(
+    UserDetail(AddUserField.Name),
+    UserDetail(AddUserField.Email),
+    UserDetail(AddUserField.Gender),
+    UserDetail(AddUserField.Status, value = UserStatus.Active.apiValue),
 )
 
 data class AddUserValidationAlert(

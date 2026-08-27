@@ -149,12 +149,10 @@ class UserFeedViewModel(
         updateForm { current ->
             if (current.submitting) current else createFormState(
                 current.copy(
-                    name = name,
                     touchedFields = current.touchedFields + AddUserField.Name,
-                ).withoutErrors(
-                    field = AddUserField.Name,
-                    source = AddUserErrorSource.Api,
-                ).withoutErrors(source = AddUserErrorSource.Submission),
+                )
+                    .withValue(AddUserField.Name, name)
+                    .withoutError(AddUserField.Form),
             )
         }
     }
@@ -163,12 +161,10 @@ class UserFeedViewModel(
         updateForm { current ->
             if (current.submitting) current else createFormState(
                 current.copy(
-                    email = email,
                     touchedFields = current.touchedFields + AddUserField.Email,
-                ).withoutErrors(
-                    field = AddUserField.Email,
-                    source = AddUserErrorSource.Api,
-                ).withoutErrors(source = AddUserErrorSource.Submission),
+                )
+                    .withValue(AddUserField.Email, email)
+                    .withoutError(AddUserField.Form),
             )
         }
     }
@@ -177,12 +173,10 @@ class UserFeedViewModel(
         updateForm { current ->
             if (current.submitting) current else createFormState(
                 current.copy(
-                    gender = gender,
                     touchedFields = current.touchedFields + AddUserField.Gender,
-                ).withoutErrors(
-                    field = AddUserField.Gender,
-                    source = AddUserErrorSource.Api,
-                ).withoutErrors(source = AddUserErrorSource.Submission),
+                )
+                    .withValue(AddUserField.Gender, gender.apiValue)
+                    .withoutError(AddUserField.Form),
             )
         }
     }
@@ -190,18 +184,11 @@ class UserFeedViewModel(
     fun selectAddUserStatus(status: UserStatus) {
         updateForm { current ->
             if (current.submitting) current else createFormState(
-                current.copy(status = status)
-                    .withoutErrors(
-                        field = AddUserField.Status,
-                        source = AddUserErrorSource.Api,
-                    )
-                    .withoutErrors(source = AddUserErrorSource.Submission),
+                current
+                    .withValue(AddUserField.Status, status.apiValue)
+                    .withoutError(AddUserField.Form),
             )
         }
-    }
-
-    fun consumeAddUserApiError(field: AddUserField) {
-        updateForm { current -> current.withoutErrors(field, AddUserErrorSource.Api) }
     }
 
     fun submitAddUser() {
@@ -215,7 +202,7 @@ class UserFeedViewModel(
                     AddUserField.Email,
                     AddUserField.Gender,
                 ),
-            ).withoutErrors(source = AddUserErrorSource.Submission),
+            ).withoutError(AddUserField.Form),
         )
         if (!validated.canSubmit) {
             presentation.update { state ->
@@ -231,10 +218,10 @@ class UserFeedViewModel(
         viewModelScope.launch(dispatcher) {
             val result = addUser(
                 AddUserInput(
-                    name = addUserValidator.normalize(submitting.name),
-                    email = addUserValidator.normalize(submitting.email),
-                    gender = checkNotNull(submitting.gender),
-                    status = submitting.status,
+                    name = addUserValidator.normalize(submitting.valueFor(AddUserField.Name).orEmpty()),
+                    email = addUserValidator.normalize(submitting.valueFor(AddUserField.Email).orEmpty()),
+                    gender = checkNotNull(submitting.gender()),
+                    status = submitting.status(),
                 ),
             )
             val activeForm = presentation.value.addUserForm ?: return@launch
@@ -546,59 +533,66 @@ class UserFeedViewModel(
     private fun createFormState(
         current: AddUserFormUiState = AddUserFormUiState(),
     ): AddUserFormUiState {
-        val nameValidation = addUserValidator.validateName(current.name)
-        val emailValidation = addUserValidator.validateEmail(current.email)
-        val validationErrors = buildList {
-            if (AddUserField.Name in current.touchedFields) {
-                nameValidation?.userMessage()?.let { message ->
-                    add(UserDetail(AddUserField.Name, message, AddUserErrorSource.Validation))
-                }
-            }
-            if (AddUserField.Email in current.touchedFields) {
-                emailValidation?.userMessage()?.let { message ->
-                    add(UserDetail(AddUserField.Email, message, AddUserErrorSource.Validation))
-                }
-            }
-            if (AddUserField.Gender in current.touchedFields && current.gender == null) {
-                add(UserDetail(AddUserField.Gender, "Choose a gender.", AddUserErrorSource.Validation))
-            }
+        val nameValidation = addUserValidator.validateName(current.valueFor(AddUserField.Name).orEmpty())
+        val emailValidation = addUserValidator.validateEmail(current.valueFor(AddUserField.Email).orEmpty())
+        var form = current
+        if (AddUserField.Name in current.touchedFields && nameValidation != null) {
+            form = form.withError(AddUserField.Name, nameValidation.userMessage())
         }
-        return current.copy(
-            errors = current.errors.filterNot { it.source == AddUserErrorSource.Validation } + validationErrors,
-            isValid = nameValidation == null && emailValidation == null && current.gender != null,
+        if (AddUserField.Email in current.touchedFields && emailValidation != null) {
+            form = form.withError(AddUserField.Email, emailValidation.userMessage())
+        }
+        if (AddUserField.Gender in current.touchedFields && current.gender() == null) {
+            form = form.withError(AddUserField.Gender, "Choose a gender.")
+        }
+        return form.copy(
+            isValid = nameValidation == null && emailValidation == null && current.gender() != null,
         )
     }
 
     private fun AddUserFormUiState.withSubmissionFailure(failure: Throwable?): AddUserFormUiState {
         val fieldErrors = failure.toAddUserApiFieldErrors()
-        val apiErrors = fieldErrors.mapNotNull { error ->
-            AddUserField.fromApiName(error.field)?.let { field ->
-                UserDetail(field, error.message, AddUserErrorSource.Api)
+        var form = copy(submitting = false)
+        val fieldsWithErrors = fieldErrors.mapNotNull { error ->
+            AddUserField.fromApiName(error.field)?.also { field ->
+                form = form.withError(field, error.message)
             }
         }
-        return if (apiErrors.isNotEmpty()) {
-            withoutErrors(source = AddUserErrorSource.Api).copy(
-                submitting = false,
-                errors = errors.filterNot { it.source == AddUserErrorSource.Api } + apiErrors,
-            )
+        return if (fieldsWithErrors.isNotEmpty()) {
+            form
         } else {
-            withoutErrors(field = AddUserField.Form, source = AddUserErrorSource.Submission).copy(
-                submitting = false,
-                errors = errors + UserDetail(
-                    type = AddUserField.Form,
-                    error = failure.toAddUserMessage(),
-                    source = AddUserErrorSource.Submission,
-                ),
-            )
+            form.withError(AddUserField.Form, failure.toAddUserMessage())
         }
     }
 
-    private fun AddUserFormUiState.withoutErrors(
-        field: AddUserField? = null,
-        source: AddUserErrorSource,
+    private fun AddUserFormUiState.withValue(
+        field: AddUserField,
+        value: String,
+    ): AddUserFormUiState = updateDetail(field) { detail ->
+        detail.copy(value = value, error = null)
+    }
+
+    private fun AddUserFormUiState.withError(
+        field: AddUserField,
+        error: String,
+    ): AddUserFormUiState = updateDetail(field) { detail ->
+        detail.copy(error = error)
+    }
+
+    private fun AddUserFormUiState.withoutError(field: AddUserField): AddUserFormUiState = updateDetail(field) {
+        detail -> detail.copy(error = null)
+    }
+
+    private fun AddUserFormUiState.updateDetail(
+        field: AddUserField,
+        transform: (UserDetail) -> UserDetail,
     ): AddUserFormUiState = copy(
-        errors = errors.filterNot { error ->
-            error.source == source && (field == null || error.type == field)
+        details = details.map { detail ->
+            if (detail.type == field) transform(detail) else detail
+        }.let { updatedDetails ->
+            if (updatedDetails.any { it.type == field }) updatedDetails else {
+                updatedDetails + transform(UserDetail(type = field))
+            }
         },
     )
 

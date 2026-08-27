@@ -194,9 +194,7 @@ class UserFeedScreenTest {
     @Config(qualifiers = "w800dp-h1000dp")
     fun compactFormUsesSheetAndRendersValues() = runComposeUiTest {
         val form = AddUserFormUiState(
-            name = "Ada Lovelace",
-            email = "ada@example.com",
-            gender = Gender.Female,
+            details = validAddUserDetails(),
             isValid = true,
         )
         setContent {
@@ -215,9 +213,7 @@ class UserFeedScreenTest {
     fun compactFormShowsSubmitAction() = runComposeUiTest {
         var submissions = 0
         val form = AddUserFormUiState(
-            name = "Ada Lovelace",
-            email = "ada@example.com",
-            gender = Gender.Female,
+            details = validAddUserDetails(),
             isValid = true,
         )
         setContent {
@@ -293,12 +289,11 @@ class UserFeedScreenTest {
                     UserFeedUiState(
                         initialLoading = false,
                         addUserForm = AddUserFormUiState(
-                            name = "A",
-                            errors = listOf(
+                            details = listOf(
                                 UserDetail(
                                     type = AddUserField.Name,
+                                    value = "A",
                                     error = "Name must be at least 2 characters.",
-                                    source = AddUserErrorSource.Validation,
                                 ),
                             ),
                         ),
@@ -315,6 +310,13 @@ class UserFeedScreenTest {
         ).fetchSemanticsNode()
         onNodeWithContentDescription("Submit user").assertIsNotEnabled()
     }
+
+    private fun validAddUserDetails(): List<UserDetail> = listOf(
+        UserDetail(AddUserField.Name, value = "Ada Lovelace"),
+        UserDetail(AddUserField.Email, value = "ada@example.com"),
+        UserDetail(AddUserField.Gender, value = Gender.Female.apiValue),
+        UserDetail(AddUserField.Status, value = UserStatus.Active.apiValue),
+    )
 
     @Test
     fun pendingAndFailedSyncStatesHaveReadableText() = runComposeUiTest {
