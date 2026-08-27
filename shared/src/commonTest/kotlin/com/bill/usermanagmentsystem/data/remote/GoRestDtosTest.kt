@@ -1,10 +1,9 @@
 package com.bill.usermanagmentsystem.data.remote
 
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 
 class GoRestDtosTest {
     private val json = Json { ignoreUnknownKeys = true }
@@ -21,12 +20,18 @@ class GoRestDtosTest {
     }
 
     @Test
-    fun missingRequiredUserFieldIsRejected() {
-        assertFailsWith<SerializationException> {
+    fun missingOrNullUserFieldsDecodeAsNull() {
+        val missingStatus =
             json.decodeFromString<GoRestUserDto>(
                 """{"id":42,"name":"Ada","email":"ada@example.com","gender":"female"}""",
             )
-        }
+        val nullStatus =
+            json.decodeFromString<GoRestUserDto>(
+                """{"id":42,"name":"Ada","email":"ada@example.com","gender":"female","status":null}""",
+            )
+
+        assertNull(missingStatus.status)
+        assertNull(nullStatus.status)
     }
 
     @Test
@@ -37,5 +42,13 @@ class GoRestDtosTest {
             )
 
         assertEquals(GoRestFieldErrorDto("email", "has already been taken"), errors.single())
+    }
+
+    @Test
+    fun nullableErrorFieldsDecode() {
+        val error = json.decodeFromString<GoRestFieldErrorDto>("""{"field":null,"message":null}""")
+
+        assertNull(error.field)
+        assertNull(error.message)
     }
 }
