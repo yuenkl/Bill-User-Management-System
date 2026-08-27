@@ -27,9 +27,11 @@ The feed reads from the local database at all times. Network work refreshes that
 
 ## 🏗️ Architecture
 
-The app uses **MVVM and unidirectional data flow**.
+I chose **MVVM with unidirectional data flow** because I wanted the user experience to stay predictable as the app reacts to loading, refreshing, pagination, form validation, deletion, Undo, connectivity, and app lifecycle changes.
 
-Platform code supplies lifecycle, connectivity, network-engine, SQL-driver, and token configuration implementations; feature behavior stays in `shared`.
+My main goal was to share the feature itself, not just the data models. The Compose UI, ViewModel, domain rules, repository behaviour, and persistence all live in `shared`. Android and iOS only provide the things that genuinely need to be native: lifecycle and connectivity signals, the Ktor network engine, the SQLDelight driver, and local token configuration.
+
+This keeps the two apps consistent without pretending that the platforms are identical.
 
 ```mermaid
 flowchart TD
@@ -45,6 +47,42 @@ flowchart TD
     C -->|immutable StateFlow| B
     C -->|one-time SharedFlow events| B
 ```
+
+### 💭 Why I Made These Choices
+
+#### One shared feature, thin platform layers
+
+I used Kotlin Multiplatform and Compose Multiplatform so Android and iOS can share the same user journey, validation rules, and UI states. This reduces the chance of fixing a bug on one platform and forgetting the other.
+
+I deliberately kept platform code small rather than forcing platform APIs into shared code. Native lifecycle, connectivity, database-driver, and HTTP-engine implementations are injected at the app boundary, while the shared feature depends only on platform-neutral interfaces.
+
+#### MVVM and one-way state
+
+The screen sends clear user actions to `UserFeedViewModel`, and the ViewModel publishes one immutable UI state back to the screen. That gives one place to understand what the feed is doing and makes states such as “cached users are visible while refresh failed” explicit instead of being hidden across composables.
+
+I use one-time events only for temporary effects, such as a Snackbar or scrolling to a newly created user. Anything the user could still need after a recomposition, including form input and delete confirmation, stays in UI state. This prevents important UI decisions from disappearing when the screen is recreated.
+
+#### Local-first reads, server-confirmed writes
+
+I made SQLDelight the source observed by the UI. The app always has one consistent place to read the feed from, so a refresh failure does not wipe out useful cached users or make the UI flicker between data sources.
+
+For writes, I chose server confirmation over optimistic local rows. A new user appears only after GoRest returns `201`; a deletion is removed locally only after the server accepts it (or confirms it is already absent with `404`). This is slightly less immediate than an optimistic update, but it avoids showing data that the server rejected.
+
+#### Repository as the consistency boundary
+
+The repository owns both remote calls and database changes. It serializes refresh, pagination, create, delete, and Undo work so responses cannot race each other and leave the local database in an inconsistent state.
+
+I also chose transactional database updates: a refresh replaces its remote snapshot in one step, and a page is appended only when its cursor can advance with it. If a request fails, the existing feed and pagination position remain valid and the user can retry.
+
+#### Dependency injection for testability
+
+Koin wires the application together at the Android and iOS entry points. Classes receive their dependencies through constructors rather than looking them up themselves, which keeps their responsibilities clear and lets tests replace the network, clock, database, connectivity, and platform services with controlled fakes.
+
+### ⚖️ Trade-offs I Accepted
+
+This approach adds some structure for a small app: there are interfaces, UI-state mapping, and platform composition roots that a single-platform prototype might not need. I accepted that cost because offline behaviour and cross-platform consistency were part of the problem I wanted to solve.
+
+I did not build a full offline write queue. Create, delete, and Undo need a server response before the database changes. That keeps the behaviour honest and easy to reason about for this exercise, while a production app with stronger offline requirements could add a queued mutation system later.
 
 ### 🔄 Repository Synchronization
 
