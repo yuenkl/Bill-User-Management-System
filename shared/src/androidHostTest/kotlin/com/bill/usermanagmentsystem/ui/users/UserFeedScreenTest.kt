@@ -364,6 +364,41 @@ class UserFeedScreenTest {
         }
 
     @Test
+    @Config(qualifiers = "w500dp-h800dp")
+    fun loadingAPageWaitsForTheUserToReachTheNewFeedEnd() =
+        runComposeUiTest {
+            var pageCalls = 0
+            var state by mutableStateOf(
+                UserFeedUiState(
+                    users = users(20),
+                    initialLoading = false,
+                    canLoadMore = true,
+                ),
+            )
+            setContent {
+                screen(
+                    state = state,
+                    onLoadMore = {
+                        pageCalls += 1
+                        if (pageCalls == 1) state = state.copy(loadingMore = true)
+                    },
+                )
+            }
+
+            onNodeWithContentDescription("Users").performScrollToIndex(20)
+            waitForIdle()
+            state = state.copy(users = users(40), loadingMore = false)
+            waitForIdle()
+
+            assertEquals(1, pageCalls)
+
+            onNodeWithContentDescription("Users").performScrollToIndex(40)
+            waitForIdle()
+
+            assertEquals(2, pageCalls)
+        }
+
+    @Test
     fun emptyReportedPageContinuesWithThePrecedingPage() =
         runComposeUiTest {
             var pageCalls = 0

@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -36,6 +37,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.bill.usermanagmentsystem.ui.users.components.UserCard
 import com.bill.usermanagmentsystem.ui.users.components.UserCardShimmer
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 
 @Composable
 internal fun LoadingFeed(layoutMode: AdaptiveLayoutMode) {
@@ -89,6 +92,18 @@ internal fun UserList(
             AdaptiveLayoutMode.Wide -> gridState.animateScrollToItem(index = 0)
         }
     }
+    LaunchedEffect(listState, canLoadMore, loadingMore, loadMoreError) {
+        snapshotFlow { listState.isPaginationFooterVisible() }
+            .distinctUntilChanged()
+            .filter { footerVisible -> footerVisible && canLoadMore && !loadingMore && loadMoreError == null }
+            .collect { onLoadMore() }
+    }
+    LaunchedEffect(gridState, canLoadMore, loadingMore, loadMoreError) {
+        snapshotFlow { gridState.isPaginationFooterVisible() }
+            .distinctUntilChanged()
+            .filter { footerVisible -> footerVisible && canLoadMore && !loadingMore && loadMoreError == null }
+            .collect { onLoadMore() }
+    }
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter,
@@ -120,7 +135,6 @@ internal fun UserList(
                             PaginationFooter(
                                 loading = loadingMore,
                                 error = loadMoreError,
-                                onLoad = onLoadMore,
                                 onRetry = onRetryLoadMore,
                             )
                         }
@@ -161,7 +175,6 @@ internal fun UserList(
                             PaginationFooter(
                                 loading = loadingMore,
                                 error = loadMoreError,
-                                onLoad = onLoadMore,
                                 onRetry = onRetryLoadMore,
                             )
                         }
@@ -175,13 +188,9 @@ internal fun UserList(
 private fun PaginationFooter(
     loading: Boolean,
     error: String?,
-    onLoad: () -> Unit,
     onRetry: () -> Unit,
 ) {
     if (error == null) {
-        LaunchedEffect(loading) {
-            if (!loading) onLoad()
-        }
         Box(
             modifier = Modifier.fillMaxWidth().padding(20.dp),
             contentAlignment = Alignment.Center,
@@ -217,6 +226,12 @@ private fun PaginationFooter(
         }
     }
 }
+
+private fun androidx.compose.foundation.lazy.LazyListState.isPaginationFooterVisible(): Boolean =
+    layoutInfo.visibleItemsInfo.any { item -> item.index == layoutInfo.totalItemsCount - 1 }
+
+private fun androidx.compose.foundation.lazy.grid.LazyGridState.isPaginationFooterVisible(): Boolean =
+    layoutInfo.visibleItemsInfo.any { item -> item.index == layoutInfo.totalItemsCount - 1 }
 
 @Composable
 private fun FeedUserCard(
