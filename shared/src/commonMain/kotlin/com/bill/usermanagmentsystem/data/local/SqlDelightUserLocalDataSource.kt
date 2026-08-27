@@ -307,6 +307,7 @@ internal class SqlDelightUserLocalDataSource(
                 email = user.email,
                 gender = user.gender.apiValue,
                 status = user.status.apiValue,
+                server_position = user.serverPosition,
                 remote_id = user.remoteId,
             )
         }

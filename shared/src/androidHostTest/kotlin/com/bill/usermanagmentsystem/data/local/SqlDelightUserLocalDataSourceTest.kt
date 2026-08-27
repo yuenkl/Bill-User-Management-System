@@ -137,8 +137,8 @@ class SqlDelightUserLocalDataSourceTest {
     }
 
     @Test
-    fun completedLocalCreateSurvivesALastPageSnapshotThatDoesNotContainIt() = runTest {
-        withFixture("completed-create-last-page") {
+    fun refreshRemovesCompletedLocalCreateThatIsAbsentFromApiSnapshot() = runTest {
+        withFixture("completed-create-refresh") {
             val localId = source.insertPendingCreate(
                 mutationId = "create-id",
                 input = input(name = "Created user"),
@@ -151,14 +151,45 @@ class SqlDelightUserLocalDataSourceTest {
             )
 
             source.mergeSnapshot(
-                users = listOf(snapshot(remoteId = 77, name = "Last page user", position = -40)),
+                users = listOf(snapshot(remoteId = 77, name = "API user", position = 0)),
                 observedAt = instant(2_000),
             )
 
-            assertEquals(42, source.getUser(localId)?.remoteId)
+            assertNull(source.getUser(localId))
             assertEquals(
-                setOf("Created user", "Last page user"),
-                source.observeVisibleUsers().first().map { it.user.name }.toSet(),
+                listOf("API user"),
+                source.observeVisibleUsers().first().map { it.user.name },
+            )
+        }
+    }
+
+    @Test
+    fun refreshMovesCompletedLocalCreateToItsApiPosition() = runTest {
+        withFixture("completed-create-api-position") {
+            val localId = source.insertPendingCreate(
+                mutationId = "create-id",
+                input = input(name = "Created user"),
+                observedAt = instant(1_000),
+            )
+            source.completeCreate(
+                mutationId = "create-id",
+                localId = localId,
+                remoteUser = snapshot(remoteId = 42, name = "Created user", position = null),
+            )
+
+            source.mergeSnapshot(
+                users = listOf(
+                    snapshot(remoteId = 77, name = "First API user", position = 0),
+                    snapshot(remoteId = 42, name = "Created user", position = 1),
+                ),
+                observedAt = instant(2_000),
+            )
+
+            assertEquals(localId, source.getUser(localId)?.localId)
+            assertEquals(1, source.getUser(localId)?.serverPosition)
+            assertEquals(
+                listOf("First API user", "Created user"),
+                source.observeVisibleUsers().first().map { it.user.name },
             )
         }
     }

@@ -20,7 +20,7 @@ All behaviour must preserve the [engineering invariants](README.md#engineering-i
 - Read `X-Links-Next` from each response. Its absence marks the end of the feed.
 - Persist the remote snapshot before exposing it to the UI. The UI observes SQLDelight only and never displays a network response directly.
 - Each row displays name, email, gender/status indicators where useful, and a relative timestamp based on when the record was first observed locally.
-- Preserve server order across appended pages. Locally created users appear above the remote snapshot.
+- Preserve server order across appended pages. Locally created users appear above the remote snapshot until the next successful refresh, when the API response determines their presence and position.
 - Refresh is available through pull-to-refresh or an equivalent explicit Material 3 action; it refreshes the initial response before restarting next-page loading.
 
 ### Loading and failure states

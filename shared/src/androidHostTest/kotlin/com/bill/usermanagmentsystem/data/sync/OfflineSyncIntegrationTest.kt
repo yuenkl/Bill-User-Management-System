@@ -25,6 +25,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
@@ -32,7 +33,7 @@ import kotlin.time.Instant
 @OptIn(ExperimentalCoroutinesApi::class)
 class OfflineSyncIntegrationTest {
     @Test
-    fun offlineCreateSurvivesReopenAndLaterSynchronizesSameLocalRow() = runTest {
+    fun offlineCreateSurvivesReopenThenRefreshFollowsApiSnapshot() = runTest {
         val application = ApplicationProvider.getApplicationContext<Application>()
         val databaseName = "offline-create-sync.db"
         application.deleteDatabase(databaseName)
@@ -83,11 +84,9 @@ class OfflineSyncIntegrationTest {
 
             assertTrue(coordinator.sync().isSuccess)
 
-            val stored = local.getUser(localId)!!
-            assertEquals(44, stored.remoteId)
-            assertEquals(instant(1_000), stored.observedAt)
+            assertNull(local.getUser(localId))
             assertEquals(
-                setOf(44L, 77L),
+                setOf(77L),
                 local.observeVisibleUsers().first().mapNotNull { it.user.remoteId }.toSet(),
             )
             assertTrue(local.getAllMutations().isEmpty())

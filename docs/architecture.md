@@ -135,7 +135,7 @@ Actions include initial load, refresh, add-form open/close, field changes, submi
 - `undo_deadline_epoch_ms INTEGER NULL`
 - `last_sync_error TEXT NULL`
 
-Visible-user queries exclude hidden rows and order pending or successfully created local users newest-first, followed by server position. Upserts preserve the original `observed_at` and do not overwrite pending local mutations.
+Visible-user queries exclude hidden rows and order pending local users newest-first, followed by server position. Successfully created users are optimistic until the next successful refresh, which adopts the API snapshot order. Upserts preserve the original `observed_at` and do not overwrite pending local mutations.
 
 ### `pending_mutations`
 
@@ -159,7 +159,7 @@ Create state changes and their outbox rows occur in the same database transactio
 2. For each `CREATE`, POST the current local row. On 201, attach the remote ID, mark synchronized, and remove the mutation transactionally.
 3. Stop processing on connectivity loss. Keep remaining work durable.
 4. After mutations, fetch `GET /users` without pagination parameters, read `X-Links-Next`, and set the next-page cursor from that link when it is present.
-5. Transactionally replace the remote snapshot with the initial response while preserving pending, failed, and successfully created local rows. Each successful scroll fetch follows the returned `X-Links-Next` value (`page=2`, `page=3`, and so on). Every refresh fetches the initial response again and resets the cursor from its link.
+5. Transactionally replace the remote snapshot with the initial response while preserving pending and failed local rows. A successfully created row is optimistic until this transaction; then the API response determines its presence and server position. Each successful scroll fetch follows the returned `X-Links-Next` value (`page=2`, `page=3`, and so on). Every refresh fetches the initial response again and resets the cursor from its link.
 
 Failure policy:
 
