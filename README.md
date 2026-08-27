@@ -35,7 +35,14 @@ The repository serializes each refresh, page load, create, restore, and delete o
 
 ## Most important class
 
-[`UserFeedViewModel`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedViewModel.kt) is the central coordinator for the user experience. It combines the database-backed feed, connectivity, clock, and presentation state into one immutable UI state, and turns UI actions into explicit use-case calls for refresh, pagination, form submission, delete, and undo. The repository owns remote calls and SQLDelight updates; the ViewModel observes the database rather than holding another copy of the feed.
+[`UserFeedViewModel`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedViewModel.kt) is the central coordinator for the user experience. It combines the database-backed feed, connectivity, clock, and presentation state into one immutable UI state, and turns UI actions into explicit use-case calls for refresh, pagination, form submission, delete, and undo. The repository owns remote calls and SQLDelight updates; the ViewModel observes the database rather than holding another copy of the feed. Pure form, error, and state-mapping logic lives in [`UserFeedViewModelHelpers.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedViewModelHelpers.kt), keeping the ViewModel focused on coordination.
+
+### User feature structure
+
+- [`UserFeedScreen.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedScreen.kt) owns route wiring, top-level layout selection, pull-to-refresh, and transient overlays.
+- [`UserFeedContent.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedContent.kt) renders feed loading, list/grid content, pagination, banners, and empty states.
+- [`UserFeedDialogs.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedDialogs.kt) contains the add-user sheet/dialog, API validation alert, and delete confirmation.
+- [`UserFeedViewModelHelpers.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedViewModelHelpers.kt) contains pure form updates and validation, UI-state construction, and user-facing error mapping.
 
 ## Prerequisites
 
@@ -126,7 +133,7 @@ AI assistance was used to explore implementation options, draft focused changes,
 
 ## Repository map
 
-- `shared/src/commonMain`: shared UI, ViewModel, domain, repository, Ktor, SQLDelight-facing code, and Koin modules.
+- `shared/src/commonMain`: shared UI (screen, content, dialogs, and reusable components), ViewModel/helpers, domain, repository, Ktor, SQLDelight-facing code, and Koin modules.
 - `shared/src/androidMain` / `shared/src/iosMain`: platform implementations and composition roots.
 - `shared/src/commonTest`, `androidHostTest`, and `iosTest`: deterministic shared and platform verification.
 - `androidApp`: Android application entry point and local token injection.
