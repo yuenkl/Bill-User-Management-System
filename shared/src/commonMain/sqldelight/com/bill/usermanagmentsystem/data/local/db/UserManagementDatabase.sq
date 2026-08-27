@@ -16,7 +16,7 @@ ORDER BY
     CASE WHEN server_position IS NULL THEN 0 ELSE 1 END,
     CASE WHEN server_position IS NULL THEN observed_at_epoch_ms END DESC,
     CASE WHEN server_position IS NULL THEN local_id END DESC,
-    server_position ASC,
+    server_position DESC,
     name COLLATE NOCASE ASC;
 
 selectUserByLocalId:

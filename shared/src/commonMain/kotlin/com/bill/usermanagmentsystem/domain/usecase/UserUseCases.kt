@@ -15,7 +15,7 @@ fun interface RefreshUsers {
     suspend operator fun invoke(): Result<Unit>
 }
 
-fun interface LoadNextUsersPage {
+fun interface LoadPreviousUsersPage {
     suspend operator fun invoke(): Result<PageLoadResult>
 }
 

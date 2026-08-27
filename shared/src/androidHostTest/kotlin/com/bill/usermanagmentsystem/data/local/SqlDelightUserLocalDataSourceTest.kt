@@ -20,20 +20,20 @@ import kotlin.time.Instant
 @OptIn(ExperimentalCoroutinesApi::class)
 class SqlDelightUserLocalDataSourceTest {
     @Test
-    fun snapshotThenPageMergeKeepsServerOrderAndExistingRows() =
+    fun pageMergeOrdersTheLastPageBeforeEarlierPages() =
         runTest {
             withFixture("page-merge") { source ->
                 source.mergeSnapshot(
-                    users = listOf(snapshot(remoteId = 41, name = "First page", position = 0)),
+                    users = listOf(snapshot(remoteId = 41, name = "Last page", position = 20)),
                     observedAt = instant(1_000),
                 )
                 source.mergePage(
-                    users = listOf(snapshot(remoteId = 21, name = "Next page", position = 1)),
+                    users = listOf(snapshot(remoteId = 21, name = "Previous page", position = 10)),
                     observedAt = instant(2_000),
                 )
 
                 val visible = source.observeUsers().first()
-                assertEquals(listOf("First page", "Next page"), visible.map { it.user.name })
+                assertEquals(listOf("Last page", "Previous page"), visible.map { it.user.name })
                 assertEquals(instant(1_000), visible.first().user.observedAt)
                 assertEquals(instant(2_000), visible.last().user.observedAt)
             }
@@ -101,6 +101,26 @@ class SqlDelightUserLocalDataSourceTest {
 
                 assertEquals(
                     listOf("Newer", "Older"),
+                    source.observeUsers().first().map { it.user.name },
+                )
+            }
+        }
+
+    @Test
+    fun locallyCreatedUsersAppearBeforeTheLastServerPage() =
+        runTest {
+            withFixture("local-create-before-server-pages") { source ->
+                source.mergePage(
+                    users = listOf(snapshot(remoteId = 296, name = "Last page", position = 2_950)),
+                    observedAt = instant(1_000),
+                )
+                source.mergePage(
+                    users = listOf(snapshot(remoteId = 297, name = "Created", position = null)),
+                    observedAt = instant(2_000),
+                )
+
+                assertEquals(
+                    listOf("Created", "Last page"),
                     source.observeUsers().first().map { it.user.name },
                 )
             }

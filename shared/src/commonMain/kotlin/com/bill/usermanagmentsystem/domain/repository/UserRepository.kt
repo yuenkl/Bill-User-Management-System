@@ -15,7 +15,7 @@ interface UserRepository {
 
     suspend fun refresh(): Result<Unit>
 
-    suspend fun loadNextPage(): Result<PageLoadResult>
+    suspend fun loadPreviousPage(): Result<PageLoadResult>
 
     suspend fun addUser(input: AddUserInput): Result<String>
 

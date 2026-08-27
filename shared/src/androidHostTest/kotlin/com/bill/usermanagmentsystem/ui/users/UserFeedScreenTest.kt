@@ -341,7 +341,7 @@ class UserFeedScreenTest {
 
     @Test
     @Config(qualifiers = "w500dp-h800dp")
-    fun reachingTheEndOfTheFeedRequestsTheNextPageOnce() =
+    fun reachingTheEndOfTheFeedRequestsMoreUsersOnce() =
         runComposeUiTest {
             var pageCalls = 0
             val users = users(20)
@@ -353,7 +353,7 @@ class UserFeedScreenTest {
                             initialLoading = false,
                             canLoadMore = true,
                         ),
-                    onLoadNextPage = { pageCalls += 1 },
+                    onLoadMore = { pageCalls += 1 },
                 )
             }
 
@@ -364,7 +364,42 @@ class UserFeedScreenTest {
         }
 
     @Test
-    fun emptyReportedLastPageContinuesWithThePrecedingPage() =
+    @Config(qualifiers = "w500dp-h800dp")
+    fun loadingAPageWaitsForTheUserToReachTheNewFeedEnd() =
+        runComposeUiTest {
+            var pageCalls = 0
+            var state by mutableStateOf(
+                UserFeedUiState(
+                    users = users(20),
+                    initialLoading = false,
+                    canLoadMore = true,
+                ),
+            )
+            setContent {
+                screen(
+                    state = state,
+                    onLoadMore = {
+                        pageCalls += 1
+                        if (pageCalls == 1) state = state.copy(loadingMore = true)
+                    },
+                )
+            }
+
+            onNodeWithContentDescription("Users").performScrollToIndex(20)
+            waitForIdle()
+            state = state.copy(users = users(40), loadingMore = false)
+            waitForIdle()
+
+            assertEquals(1, pageCalls)
+
+            onNodeWithContentDescription("Users").performScrollToIndex(40)
+            waitForIdle()
+
+            assertEquals(2, pageCalls)
+        }
+
+    @Test
+    fun emptyReportedPageContinuesWithThePrecedingPage() =
         runComposeUiTest {
             var pageCalls = 0
             var state by mutableStateOf(
@@ -377,7 +412,7 @@ class UserFeedScreenTest {
             setContent {
                 screen(
                     state = state,
-                    onLoadNextPage = {
+                    onLoadMore = {
                         pageCalls += 1
                         if (pageCalls == 1) state = state.copy(loadingMore = true)
                     },
@@ -404,7 +439,7 @@ class UserFeedScreenTest {
                             canLoadMore = true,
                             loadMoreError = "You're offline.",
                         ),
-                    onRetryNextPage = { retryCalls += 1 },
+                    onRetryLoadMore = { retryCalls += 1 },
                 )
             }
 
@@ -540,8 +575,8 @@ class UserFeedScreenTest {
     private fun screen(
         state: UserFeedUiState,
         events: Flow<UserFeedEvent> = emptyFlow(),
-        onLoadNextPage: () -> Unit = {},
-        onRetryNextPage: () -> Unit = {},
+        onLoadMore: () -> Unit = {},
+        onRetryLoadMore: () -> Unit = {},
         onAddUserSubmitted: () -> Unit = {},
         onUndoDeleteDismissed: (AddUserInput) -> Unit = {},
     ) {
@@ -557,8 +592,8 @@ class UserFeedScreenTest {
                 onAddUserStatusSelected = {},
                 onAddUserSubmitted = onAddUserSubmitted,
                 onUndoDeleteDismissed = onUndoDeleteDismissed,
-                onLoadNextPage = onLoadNextPage,
-                onRetryNextPage = onRetryNextPage,
+                onLoadMore = onLoadMore,
+                onRetryLoadMore = onRetryLoadMore,
             )
         }
     }

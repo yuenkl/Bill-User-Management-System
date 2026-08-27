@@ -64,8 +64,8 @@ fun UserFeedRoute(
         onDeleteConfirm = viewModel::confirmDelete,
         onUndoDelete = viewModel::undoDelete,
         onUndoDeleteDismissed = viewModel::dismissUndoDelete,
-        onLoadNextPage = viewModel::loadNextPage,
-        onRetryNextPage = viewModel::retryNextPage,
+        onLoadMore = viewModel::loadMore,
+        onRetryLoadMore = viewModel::retryLoadMore,
         modifier = modifier,
     )
 }
@@ -88,8 +88,8 @@ fun UserFeedScreen(
     onDeleteConfirm: () -> Unit = {},
     onUndoDelete: (AddUserInput) -> Unit = {},
     onUndoDeleteDismissed: (AddUserInput) -> Unit = {},
-    onLoadNextPage: () -> Unit = {},
-    onRetryNextPage: () -> Unit = {},
+    onLoadMore: () -> Unit = {},
+    onRetryLoadMore: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
@@ -202,8 +202,8 @@ fun UserFeedScreen(
                             canLoadMore = state.canLoadMore,
                             loadMoreError = state.loadMoreError,
                             onUserLongClick = onUserLongClick,
-                            onLoadNextPage = onLoadNextPage,
-                            onRetryNextPage = onRetryNextPage,
+                            onLoadMore = onLoadMore,
+                            onRetryLoadMore = onRetryLoadMore,
                         )
                 }
             }

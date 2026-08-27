@@ -24,32 +24,7 @@ import kotlin.time.Instant
 
 class GoRestUserRemoteDataSourceTest {
     @Test
-    fun onePageResponseUsesPageOneAndPreservesResponseOrder() =
-        runRemoteTest { requests ->
-            val source =
-                source(
-                    engine =
-                        engine { request ->
-                            requests += request.url.toString()
-                            assertEquals(null, request.url.parameters["page"])
-                            assertEquals(null, request.url.parameters["per_page"])
-                            assertEquals("no-cache", request.headers[HttpHeaders.CacheControl])
-                            assertEquals("Bearer secret", request.headers[HttpHeaders.Authorization])
-                            jsonResponse(usersJson(9, 3))
-                        },
-                )
-
-            val page = assertIs<RemoteResult.Success<RemotePage>>(source.fetchInitialPage()).value
-
-            assertEquals(listOf("https://example.test/public/v2/users"), requests)
-            assertEquals(1L, page.page)
-            assertEquals(null, page.nextPage)
-            assertEquals(listOf(9L, 3L), page.users.map(RemoteUser::remoteId))
-            assertEquals(listOf(0L, 1L), page.users.map(RemoteUser::serverPosition))
-        }
-
-    @Test
-    fun initialPageReadsTheNextPageLink() =
+    fun lastPageIsDiscoveredBeforeItIsFetched() =
         runRemoteTest { requests ->
             val source =
                 source(
@@ -57,47 +32,72 @@ class GoRestUserRemoteDataSourceTest {
                         engine { request ->
                             val page = request.url.parameters["page"].orEmpty()
                             requests += page
+                            assertEquals("no-cache", request.headers[HttpHeaders.CacheControl])
                             assertEquals("Bearer secret", request.headers[HttpHeaders.Authorization])
-                            jsonResponse(
-                                usersJson(1),
-                                nextLink = "https://example.test/public/v2/users?page=2",
-                            )
+                            when (page) {
+                                "" -> jsonResponse("[]", totalPages = "296")
+                                "296" ->
+                                    jsonResponse(
+                                        usersJson(9, 3),
+                                        previousLink = "https://example.test/public/v2/users?page=295",
+                                    )
+                                else -> error("Unexpected page: $page")
+                            }
                         },
                 )
 
-            val page = assertIs<RemoteResult.Success<RemotePage>>(source.fetchInitialPage()).value
+            val page = assertIs<RemoteResult.Success<RemotePage>>(source.fetchLastPage()).value
 
-            assertEquals(listOf(""), requests)
-            assertEquals(1L, page.page)
-            assertEquals(2L, page.nextPage)
-            assertEquals(listOf(1L), page.users.map(RemoteUser::remoteId))
-            assertEquals(listOf(0L), page.users.map(RemoteUser::serverPosition))
+            assertEquals(listOf("", "296"), requests)
+            assertEquals(296L, page.page)
+            assertEquals(295L, page.previousPage)
+            assertEquals(listOf(9L, 3L), page.users.map(RemoteUser::remoteId))
+            assertEquals(listOf(2_950L, 2_951L), page.users.map(RemoteUser::serverPosition))
         }
 
     @Test
-    fun invalidNextPageLinksArePermanentFailures() =
+    fun missingOrInvalidPaginationPageCountIsAPermanentFailure() =
+        runRemoteTest { requests ->
+            listOf(null, "many", "0").forEach { totalPages ->
+                val source =
+                    source(
+                        engine =
+                            engine { request ->
+                                requests += request.url.parameters["page"].orEmpty()
+                                jsonResponse("[]", totalPages = totalPages)
+                            },
+                    )
+
+                assertIs<RemoteResult.PermanentFailure>(source.fetchLastPage())
+            }
+
+            assertEquals(listOf("", "", ""), requests)
+        }
+
+    @Test
+    fun invalidPreviousPageLinksArePermanentFailures() =
         runRemoteTest { requests ->
             listOf(
                 "not-a-link",
                 "https://example.test/public/v2/users?page=many",
                 "https://example.test/public/v2/users?page=0",
-                "https://example.test/public/v2/users?page=1",
+                "https://example.test/public/v2/users?page=3",
             ).forEach { value ->
                 val source =
                     source(
                         engine =
                             engine { request ->
                                 requests += request.url.parameters["page"].orEmpty()
-                                jsonResponse(usersJson(1), nextLink = value)
+                                jsonResponse(usersJson(1), previousLink = value)
                             },
                     )
 
-                assertIs<RemoteResult.PermanentFailure>(source.fetchInitialPage())
+                assertIs<RemoteResult.PermanentFailure>(source.fetchPreviousPage(2))
             }
         }
 
     @Test
-    fun requestedPageUsesItsNumberAndDoesNotRequirePaginationHeader() =
+    fun requestedPreviousPageUsesItsNumberAndReadsThePreviousLink() =
         runRemoteTest { requests ->
             val source =
                 source(
@@ -107,15 +107,15 @@ class GoRestUserRemoteDataSourceTest {
                             requests += page
                             jsonResponse(
                                 usersJson(40, 41),
-                                nextLink = "https://example.test/public/v2/users?page=4",
+                                previousLink = "https://example.test/public/v2/users?page=2",
                             )
                         },
                 )
 
-            val result = assertIs<RemoteResult.Success<RemotePage>>(source.fetchPage(3)).value
+            val result = assertIs<RemoteResult.Success<RemotePage>>(source.fetchPreviousPage(3)).value
 
             assertEquals(listOf("3"), requests)
-            assertEquals(4L, result.nextPage)
+            assertEquals(2L, result.previousPage)
             assertEquals(listOf(40L, 41L), result.users.map(RemoteUser::remoteId))
             assertEquals(listOf(20L, 21L), result.users.map(RemoteUser::serverPosition))
         }
@@ -133,12 +133,12 @@ class GoRestUserRemoteDataSourceTest {
                         },
                 )
 
-            val page = assertIs<RemoteResult.Success<RemotePage>>(source.fetchPage(3)).value
+            val page = assertIs<RemoteResult.Success<RemotePage>>(source.fetchPreviousPage(3)).value
 
             assertEquals(listOf("3"), requests)
             assertEquals(3L, page.page)
             assertTrue(page.users.isEmpty())
-            assertEquals(null, page.nextPage)
+            assertEquals(null, page.previousPage)
         }
 
     @Test
@@ -154,7 +154,7 @@ class GoRestUserRemoteDataSourceTest {
                         },
                 )
 
-            assertIs<RemoteResult.PermanentFailure>(source.fetchInitialPage())
+            assertIs<RemoteResult.PermanentFailure>(source.fetchPreviousPage(1))
         }
 
     @Test
@@ -170,7 +170,7 @@ class GoRestUserRemoteDataSourceTest {
                         },
                 )
 
-            assertIs<RemoteResult.PermanentFailure>(source.fetchInitialPage())
+            assertIs<RemoteResult.PermanentFailure>(source.fetchPreviousPage(1))
         }
 
     @Test
@@ -187,7 +187,7 @@ class GoRestUserRemoteDataSourceTest {
 
             cases.forEach { (status, expectedType) ->
                 val source = source(engine { respond("{}", status) })
-                assertTrue(expectedType.isInstance(source.fetchInitialPage()))
+                assertTrue(expectedType.isInstance(source.fetchPreviousPage(1)))
             }
         }
 
@@ -209,7 +209,7 @@ class GoRestUserRemoteDataSourceTest {
                         },
                 )
 
-            val result = assertIs<RemoteResult.RetryableFailure>(source.fetchInitialPage())
+            val result = assertIs<RemoteResult.RetryableFailure>(source.fetchPreviousPage(1))
 
             assertEquals(Instant.fromEpochSeconds(1_007), result.serverRetryAt)
         }
@@ -233,7 +233,7 @@ class GoRestUserRemoteDataSourceTest {
                         },
                 )
 
-            val result = assertIs<RemoteResult.RetryableFailure>(source.fetchInitialPage())
+            val result = assertIs<RemoteResult.RetryableFailure>(source.fetchPreviousPage(1))
 
             assertEquals(Instant.fromEpochSeconds(2_000), result.serverRetryAt)
         }
@@ -243,7 +243,7 @@ class GoRestUserRemoteDataSourceTest {
         runRemoteTest { _ ->
             val source = source(engine = engine { throw IOException("No connection") })
 
-            assertIs<RemoteResult.RetryableFailure>(source.fetchInitialPage())
+            assertIs<RemoteResult.RetryableFailure>(source.fetchPreviousPage(1))
         }
 
     @Test
@@ -251,7 +251,7 @@ class GoRestUserRemoteDataSourceTest {
         runRemoteTest { _ ->
             val source = source(engine = engine { throw CancellationException("Cancelled") })
 
-            assertFailsWith<CancellationException> { source.fetchInitialPage() }
+            assertFailsWith<CancellationException> { source.fetchPreviousPage(1) }
         }
 
     @Test
@@ -434,7 +434,7 @@ class GoRestUserRemoteDataSourceTest {
                     apiToken = "",
                 )
 
-            assertIs<RemoteResult.Success<RemotePage>>(source.fetchInitialPage())
+            assertIs<RemoteResult.Success<RemotePage>>(source.fetchPreviousPage(1))
             assertEquals(
                 RemoteResult.AuthenticationFailure,
                 source.createUser(
@@ -517,17 +517,22 @@ class GoRestUserRemoteDataSourceTest {
 
     private fun io.ktor.client.engine.mock.MockRequestHandleScope.jsonResponse(
         content: String,
-        nextLink: String? = null,
+        previousLink: String? = null,
+        totalPages: String? = null,
     ) = respond(
         content = content,
         status = HttpStatusCode.OK,
-        headers = jsonHeaders(nextLink),
+        headers = jsonHeaders(previousLink, totalPages),
     )
 
-    private fun jsonHeaders(nextLink: String? = null): Headers =
+    private fun jsonHeaders(
+        previousLink: String? = null,
+        totalPages: String? = null,
+    ): Headers =
         Headers.build {
             append(HttpHeaders.ContentType, "application/json")
-            if (nextLink != null) append("X-Links-Next", nextLink)
+            if (previousLink != null) append("X-Links-Previous", previousLink)
+            if (totalPages != null) append("X-Pagination-Pages", totalPages)
         }
 
     private fun usersJson(vararg ids: Long): String =

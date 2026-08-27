@@ -28,7 +28,7 @@ internal class UserRepositoryImpl(
     private val timeProvider: TimeProvider,
 ) : UserRepositoryContract {
     private val operationMutex = Mutex()
-    private var nextPage: Long? = null
+    private var previousPage: Long? = null
 
     override fun observeUsers(): Flow<List<UserRecord>> = localDataSource.observeUsers()
 
@@ -36,13 +36,13 @@ internal class UserRepositoryImpl(
         operationMutex.withLock {
             runRepositoryOperation {
                 requireConnection()
-                when (val result = remoteDataSource.fetchInitialPage()) {
+                when (val result = remoteDataSource.fetchLastPage()) {
                     is RemoteResult.Success -> {
-                        localDataSource.mergeSnapshot(
+                        localDataSource.mergePage(
                             users = result.value.users.map(RemoteUser::toSnapshotUser),
                             observedAt = timeProvider.now(),
                         )
-                        nextPage = result.value.nextPage
+                        previousPage = result.value.previousPage
                     }
 
                     else -> throw result.toUserDataException("The user directory could not be loaded.")
@@ -50,23 +50,23 @@ internal class UserRepositoryImpl(
             }
         }
 
-    override suspend fun loadNextPage(): Result<PageLoadResult> =
+    override suspend fun loadPreviousPage(): Result<PageLoadResult> =
         operationMutex.withLock {
             val page =
-                nextPage
+                previousPage
                     ?: return@withLock Result.success(PageLoadResult(loadedCount = 0, hasMore = false))
             runRepositoryOperation {
                 requireConnection()
-                when (val result = remoteDataSource.fetchPage(page)) {
+                when (val result = remoteDataSource.fetchPreviousPage(page)) {
                     is RemoteResult.Success -> {
                         localDataSource.mergePage(
                             users = result.value.users.map(RemoteUser::toSnapshotUser),
                             observedAt = timeProvider.now(),
                         )
-                        nextPage = result.value.nextPage
+                        previousPage = result.value.previousPage
                         PageLoadResult(
                             loadedCount = result.value.users.size,
-                            hasMore = nextPage != null,
+                            hasMore = previousPage != null,
                         )
                     }
 
