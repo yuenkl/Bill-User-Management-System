@@ -41,7 +41,7 @@ The sprint documents preserve the original delivery plan. When a plan differs fr
 2. UI observes database-derived state, never raw network responses.
 3. Create and delete are server-confirmed before the database changes.
 4. The repository serializes remote calls and transactional database updates.
-5. Network and server failures preserve cached data; pull-to-refresh and lifecycle/connectivity synchronization can retry a feed request, while a failed next page has its own Retry action.
+5. Network and server failures preserve cached data; pull-to-refresh and lifecycle/connectivity synchronization can retry a feed request, while a failed previous page has its own Retry action.
 6. Permanent failures are surfaced clearly.
 7. Undo recreates a successfully deleted user through POST.
 8. Core domain models do not contain temporary UI or persistence lifecycle flags such as `isDeleted` or `hidden`.

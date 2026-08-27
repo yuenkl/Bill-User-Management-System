@@ -9,7 +9,7 @@ import com.bill.usermanagmentsystem.domain.repository.UserRepository
 import com.bill.usermanagmentsystem.domain.usecase.AddUser
 import com.bill.usermanagmentsystem.domain.usecase.DefaultDeleteUser
 import com.bill.usermanagmentsystem.domain.usecase.DeleteUser
-import com.bill.usermanagmentsystem.domain.usecase.LoadNextUsersPage
+import com.bill.usermanagmentsystem.domain.usecase.LoadPreviousUsersPage
 import com.bill.usermanagmentsystem.domain.usecase.ObserveUsers
 import com.bill.usermanagmentsystem.domain.usecase.RefreshUsers
 import com.bill.usermanagmentsystem.domain.usecase.UndoUserDeletion
@@ -58,7 +58,7 @@ internal fun userFeatureModule(databaseName: String = USER_DATABASE_NAME): Modul
         }
         factory {
             val repository = get<UserRepository>()
-            LoadNextUsersPage(repository::loadNextPage)
+            LoadPreviousUsersPage(repository::loadPreviousPage)
         }
         factory {
             val repository = get<UserRepository>()
@@ -76,7 +76,7 @@ internal fun userFeatureModule(databaseName: String = USER_DATABASE_NAME): Modul
             UserFeedViewModel(
                 observeUsers = get(),
                 refreshUsers = get(),
-                loadNextUsersPage = get(),
+                loadPreviousUsersPage = get(),
                 addUser = get(),
                 addUserValidator = get(),
                 deleteUser = get(),

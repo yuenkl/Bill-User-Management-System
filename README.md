@@ -92,14 +92,14 @@ The repository serializes each:
 * 🗑️ Delete
 * ↩️ Restore / Undo
 
-A successful initial GoRest `/users` response replaces the stored remote snapshot in one transaction.
+A refresh first requests GoRest `/users` to read `X-Pagination-Pages`, then loads and merges the reported final page into the database. The metadata response is not displayed.
 
 A failure leaves the current database and pagination cursor intact.
 
-Reaching the feed end appends the page named by `X-Links-Next`:
+Reaching the feed end appends the page named by `X-Links-Previous`:
 
 ```text
-page=2 → page=3 → page=4 → ...
+page=296 → page=295 → page=294 → ...
 ```
 
 New server-confirmed users have no server position until a refresh, so the query shows them first by local observation time and descending local ID.
@@ -362,9 +362,9 @@ Refresh never clears a valid cache because of:
 * 💥 HTTP `5xx`
 * ⚠️ Malformed responses
 
-The initial `/users` response replaces the refreshable remote snapshot.
+Refresh first reads `X-Pagination-Pages` from `/users`, then merges the current final page without clearing cached users.
 
-Pages identified by `X-Links-Next` are appended in server order as the user reaches the end of the feed.
+Pages identified by `X-Links-Previous` are appended in descending page order as the user reaches the end of the feed.
 
 If a page request fails:
 
@@ -379,7 +379,7 @@ If a page request fails:
 | Technology                   | Purpose                                            |
 | ---------------------------- | -------------------------------------------------- |
 | 🟣 **Compose Multiplatform** | Shared adaptive UI and accessibility semantics     |
-| 💾 **SQLDelight**            | Typed shared persistence and transactional updates |
+| 💾 **SQLDelight**            | Typed shared persistence and transactional page updates |
 | 🌐 **Ktor**                  | Shared GoRest networking layer                     |
 | 💉 **Koin**                  | Dependency injection and test replacements         |
 | 🧵 **Kotlin Coroutines**     | Structured concurrency and background execution    |
@@ -395,8 +395,7 @@ Native entry points remain intentionally thin.
 SQLDelight provides:
 
 * Typed shared persistence
-* Transactional snapshot updates
-* Transactional pagination updates
+* Transactional page updates
 * Deterministic latest-first ordering for locally confirmed creates
 
 The database is the **single source observed by the UI**.

@@ -123,7 +123,7 @@ data class UserFeedUiState(
 )
 ```
 
-The screen automatically synchronizes at startup, foreground, and restored connectivity. Pull-to-refresh invokes the same synchronization path; the top app bar has no Refresh button. User actions also include add-form open/close, field changes, submit, user long-press, delete confirm/cancel, Undo, and next-page Retry. One-off Snackbar effects are emitted as `SharedFlow<UserFeedEvent>` values, so they are not replayed by the screen state after recomposition. The ViewModel keeps only the current Undo input needed to validate a restore action.
+The screen automatically synchronizes at startup, foreground, and restored connectivity. Pull-to-refresh invokes the same synchronization path; the top app bar has no Refresh button. User actions also include add-form open/close, field changes, submit, user long-press, delete confirm/cancel, Undo, and load-more Retry. One-off Snackbar effects are emitted as `SharedFlow<UserFeedEvent>` values, so they are not replayed by the screen state after recomposition. The ViewModel keeps only the current Undo input needed to validate a restore action.
 
 ## SQLDelight design
 
@@ -134,7 +134,7 @@ The screen automatically synchronizes at startup, foreground, and restored conne
 - `name`, `email`, `gender`, `status`
 - `observed_at_epoch_ms INTEGER`
 - `server_position INTEGER NULL`
-Visible-user queries place server-confirmed creates (which have no server position until the next refresh) above the pages returned by GoRest. New form submissions create no pending row: HTTP 201 merges the returned remote user at the top. Snapshot and page merges run transactionally.
+Visible-user queries place server-confirmed creates (which have no server position until the next refresh) above the pages returned by GoRest. Server pages are ordered from the final page backwards, so each previous page appends to the feed. New form submissions create no pending row: HTTP 201 merges the returned remote user at the top. Page merges run transactionally.
 
 New create submissions are direct remote operations: only HTTP 201 is merged into the local database. Deletion is an immediate remote operation: after DELETE succeeds, the local row is removed.
 
@@ -142,10 +142,12 @@ New create submissions are direct remote operations: only HTTP 201 is merged int
 
 `UserRepositoryImpl` owns remote calls, pagination state, and SQLDelight writes. A `Mutex` serializes refresh, page, create, delete, and restore operations so a response cannot race a database update.
 
-1. Refresh fetches `GET /users` without pagination parameters, reads `X-Links-Next`, and commits the received snapshot in one database transaction.
-2. Each successful scroll fetch follows the returned `X-Links-Next` value (`page=2`, `page=3`, and so on), appends the page transactionally, and advances the cursor only after the write succeeds.
+1. Refresh fetches `GET /users` without pagination parameters only to read and validate `X-Pagination-Pages`, then fetches and merges the reported final page. The metadata response is not displayed.
+2. Each successful scroll fetch follows the returned `X-Links-Previous` value (`page=296`, `page=295`, and so on), appends that page transactionally, and moves the cursor only after the write succeeds.
 3. Create and restore POST first; only HTTP 201 merges the returned user locally.
 4. Delete calls DELETE first; HTTP 204 and 404 then remove the local row. Undo POSTs the retained input as a new server user.
+
+The previous-page cursor belongs to the current repository session only. A new app launch or refresh discovers the current final page again; cached rows remain available from SQLDelight.
 
 Failure policy:
 
@@ -162,7 +164,7 @@ The complete transition contract is defined in [state-transitions.md](state-tran
 
 - Ktor common client configuration: JSON content negotiation, Kotlin serialization, timeouts, default GoRest base URL, bearer authentication, and status-to-domain error mapping.
 - Android provides the OkHttp engine; iOS provides Darwin.
-- The initial `/users` response returns typed next-page metadata. Header parsing is case-insensitive; an absent `X-Links-Next` ends pagination and an invalid link is a controlled data-contract error. The initial response and all subsequent pages retain server display order.
+- The initial `/users` response provides `X-Pagination-Pages`, which determines the final page to request. Displayed pages provide `X-Links-Previous`; its absence ends pagination and an invalid header or link is a controlled data-contract error. The final page and subsequent previous pages retain their server order.
 - Network logging is debug-only and must redact `Authorization`.
 
 ## Threading

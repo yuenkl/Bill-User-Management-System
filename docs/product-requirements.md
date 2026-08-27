@@ -16,12 +16,12 @@ All behaviour must preserve the [engineering invariants](README.md#engineering-i
 
 ### Behaviour
 
-- Fetch `GET /public/v2/users` as the initial, newest page, then follow `X-Links-Next` (`page=2`, `page=3`, and so on) as the user reaches the end of the feed.
-- Read `X-Links-Next` from each response. Its absence marks the end of the feed.
-- Persist the remote snapshot before exposing it to the UI. The UI observes SQLDelight only and never displays a network response directly.
+- Fetch `GET /public/v2/users` only to read `X-Pagination-Pages`, then fetch and display that final page. Follow `X-Links-Previous` (`page=296`, `page=295`, and so on) as the user reaches the end of the feed.
+- Read `X-Links-Previous` from each displayed page. Its absence marks the end of the feed.
+- Merge each remote page into SQLDelight before exposing it to the UI. The UI observes SQLDelight only and never displays a network response directly.
 - Each row displays name, email, gender/status indicators where useful, and a relative timestamp based on when the record was first observed locally.
 - Preserve server order across appended pages. A newly created user is merged at the top only after GoRest returns HTTP 201.
-- Refresh is available through pull-to-refresh or an equivalent explicit Material 3 action; it refreshes the initial response before restarting next-page loading.
+- Refresh is available through pull-to-refresh or an equivalent explicit Material 3 action; it discovers the current final page before restarting previous-page loading.
 
 ### Loading and failure states
 
@@ -34,9 +34,9 @@ All behaviour must preserve the [engineering invariants](README.md#engineering-i
 
 ### Acceptance criteria
 
-- Cold start online displays the initial response and scrolling progressively appends each subsequent page in server order.
+- Cold start online displays the current final page and scrolling progressively appends each previous page in descending page order.
 - Cold start offline displays cached users, or the offline empty state if no cache exists.
-- Refresh never clears valid cached content before replacement data is committed.
+- Refresh never clears valid cached content before updated page data is committed.
 - Relative-time boundaries are correct and update while the screen remains open.
 
 ## Adaptive Add User
@@ -104,7 +104,7 @@ All behaviour must preserve the [engineering invariants](README.md#engineering-i
 - Create, delete, and Undo are direct server-confirmed operations. Offline mutations do not create a local row or durable outbox entry.
 - Only one synchronization run may execute at a time.
 - Database updates for each remote result are transactional, and database flows update the UI automatically afterward.
-- A failed initial snapshot preserves the current cache and can be retried by pull-to-refresh or the next lifecycle/connectivity synchronization. A failed next page exposes an explicit Retry without advancing its cursor.
+- A failed final-page load preserves the current cache and can be retried by pull-to-refresh or the next lifecycle/connectivity synchronization. A failed previous page exposes an explicit Retry without advancing its cursor.
 - Permanent failures preserve the cache and surface a clear reason. Create failures keep the form open for correction or resubmission.
 - Core `User` domain data never carries `isDeleted`, `hidden`, dialog, Snackbar, or other temporary lifecycle flags.
 - Compose renders state and forwards actions; validation, mutation, synchronization, and retry decisions remain in shared ViewModel/domain/data code.

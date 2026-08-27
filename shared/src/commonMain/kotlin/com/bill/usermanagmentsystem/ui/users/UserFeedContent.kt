@@ -77,8 +77,8 @@ internal fun UserList(
     canLoadMore: Boolean,
     loadMoreError: String?,
     onUserLongClick: (String) -> Unit,
-    onLoadNextPage: () -> Unit,
-    onRetryNextPage: () -> Unit,
+    onLoadMore: () -> Unit,
+    onRetryLoadMore: () -> Unit,
 ) {
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
@@ -120,8 +120,8 @@ internal fun UserList(
                             PaginationFooter(
                                 loading = loadingMore,
                                 error = loadMoreError,
-                                onLoad = onLoadNextPage,
-                                onRetry = onRetryNextPage,
+                                onLoad = onLoadMore,
+                                onRetry = onRetryLoadMore,
                             )
                         }
                     }
@@ -161,8 +161,8 @@ internal fun UserList(
                             PaginationFooter(
                                 loading = loadingMore,
                                 error = loadMoreError,
-                                onLoad = onLoadNextPage,
-                                onRetry = onRetryNextPage,
+                                onLoad = onLoadMore,
+                                onRetry = onRetryLoadMore,
                             )
                         }
                     }

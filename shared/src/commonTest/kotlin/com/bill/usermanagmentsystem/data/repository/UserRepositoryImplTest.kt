@@ -26,7 +26,7 @@ import kotlin.time.Instant
 @OptIn(ExperimentalCoroutinesApi::class)
 class UserRepositoryImplTest {
     @Test
-    fun refreshStoresTheInitialApiPageAndInitializesPagination() =
+    fun refreshStoresTheLastApiPageAndInitializesBackwardPagination() =
         runTest {
             val local = FakeUserLocalDataSource()
             val remote =
@@ -38,14 +38,15 @@ class UserRepositoryImplTest {
             val repository = repository(local, remote)
 
             assertTrue(repository.refresh().isSuccess)
-            assertEquals(listOf(42L), local.mergedSnapshots.single().map { it.remoteId })
+            assertEquals(listOf(2L), remote.lastPageRequests)
+            assertEquals(listOf(42L), local.mergedPages.single().map { it.remoteId })
 
-            assertTrue(repository.loadNextPage().isSuccess)
-            assertEquals(listOf(2L), remote.pageRequests)
+            assertTrue(repository.loadPreviousPage().isSuccess)
+            assertEquals(listOf(1L), remote.pageRequests)
         }
 
     @Test
-    fun nextPageFailureKeepsTheCursorForAnExplicitRetry() =
+    fun previousPageFailureKeepsTheCursorForAnExplicitRetry() =
         runTest {
             val remote =
                 FakeUserRemoteDataSource().apply {
@@ -56,15 +57,15 @@ class UserRepositoryImplTest {
             val repository = repository(FakeUserLocalDataSource(), remote)
 
             assertTrue(repository.refresh().isSuccess)
-            assertTrue(repository.loadNextPage().isFailure)
+            assertTrue(repository.loadPreviousPage().isFailure)
 
             remote.pageHandler = { RemoteResult.Success(listOf(remoteUser(remoteId = 7))) }
-            assertTrue(repository.loadNextPage().isSuccess)
-            assertEquals(listOf(2L, 2L), remote.pageRequests)
+            assertTrue(repository.loadPreviousPage().isSuccess)
+            assertEquals(listOf(1L, 1L), remote.pageRequests)
         }
 
     @Test
-    fun failedRefreshPreservesTheExistingNextPageCursor() =
+    fun failedRefreshPreservesTheExistingPreviousPageCursor() =
         runTest {
             val remote =
                 FakeUserRemoteDataSource().apply {
@@ -78,8 +79,25 @@ class UserRepositoryImplTest {
             remote.fetchHandler = { RemoteResult.RetryableFailure("Service unavailable") }
 
             assertTrue(repository.refresh().isFailure)
-            assertTrue(repository.loadNextPage().isSuccess)
-            assertEquals(listOf(2L), remote.pageRequests)
+            assertTrue(repository.loadPreviousPage().isSuccess)
+            assertEquals(listOf(1L), remote.pageRequests)
+        }
+
+    @Test
+    fun refreshRestartsFromTheCurrentLastPage() =
+        runTest {
+            val remote =
+                FakeUserRemoteDataSource().apply {
+                    totalPages = 296
+                    fetchHandler = { RemoteResult.Success(emptyList()) }
+                }
+            val repository = repository(FakeUserLocalDataSource(), remote)
+
+            assertTrue(repository.refresh().isSuccess)
+            remote.totalPages = 297
+
+            assertTrue(repository.refresh().isSuccess)
+            assertEquals(listOf(296L, 297L), remote.lastPageRequests)
         }
 
     @Test
@@ -98,7 +116,7 @@ class UserRepositoryImplTest {
             connectivity.mutableStatus.value = ConnectivityStatus.Unavailable
 
             val refresh = repository.refresh()
-            val page = repository.loadNextPage()
+            val page = repository.loadPreviousPage()
 
             assertEquals(UserDataError.Offline, refresh.exceptionOrNull()?.userDataErrorOrNull())
             assertEquals(UserDataError.Offline, page.exceptionOrNull()?.userDataErrorOrNull())

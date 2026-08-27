@@ -8,7 +8,7 @@ import com.bill.usermanagmentsystem.domain.model.UserStatus
 import com.bill.usermanagmentsystem.domain.model.userDataErrorOrNull
 import com.bill.usermanagmentsystem.domain.usecase.AddUser
 import com.bill.usermanagmentsystem.domain.usecase.DeleteUser
-import com.bill.usermanagmentsystem.domain.usecase.LoadNextUsersPage
+import com.bill.usermanagmentsystem.domain.usecase.LoadPreviousUsersPage
 import com.bill.usermanagmentsystem.domain.usecase.ObserveUsers
 import com.bill.usermanagmentsystem.domain.usecase.RefreshUsers
 import com.bill.usermanagmentsystem.domain.usecase.UndoUserDeletion
@@ -44,7 +44,7 @@ import kotlin.time.Instant
 class UserFeedViewModel(
     observeUsers: ObserveUsers,
     private val refreshUsers: RefreshUsers,
-    private val loadNextUsersPage: LoadNextUsersPage,
+    private val loadPreviousUsersPage: LoadPreviousUsersPage,
     private val addUser: AddUser,
     private val addUserValidator: AddUserValidator,
     private val deleteUser: DeleteUser,
@@ -103,12 +103,12 @@ class UserFeedViewModel(
         requestSynchronization(manual = true)
     }
 
-    fun loadNextPage() {
-        requestNextPage(force = false)
+    fun loadMore() {
+        requestMoreUsers(force = false)
     }
 
-    fun retryNextPage() {
-        requestNextPage(force = true)
+    fun retryLoadMore() {
+        requestMoreUsers(force = true)
     }
 
     fun openAddUserForm() {
@@ -342,7 +342,7 @@ class UserFeedViewModel(
             }
     }
 
-    private fun requestNextPage(force: Boolean) {
+    private fun requestMoreUsers(force: Boolean) {
         val current = presentation.value
         if (
             pageLoadJob?.isActive == true ||
@@ -359,7 +359,7 @@ class UserFeedViewModel(
         }
         pageLoadJob =
             viewModelScope.launch {
-                val result = loadNextUsersPage()
+                val result = loadPreviousUsersPage()
                 presentation.update { active ->
                     result.fold(
                         onSuccess = { page ->

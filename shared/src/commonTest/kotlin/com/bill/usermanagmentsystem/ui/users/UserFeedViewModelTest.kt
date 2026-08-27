@@ -12,7 +12,7 @@ import com.bill.usermanagmentsystem.domain.model.UserStatus
 import com.bill.usermanagmentsystem.domain.repository.PageLoadResult
 import com.bill.usermanagmentsystem.domain.usecase.AddUser
 import com.bill.usermanagmentsystem.domain.usecase.DeleteUser
-import com.bill.usermanagmentsystem.domain.usecase.LoadNextUsersPage
+import com.bill.usermanagmentsystem.domain.usecase.LoadPreviousUsersPage
 import com.bill.usermanagmentsystem.domain.usecase.ObserveUsers
 import com.bill.usermanagmentsystem.domain.usecase.RefreshUsers
 import com.bill.usermanagmentsystem.domain.usecase.UndoUserDeletion
@@ -94,15 +94,15 @@ class UserFeedViewModelTest {
         }
 
     @Test
-    fun nextPageRequestsAreDeduplicatedAndExposeRemainingAvailability() =
+    fun loadMoreRequestsAreDeduplicatedAndExposeRemainingAvailability() =
         runTest {
             val gate = CompletableDeferred<Result<PageLoadResult>>()
             withFixture {
                 pageHandler = { gate.await() }
                 runCurrent()
 
-                viewModel.loadNextPage()
-                viewModel.loadNextPage()
+                viewModel.loadMore()
+                viewModel.loadMore()
                 runCurrent()
 
                 assertEquals(1, pageCalls)
@@ -117,22 +117,22 @@ class UserFeedViewModelTest {
         }
 
     @Test
-    fun nextPageFailureRequiresExplicitRetry() =
+    fun loadMoreFailureRequiresExplicitRetry() =
         runTest {
             withFixture {
                 pageHandler = { Result.failure(UserDataException(UserDataError.Offline)) }
                 runCurrent()
 
-                viewModel.loadNextPage()
+                viewModel.loadMore()
                 runCurrent()
                 assertNotNull(viewModel.uiState.value.loadMoreError)
 
-                viewModel.loadNextPage()
+                viewModel.loadMore()
                 runCurrent()
                 assertEquals(1, pageCalls)
 
                 pageHandler = { Result.success(PageLoadResult(loadedCount = 5, hasMore = false)) }
-                viewModel.retryNextPage()
+                viewModel.retryLoadMore()
                 runCurrent()
                 assertEquals(2, pageCalls)
             }
@@ -359,8 +359,8 @@ class UserFeedViewModelTest {
                         refreshCalls += 1
                         refreshHandler()
                     },
-                loadNextUsersPage =
-                    LoadNextUsersPage {
+                loadPreviousUsersPage =
+                    LoadPreviousUsersPage {
                         pageCalls += 1
                         pageHandler()
                     },

@@ -63,18 +63,23 @@ internal class FakeUserRemoteDataSource : UserRemoteDataSource {
         error("No delete response configured.")
     }
     var fetchCalls = 0
+    val lastPageRequests = mutableListOf<Long>()
     val pageRequests = mutableListOf<Long>()
     val createRequests = mutableListOf<CreateUserRequest>()
     val deleteRequests = mutableListOf<Long>()
 
-    override suspend fun fetchInitialPage(): RemoteResult<RemotePage> {
+    override suspend fun fetchLastPage(): RemoteResult<RemotePage> {
         fetchCalls += 1
-        return fetchHandler().toRemotePage(page = 1, nextPage = 2L.takeIf { it <= totalPages })
+        lastPageRequests += totalPages
+        return fetchHandler().toRemotePage(
+            page = totalPages,
+            previousPage = (totalPages - 1).takeIf { it >= 1 },
+        )
     }
 
-    override suspend fun fetchPage(page: Long): RemoteResult<RemotePage> {
+    override suspend fun fetchPreviousPage(page: Long): RemoteResult<RemotePage> {
         pageRequests += page
-        return pageHandler(page).toRemotePage(page, (page + 1).takeIf { it <= totalPages })
+        return pageHandler(page).toRemotePage(page, (page - 1).takeIf { it >= 1 })
     }
 
     override suspend fun createUser(request: CreateUserRequest): RemoteResult<RemoteUser> {
@@ -103,10 +108,10 @@ internal class FakeTimeProvider(
 
 private fun RemoteResult<List<RemoteUser>>.toRemotePage(
     page: Long,
-    nextPage: Long?,
+    previousPage: Long?,
 ): RemoteResult<RemotePage> =
     when (this) {
-        is RemoteResult.Success -> RemoteResult.Success(RemotePage(value, page, nextPage))
+        is RemoteResult.Success -> RemoteResult.Success(RemotePage(value, page, previousPage))
         is RemoteResult.RetryableFailure -> RemoteResult.RetryableFailure(reason, serverRetryAt)
         RemoteResult.AuthenticationFailure -> RemoteResult.AuthenticationFailure
         is RemoteResult.ValidationFailure -> RemoteResult.ValidationFailure(reason)

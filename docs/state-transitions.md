@@ -6,25 +6,25 @@ This document is the normative business-state contract. Implementations may rena
 
 | Class | Examples | Persistence | Retry policy | User visibility |
 | --- | --- | --- | --- | --- |
-| Retryable | Offline, timeout, I/O, HTTP 5xx | Existing cache remains unchanged | Pull-to-refresh, foreground, or restored connectivity retries the initial snapshot; a failed page has an explicit Retry | Non-blocking error when useful |
+| Retryable | Offline, timeout, I/O, HTTP 5xx | Existing cache remains unchanged | Pull-to-refresh, foreground, or restored connectivity retries final-page discovery; a failed page has an explicit Retry | Non-blocking error when useful |
 | Rate limited | HTTP 429 | Existing cache remains unchanged | A later pull-to-refresh or automatic synchronization may retry | Rate-limit message without losing local state |
 | Authentication | HTTP 401/403 | Existing cache remains unchanged | Correct token, rebuild, then pull-to-refresh or resume the app | Clear configuration error |
 | Validation permanent | CREATE HTTP 422 | No local row is written | Correct and resubmit manually | Alert lists the API field and message |
 | Delete already absent | DELETE HTTP 404 | Row removed | No retry; treated as success | Normal completed deletion |
 | Permanent client/invariant | Malformed payload, impossible mapping, unsupported request | Operation stopped; cached state preserved | Explicit user action starts a new request | Clear diagnostic failure |
 
-## Refresh and snapshot
+## Refresh and backward pagination
 
 | Current state | Event | Success | Retryable failure | Permanent failure / edge case |
 | --- | --- | --- | --- | --- |
-| Empty, idle | Initial load | Fetch and commit the initial `/users` snapshot; emit visible users and enable the `X-Links-Next` cursor when available | Remain empty; show offline state | Show authentication or data-contract error; no loop |
-| Cached, idle | Automatic synchronization or pull-to-refresh | Commit snapshot; keep original `observedAt` | Keep cached users; show non-blocking stale/offline state | Keep cached users; show blocking reason where relevant |
+| Empty, idle | Initial load | Read `X-Pagination-Pages` from `/users`, fetch and merge that final page, then enable its `X-Links-Previous` cursor when available | Remain empty; show offline state | Show authentication or data-contract error; no loop |
+| Cached, idle | Automatic synchronization or pull-to-refresh | Discover and merge the current final page; keep original `observedAt` | Keep cached users; show non-blocking stale/offline state | Keep cached users; show blocking reason where relevant |
 | Synchronizing | Another refresh trigger | Ignore the duplicate trigger | Same active result | Never start a second concurrent refresh |
-| Any | Next-page link invalid | None | None | Keep cache; surface data-contract error; do not clear database |
-| Page loaded | Feed reaches end | Fetch and transactionally append the page named by `X-Links-Next` in display order | Keep loaded users; show explicit page Retry without advancing the cursor | Stop when `X-Links-Next` is absent; never loop or duplicate a page |
-| Any | Initial page is empty | Commit an empty remote snapshot | Keep prior snapshot | No local intent is retained because mutations are server-confirmed |
+| Any | Previous-page link invalid | None | None | Keep cache; surface data-contract error; do not clear database |
+| Page loaded | Feed reaches end | Fetch and transactionally append the page named by `X-Links-Previous` in descending page order | Keep loaded users; show explicit page Retry without advancing the cursor | Stop when `X-Links-Previous` is absent; never loop or duplicate a page |
+| Any | Final page is empty | Merge the empty final page | Keep prior cache | No local intent is retained because mutations are server-confirmed |
 
-Snapshot results affect UI only after their database transaction commits.
+Remote page results affect UI only after their database transaction commits.
 
 ## Create user
 
@@ -57,7 +57,7 @@ Snapshot results affect UI only after their database transaction commits.
 - Shimmer exists only for empty database plus active initial load.
 - Cached users remain visible during refresh and failures.
 - Dialog, sheet, focus, and Snackbar visibility are UI state; they do not change domain models.
-- Pull-to-refresh, next-page retry, and mutation actions call ViewModel methods. Composables do not validate business rules, write SQLDelight, call Ktor, or coordinate retries.
+- Pull-to-refresh, load-more retry, and mutation actions call ViewModel methods. Composables do not validate business rules, write SQLDelight, call Ktor, or coordinate retries.
 - One-off messages are consumed explicitly and do not become durable business truth.
 
 ## Required transition tests

@@ -38,7 +38,8 @@ import kotlin.time.Instant
 
 private const val PAGE_SIZE = 10
 private const val MAX_PAGE_NUMBER = Long.MAX_VALUE / PAGE_SIZE
-private const val LINKS_NEXT_HEADER = "X-Links-Next"
+private const val LINKS_PREVIOUS_HEADER = "X-Links-Previous"
+private const val PAGINATION_PAGES_HEADER = "X-Pagination-Pages"
 private const val RATE_LIMIT_RESET_HEADER = "X-RateLimit-Reset"
 private const val DEFAULT_VALIDATION_FAILURE_MESSAGE = "The server rejected the user details."
 
@@ -88,38 +89,20 @@ internal class GoRestUserRemoteDataSource(
 ) : UserRemoteDataSource {
     private val usersUrl = "${appConfig.baseUrl.trimEnd('/')}/users"
 
-    override suspend fun fetchInitialPage(): RemoteResult<RemotePage> =
+    override suspend fun fetchLastPage(): RemoteResult<RemotePage> =
         withContext(networkDispatcher) {
             remoteCall {
-                when (val initialPage = fetchPageResponse(page = null)) {
-                    is PageResult.Failure -> initialPage.failure
-                    is PageResult.Success ->
-                        RemoteResult.Success(
-                            RemotePage(
-                                users = initialPage.users.toRemoteUsers(page = 1),
-                                page = 1,
-                                nextPage = initialPage.nextPage.after(page = 1),
-                            ),
-                        )
+                when (val metadata = fetchPaginationMetadata()) {
+                    is PaginationMetadataResult.Failure -> metadata.failure
+                    is PaginationMetadataResult.Success -> fetchPage(metadata.lastPage)
                 }
             }
         }
 
-    override suspend fun fetchPage(page: Long): RemoteResult<RemotePage> =
+    override suspend fun fetchPreviousPage(page: Long): RemoteResult<RemotePage> =
         withContext(networkDispatcher) {
             remoteCall {
-                require(page in 1..MAX_PAGE_NUMBER) { "Page number is outside the supported range." }
-                when (val result = fetchPageResponse(page = page)) {
-                    is PageResult.Failure -> result.failure
-                    is PageResult.Success ->
-                        RemoteResult.Success(
-                            RemotePage(
-                                users = result.users.toRemoteUsers(page),
-                                page = page,
-                                nextPage = result.nextPage.after(page),
-                            ),
-                        )
-                }
+                fetchPage(page)
             }
         }
 
@@ -163,23 +146,56 @@ internal class GoRestUserRemoteDataSource(
         }
     }
 
-    private suspend fun fetchPageResponse(page: Long?): PageResult {
+    private suspend fun fetchPaginationMetadata(): PaginationMetadataResult {
         val response =
             httpClient.get(usersUrl) {
                 header(HttpHeaders.CacheControl, "no-cache")
                 bearerToken()
-                page?.let { parameter("page", it) }
+            }
+        if (response.status.value !in 200..299) {
+            return PaginationMetadataResult.Failure(response.toFailure())
+        }
+        val lastPage =
+            response.headers[PAGINATION_PAGES_HEADER]
+                ?.trim()
+                ?.toLongOrNull()
+                ?.takeIf { it in 1..MAX_PAGE_NUMBER }
+                ?: throw IllegalArgumentException("The service returned an invalid X-Pagination-Pages header.")
+        return PaginationMetadataResult.Success(lastPage)
+    }
+
+    private suspend fun fetchPage(page: Long): RemoteResult<RemotePage> {
+        require(page in 1..MAX_PAGE_NUMBER) { "Page number is outside the supported range." }
+        return when (val result = fetchPageResponse(page)) {
+            is PageResult.Failure -> result.failure
+            is PageResult.Success ->
+                RemoteResult.Success(
+                    RemotePage(
+                        users = result.users.toRemoteUsers(page),
+                        page = page,
+                        previousPage = result.previousPage.before(page),
+                    ),
+                )
+        }
+    }
+
+    private suspend fun fetchPageResponse(page: Long): PageResult {
+        val response =
+            httpClient.get(usersUrl) {
+                header(HttpHeaders.CacheControl, "no-cache")
+                bearerToken()
+                parameter("page", page)
             }
         if (response.status.value !in 200..299) {
             return PageResult.Failure(response.toFailure())
         }
 
-        val nextPage =
-            response.headers[LINKS_NEXT_HEADER]
+        val previousPage =
+            response.headers[LINKS_PREVIOUS_HEADER]
                 ?.trim()
-                ?.let(::parseNextPage)
-                ?: return PageResult.Success(response.body(), nextPage = null)
-        return PageResult.Success(response.body(), nextPage)
+                ?.let(::parseLinkedPage)
+                ?: return PageResult.Success(response.body(), previousPage = null)
+        return PageResult.Success(response.body(), previousPage)
     }
 
     private fun io.ktor.client.request.HttpRequestBuilder.bearerToken() {
@@ -238,31 +254,41 @@ internal class GoRestUserRemoteDataSource(
     private sealed interface PageResult {
         data class Success(
             val users: List<GoRestUserDto>,
-            val nextPage: Long?,
+            val previousPage: Long?,
         ) : PageResult
 
         data class Failure(
             val failure: RemoteResult<Nothing>,
         ) : PageResult
     }
+
+    private sealed interface PaginationMetadataResult {
+        data class Success(
+            val lastPage: Long,
+        ) : PaginationMetadataResult
+
+        data class Failure(
+            val failure: RemoteResult<Nothing>,
+        ) : PaginationMetadataResult
+    }
 }
 
-private fun parseNextPage(nextLink: String): Long {
+private fun parseLinkedPage(link: String): Long {
     val pageValue =
-        nextLink
+        link
             .substringAfter("?", missingDelimiterValue = "")
             .split("&")
             .firstOrNull { it.substringBefore("=") == "page" }
             ?.substringAfter("=", missingDelimiterValue = "")
             ?.toLongOrNull()
     return requireNotNull(pageValue?.takeIf { it in 1..MAX_PAGE_NUMBER }) {
-        "The service returned an invalid next-page link."
+        "The service returned an invalid pagination link."
     }
 }
 
-private fun Long?.after(page: Long): Long? =
-    this?.also { nextPage ->
-        require(nextPage > page) { "The service returned a non-forward next-page link." }
+private fun Long?.before(page: Long): Long? =
+    this?.also { previousPage ->
+        require(previousPage < page) { "The service returned a non-backward previous-page link." }
     }
 
 private inline fun <T> remoteCall(block: () -> RemoteResult<T>): RemoteResult<T> =
