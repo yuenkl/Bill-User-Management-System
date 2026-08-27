@@ -40,6 +40,7 @@ internal fun buildUserFeedUiState(
     return UserFeedUiState(
         users = items,
         initialLoading = initialLoading,
+        refreshing = presentation.refreshing,
         loadingMore = presentation.loadingNextPage,
         canLoadMore = presentation.canLoadNextPage,
         loadMoreError = presentation.nextPageError,

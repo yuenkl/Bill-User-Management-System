@@ -26,7 +26,7 @@ This directory is the implementation source of truth for the Sliide Kotlin Multi
 | Networking | Ktor with platform engines |
 | Persistence | SQLDelight; the database is the UI source of truth |
 | Offline behaviour | Feed caching; create and delete are server-confirmed before the database changes |
-| Refresh triggers | Startup, foreground, and connectivity restoration |
+| Refresh triggers | Startup, foreground, connectivity restoration, and pull-to-refresh |
 | Delete undo | DELETE first, remove locally after 204/404, then offer an in-memory Undo that POSTs a new user |
 | Compact layout | Single `LazyColumn` |
 | Landscape layout | Two-column `LazyVerticalGrid` |

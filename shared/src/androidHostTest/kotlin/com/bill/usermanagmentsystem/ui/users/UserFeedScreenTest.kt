@@ -146,7 +146,7 @@ class UserFeedScreenTest {
         }
 
     @Test
-    fun manualRefreshControlsAreNotRendered() =
+    fun topBarDoesNotRenderRefreshButton() =
         runComposeUiTest {
             setContent {
                 screen(state = UserFeedUiState(initialLoading = false))

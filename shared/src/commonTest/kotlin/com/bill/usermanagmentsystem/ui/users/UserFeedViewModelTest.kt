@@ -61,6 +61,37 @@ class UserFeedViewModelTest {
         }
 
     @Test
+    fun pullToRefreshKeepsCachedUsersAndShowsAFailureMessage() =
+        runTest {
+            withFixture {
+                users.value = listOf(userRecord())
+                refreshHandler = {
+                    Result.failure(UserDataException(UserDataError.RemoteContract("Unavailable")))
+                }
+                runCurrent()
+
+                val event = async { viewModel.events.first() }
+                runCurrent()
+                viewModel.refresh()
+                runCurrent()
+
+                assertEquals(
+                    "Ada Lovelace",
+                    viewModel.uiState.value.users
+                        .single()
+                        .name,
+                )
+                assertNotNull(viewModel.uiState.value.banner)
+                assertEquals(
+                    UserFeedEvent.ShowSnackbar(
+                        message = "The service returned unexpected data. Unavailable",
+                    ),
+                    event.await(),
+                )
+            }
+        }
+
+    @Test
     fun nextPageRequestsAreDeduplicatedAndExposeRemainingAvailability() =
         runTest {
             val gate = CompletableDeferred<Result<PageLoadResult>>()

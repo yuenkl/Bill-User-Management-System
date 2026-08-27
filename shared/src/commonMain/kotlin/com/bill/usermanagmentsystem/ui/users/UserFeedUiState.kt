@@ -6,6 +6,7 @@ import com.bill.usermanagmentsystem.domain.model.UserStatus
 data class UserFeedUiState(
     val users: List<UserItemUiModel> = emptyList(),
     val initialLoading: Boolean = true,
+    val refreshing: Boolean = false,
     val loadingMore: Boolean = false,
     val canLoadMore: Boolean = false,
     val loadMoreError: String? = null,
