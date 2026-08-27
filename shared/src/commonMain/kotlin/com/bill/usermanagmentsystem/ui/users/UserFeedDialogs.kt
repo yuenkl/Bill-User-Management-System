@@ -50,7 +50,7 @@ internal fun AddUserFormOverlay(
                 shape = MaterialTheme.shapes.extraLarge,
                 tonalElevation = 6.dp,
             ) {
-                UserFormContent(
+                UserForm(
                     state = form,
                     onNameChange = onNameChange,
                     onEmailChange = onEmailChange,
@@ -68,7 +68,7 @@ internal fun AddUserFormOverlay(
             sheetState = sheetState,
             modifier = Modifier.semantics { contentDescription = "Add user sheet" },
         ) {
-            UserFormContent(
+            UserForm(
                 state = form,
                 onNameChange = onNameChange,
                 onEmailChange = onEmailChange,
@@ -150,28 +150,5 @@ internal fun DeleteConfirmationDialog(
                 )
             }
         },
-    )
-}
-
-@Composable
-private fun UserFormContent(
-    state: AddUserFormUiState,
-    onNameChange: (String) -> Unit,
-    onEmailChange: (String) -> Unit,
-    onGenderSelected: (Gender) -> Unit,
-    onStatusSelected: (UserStatus) -> Unit,
-    onCancel: () -> Unit,
-    onSubmit: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    UserForm(
-        state = state,
-        onNameChange = onNameChange,
-        onEmailChange = onEmailChange,
-        onGenderSelected = onGenderSelected,
-        onStatusSelected = onStatusSelected,
-        onCancel = onCancel,
-        onSubmit = onSubmit,
-        modifier = modifier,
     )
 }
