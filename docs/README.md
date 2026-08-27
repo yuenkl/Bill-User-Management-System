@@ -25,7 +25,7 @@ This directory is the implementation source of truth for the Sliide Kotlin Multi
 | Dependency injection | Koin with constructor injection |
 | Networking | Ktor with platform engines |
 | Persistence | SQLDelight; the database is the UI source of truth |
-| Offline behaviour | Feed, add, and delete remain usable offline through a durable mutation outbox |
+| Offline behaviour | Feed caching and delete synchronization use durable local state; creation is server-confirmed |
 | Synchronization | Startup, foreground, connectivity restoration, and manual refresh |
 | Delete undo | Hide locally, allow five seconds to undo, then queue the remote DELETE |
 | Compact layout | Single `LazyColumn` |
@@ -37,9 +37,9 @@ This directory is the implementation source of truth for the Sliide Kotlin Multi
 
 1. SQLDelight is the single source of truth.
 2. UI observes database-derived state, never raw network responses.
-3. All mutations are local-first and durable.
-4. Synchronization reconciles local intent with the server.
-5. Transient API and network failures remain durable and retryable.
+3. Delete mutations are local-first and durable; creation is committed only after HTTP 201.
+4. Synchronization reconciles persisted local intent with the server.
+5. Transient delete API and network failures remain durable and retryable.
 6. Permanent failures are surfaced clearly and are not retried automatically forever.
 7. Undo restores local state before remote deletion is finalized.
 8. Core domain models do not contain temporary UI or persistence lifecycle flags such as `isDeleted` or `hidden`.

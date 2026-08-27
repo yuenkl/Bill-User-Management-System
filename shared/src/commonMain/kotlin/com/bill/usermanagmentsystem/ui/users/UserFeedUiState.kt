@@ -15,6 +15,7 @@ data class UserFeedUiState(
     val banner: UserFeedBanner? = null,
     val message: UserFeedMessage? = null,
     val addUserForm: AddUserFormUiState? = null,
+    val addUserValidationAlert: AddUserValidationAlert? = null,
     val deleteConfirmation: UserItemUiModel? = null,
     val deleteInProgress: Boolean = false,
     val undoSnackbar: DeleteUndoUiModel? = null,
@@ -45,6 +46,15 @@ enum class AddUserField {
     Name,
     Email,
 }
+
+data class AddUserValidationAlert(
+    val errors: List<AddUserApiFieldError>,
+)
+
+data class AddUserApiFieldError(
+    val field: String,
+    val message: String,
+)
 
 data class UserItemUiModel(
     val localId: String,

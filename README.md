@@ -1,6 +1,6 @@
 # User Management System
 
-A production-minded Kotlin Multiplatform user directory for Android and iOS. The app shares its Compose UI, ViewModel, domain rules, offline-first repository, synchronization coordinator, Ktor client, SQLDelight schema, and dependency graph.
+A production-minded Kotlin Multiplatform user directory for Android and iOS. The app shares its Compose UI, ViewModel, domain rules, repository, synchronization coordinator, Ktor client, SQLDelight schema, and dependency graph.
 
 The feed reads from the local database at all times. Network work refreshes that database in the background, so cached and locally created users remain useful through connectivity and server failures.
 
@@ -8,7 +8,7 @@ The feed reads from the local database at all times. Network work refreshes that
 
 - One-column feed below 600dp and an exact two-column grid from 600dp upward.
 - Shared Material 3 light/dark presentation and accessible loading, empty, offline, error, pending, and failed states.
-- Offline create with a durable outbox, FIFO synchronization, persisted retry timing, and explicit recovery for permanent failures.
+- Server-confirmed user creation: rows are added only after HTTP 201, and API validation errors are shown in the form.
 - Long-press delete that removes the remote user first, then offers Undo to recreate it.
 - Lifecycle- and connectivity-aware synchronization coalesced into one active run.
 - Deterministic shared, persistence, Compose, and platform dependency-injection tests.
@@ -33,7 +33,7 @@ flowchart TD
     C --> B
 ```
 
-The synchronization coordinator processes due create mutations in FIFO order, then transactionally merges the initial GoRest `/users` response. Reaching the feed end appends the page named by `X-Links-Next` (`page=2`, `page=3`, and so on) through the same serialized data path. Concurrent triggers join the active run instead of starting or queuing another full synchronization. The detailed contract is in [`docs/state-transitions.md`](docs/state-transitions.md); architectural boundaries are in [`docs/architecture.md`](docs/architecture.md).
+The synchronization coordinator processes due delete mutations (and any legacy create mutations) in FIFO order, then transactionally merges the initial GoRest `/users` response. Reaching the feed end appends the page named by `X-Links-Next` (`page=2`, `page=3`, and so on) through the same serialized data path. Concurrent triggers join the active run instead of starting or queuing another full synchronization. The detailed contract is in [`docs/state-transitions.md`](docs/state-transitions.md); architectural boundaries are in [`docs/architecture.md`](docs/architecture.md).
 
 ## Prerequisites
 
@@ -95,13 +95,12 @@ Coverage includes incremental pagination and Retry, the compact/wide breakpoint,
 
 ## Offline synchronization and Undo
 
-- Create writes the user and CREATE mutation in one local transaction. The user appears immediately as pending; synchronization later attaches the remote ID to that same local row.
-- Retryable failures retain intent and persist attempt count plus the next allowed retry. HTTP 429 honors server timing; exponential backoff is bounded at five minutes.
-- Authentication and permanent failures do not loop automatically. Validation failures become visible failed-sync rows with an explicit Retry action.
+- Create posts the form directly to GoRest. Only HTTP 201 merges the returned user into the database and displays it at the top.
+- A failed create leaves no local row. HTTP 422 keeps the form open and presents the API field and message in an alert.
 - Delete calls the remote endpoint first. On HTTP 204 (or an already-absent 404), the local row is removed and the UI offers Undo.
 - Undo sends a new POST with the deleted user's data. A successful response is merged locally with its new remote ID; a failed restore leaves the user deleted and explains the problem.
 - Refresh never clears a good cache because of an offline, authentication, rate-limit, 5xx, or malformed-response failure.
-- The initial `/users` response replaces the refreshable remote snapshot while retaining pending and failed local rows. Successfully created users stay optimistic only until a successful refresh, after which the API response determines their presence and position. Pages named by `X-Links-Next` append in server order when scrolled into view. A page failure keeps all loaded users visible and exposes an explicit Retry without advancing the cursor.
+- The initial `/users` response replaces the refreshable remote snapshot. Pages named by `X-Links-Next` append in server order when scrolled into view. A page failure keeps all loaded users visible and exposes an explicit Retry without advancing the cursor.
 
 ## Technology choices and tradeoffs
 

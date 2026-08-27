@@ -124,7 +124,7 @@ internal class GoRestUserRemoteDataSource(
                     ),
                 )
             }
-            if (response.status.value in 200..299) {
+            if (response.status == HttpStatusCode.Created) {
                 RemoteResult.Success(response.body<GoRestUserDto>().toRemoteUser(serverPosition = null))
             } else {
                 response.toFailure()

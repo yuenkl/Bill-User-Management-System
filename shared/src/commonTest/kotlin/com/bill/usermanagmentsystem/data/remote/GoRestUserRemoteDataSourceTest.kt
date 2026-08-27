@@ -194,6 +194,30 @@ class GoRestUserRemoteDataSourceTest {
     }
 
     @Test
+    fun createRequiresHttpCreatedBeforeReturningTheNewUser() = runRemoteTest { _ ->
+        val source = source(
+            engine = engine {
+                respond(
+                    content = userJson(7),
+                    status = HttpStatusCode.OK,
+                    headers = jsonHeaders(),
+                )
+            },
+        )
+
+        assertIs<RemoteResult.PermanentFailure>(
+            source.createUser(
+                CreateUserRequest(
+                    name = "Ada",
+                    email = "ada@example.com",
+                    gender = com.bill.usermanagmentsystem.domain.model.Gender.Female,
+                    status = com.bill.usermanagmentsystem.domain.model.UserStatus.Active,
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun publicFetchOmitsBlankTokenWhileWritesFailFastForAuthentication() = runRemoteTest { _ ->
         var requestCount = 0
         val source = source(

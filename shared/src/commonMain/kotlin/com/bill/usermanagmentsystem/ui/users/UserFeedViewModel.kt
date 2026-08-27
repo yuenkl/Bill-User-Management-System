@@ -127,6 +127,7 @@ class UserFeedViewModel(
             presentation.update { state ->
                 state.copy(
                     addUserForm = createFormState(),
+                    addUserValidationAlert = null,
                 )
             }
         }
@@ -135,9 +136,13 @@ class UserFeedViewModel(
     fun dismissAddUserForm() {
         if (presentation.value.addUserForm?.submitting != true) {
             presentation.update { state ->
-                state.copy(addUserForm = null)
+                state.copy(addUserForm = null, addUserValidationAlert = null)
             }
         }
+    }
+
+    fun dismissAddUserValidationAlert() {
+        presentation.update { state -> state.copy(addUserValidationAlert = null) }
     }
 
     fun updateAddUserName(name: String) {
@@ -216,7 +221,7 @@ class UserFeedViewModel(
 
         val submitting = validated.copy(submitting = true)
         presentation.update { state ->
-            state.copy(addUserForm = submitting)
+            state.copy(addUserForm = submitting, addUserValidationAlert = null)
         }
         viewModelScope.launch(dispatcher) {
             val result = addUser(
@@ -232,8 +237,10 @@ class UserFeedViewModel(
                 if (result.isSuccess) {
                     state.copy(addUserForm = null)
                 } else {
+                    val failure = result.exceptionOrNull()
                     state.copy(
-                        addUserForm = activeForm.withSubmissionFailure(result.exceptionOrNull()),
+                        addUserForm = activeForm.withSubmissionFailure(failure),
+                        addUserValidationAlert = failure.toAddUserValidationAlert(),
                     )
                 }
             }
@@ -477,6 +484,7 @@ class UserFeedViewModel(
             banner = banner,
             message = presentationState.message,
             addUserForm = presentationState.addUserForm,
+            addUserValidationAlert = presentationState.addUserValidationAlert,
             deleteConfirmation = items.firstOrNull {
                 it.localId == presentationState.selectedUserId
             },
@@ -523,7 +531,10 @@ class UserFeedViewModel(
     private fun updateForm(transform: (AddUserFormUiState) -> AddUserFormUiState) {
         val current = presentation.value.addUserForm ?: return
         presentation.update { state ->
-            state.copy(addUserForm = transform(current))
+            state.copy(
+                addUserForm = transform(current),
+                addUserValidationAlert = null,
+            )
         }
     }
 
@@ -545,22 +556,13 @@ class UserFeedViewModel(
     }
 
     private fun AddUserFormUiState.withSubmissionFailure(failure: Throwable?): AddUserFormUiState {
-        val error = failure?.userDataErrorOrNull()
-        val reason = (error as? UserDataError.ValidationRejected)?.reason
-        val fieldErrors = reason.orEmpty()
-            .split(';')
-            .mapNotNull { issue ->
-                val separator = issue.indexOf(':')
-                if (separator < 0) return@mapNotNull null
-                issue.substring(0, separator).trim().lowercase() to
-                    issue.substring(separator + 1).trim()
-            }
-            .toMap()
-        return if (fieldErrors.keys.any { it == "name" || it == "email" }) {
+        val fieldErrors = failure.toAddUserApiFieldErrors()
+        val errorsByField = fieldErrors.associateBy(AddUserApiFieldError::field)
+        return if (errorsByField.keys.any { it == "name" || it == "email" }) {
             copy(
                 submitting = false,
-                nameApiError = fieldErrors["name"],
-                emailApiError = fieldErrors["email"],
+                nameApiError = errorsByField["name"]?.message,
+                emailApiError = errorsByField["email"]?.message,
             )
         } else {
             copy(submitting = false, submissionError = failure.toAddUserMessage())
@@ -575,6 +577,7 @@ class UserFeedViewModel(
         val nextPageError: String? = null,
         val message: UserFeedMessage? = null,
         val addUserForm: AddUserFormUiState? = null,
+        val addUserValidationAlert: AddUserValidationAlert? = null,
         val retryingUserIds: Set<String> = emptySet(),
         val messageSequence: Long = 0,
         val selectedUserId: String? = null,
@@ -623,4 +626,24 @@ private fun UserDataError.toUserMessage(): String = when (this) {
     is UserDataError.Persistence -> "Saved users could not be read. $reason"
     is UserDataError.RemoteContract -> "The service returned unexpected data. $reason"
     is UserDataError.Unexpected -> reason
+}
+
+private fun Throwable?.toAddUserValidationAlert(): AddUserValidationAlert? =
+    toAddUserApiFieldErrors()
+        .takeIf { it.isNotEmpty() }
+        ?.let(::AddUserValidationAlert)
+
+private fun Throwable?.toAddUserApiFieldErrors(): List<AddUserApiFieldError> {
+    val reason = (this?.userDataErrorOrNull() as? UserDataError.ValidationRejected)?.reason
+        ?: return emptyList()
+    return reason
+        .split(';')
+        .mapNotNull { issue ->
+            val separator = issue.indexOf(':')
+            if (separator < 0) return@mapNotNull null
+            val field = issue.substring(0, separator).trim().lowercase()
+            val message = issue.substring(separator + 1).trim()
+            AddUserApiFieldError(field = field, message = message)
+                .takeIf { it.field.isNotEmpty() && it.message.isNotEmpty() }
+        }
 }

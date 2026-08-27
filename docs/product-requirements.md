@@ -20,7 +20,7 @@ All behaviour must preserve the [engineering invariants](README.md#engineering-i
 - Read `X-Links-Next` from each response. Its absence marks the end of the feed.
 - Persist the remote snapshot before exposing it to the UI. The UI observes SQLDelight only and never displays a network response directly.
 - Each row displays name, email, gender/status indicators where useful, and a relative timestamp based on when the record was first observed locally.
-- Preserve server order across appended pages. Locally created users appear above the remote snapshot until the next successful refresh, when the API response determines their presence and position.
+- Preserve server order across appended pages. A newly created user is merged at the top only after GoRest returns HTTP 201.
 - Refresh is available through pull-to-refresh or an equivalent explicit Material 3 action; it refreshes the initial response before restarting next-page loading.
 
 ### Loading and failure states
@@ -56,20 +56,19 @@ All behaviour must preserve the [engineering invariants](README.md#engineering-i
 - Email must be at most 254 characters, contain exactly one `@`, contain no whitespace, have a non-empty local part of at most 64 characters, and have a domain composed of valid non-empty labels with a final label of at least two characters.
 - Show errors after field interaction and update them in real time. Keep API field errors separate from local syntax errors.
 
-### Offline-first creation
+### Server-confirmed creation
 
-- Submission always writes a temporary local user and a `CREATE` outbox entry in one transaction.
-- The temporary user appears at the top immediately, online or offline.
-- Online state triggers synchronization immediately; offline state leaves the operation pending.
-- On HTTP 201, replace the nullable remote ID and mark the same local user synchronized without changing its local identity or visual position unexpectedly.
-- A transient failure keeps the operation durable and retryable. A permanent API validation failure removes the operation from automatic retry and keeps the user visible with a failed-sync indication and readable reason.
+- Submission POSTs the normalized form directly to GoRest without first inserting a local user.
+- Only HTTP 201 merges the returned user into the local database, where it appears at the top of the feed.
+- Any failed create leaves the feed unchanged and keeps the form open.
+- HTTP 422 presents an alert that lists the API field and its message, while retaining the values for correction and resubmission.
 
 ### Acceptance criteria
 
-- Valid submission closes the form and immediately shows the user at the top.
+- HTTP 201 closes the form and shows the returned user at the top.
 - Rotation or layout change preserves form state while the form is open.
-- Offline creation survives process restart and synchronizes after connectivity returns.
-- Repeated taps cannot create duplicate local or remote requests.
+- A failed or offline submission creates no local row.
+- Repeated taps cannot create duplicate remote requests.
 
 ## Delete with Undo
 
@@ -81,7 +80,7 @@ All behaviour must preserve the [engineering invariants](README.md#engineering-i
 - Undo before the deadline restores the row and prevents a remote DELETE.
 - When the deadline expires, create a `DELETE` outbox entry. Synchronize immediately if online or later if offline.
 - HTTP 204 and 404 both complete deletion. A permanent authentication failure restores the row and reports the failure; transient failures remain queued.
-- Deleting a user whose `CREATE` has not synchronized cancels the create mutation and removes the local user without sending a remote DELETE.
+- New users are displayed only after HTTP 201, so every visible user has a remote ID and deletion calls the remote endpoint.
 
 ### Acceptance criteria
 

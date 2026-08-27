@@ -6,10 +6,10 @@ This document is the normative business-state contract. Implementations may rena
 
 | Class | Examples | Persistence | Retry policy | User visibility |
 | --- | --- | --- | --- | --- |
-| Retryable | Offline, timeout, I/O, HTTP 5xx | Mutation remains durable with attempts and next retry time | Automatic when due; exponential backoff from 2 seconds to 5 minutes | Pending/offline status; non-blocking error when useful |
+| Retryable | Offline, timeout, I/O, HTTP 5xx | Delete mutation remains durable with attempts and next retry time | Automatic when due; exponential backoff from 2 seconds to 5 minutes | Pending/offline status; non-blocking error when useful |
 | Rate limited | HTTP 429 | Mutation remains durable with server reset time and attempts | Automatic no earlier than server reset/backoff | Rate-limit message without losing local state |
 | Authentication blocked | HTTP 401/403 | Mutation marked `BLOCKED` | No automatic retry until token/configuration changes or explicit Retry | Clear configuration error |
-| Validation permanent | CREATE HTTP 422 | CREATE mutation removed; user becomes `CreateFailed` | Explicit user Retry only after correction/review | Failed-sync reason on the user |
+| Validation permanent | CREATE HTTP 422 | No local row is written | Correct and resubmit manually | Alert lists the API field and message |
 | Delete already absent | DELETE HTTP 404 | Row and mutation removed | No retry; treated as success | Normal completed deletion |
 | Permanent client/invariant | Malformed payload, impossible mapping, unsupported request | Operation stopped; cached state preserved; mutation blocked or removed according to operation table | No automatic retry | Clear diagnostic failure |
 
@@ -24,7 +24,7 @@ Backoff metadata is stored in SQLDelight so process death cannot reset a failing
 | Refreshing | Another refresh trigger | Join/coalesce active sync | Same active result | Never start a second concurrent refresh |
 | Any | Next-page link invalid | None | None | Keep cache; surface data-contract error; do not clear database |
 | Page loaded | Feed reaches end | Fetch and transactionally append the page named by `X-Links-Next` in display order | Keep loaded users; show explicit page Retry without advancing the cursor | Stop when `X-Links-Next` is absent; never loop or duplicate a page |
-| Any | Initial page is empty | Commit an empty remote snapshot while preserving pending/failed local rows | Keep prior snapshot | Never delete pending local intent |
+| Any | Initial page is empty | Commit an empty remote snapshot while preserving pending delete state | Keep prior snapshot | Never delete pending local intent |
 
 Snapshot results affect UI only after their database transaction commits.
 
@@ -32,20 +32,15 @@ Snapshot results affect UI only after their database transaction commits.
 
 | Current state | Event | Success | Retryable failure | Permanent failure / edge case |
 | --- | --- | --- | --- | --- |
-| No local row | Submit valid form | Transaction inserts user as `PendingCreate` plus CREATE mutation; DB emits user at top | Local transaction failure keeps form open and shows error | Duplicate submit is ignored while transaction runs |
-| `PendingCreate` | Sync CREATE | HTTP 201 attaches remote ID, removes mutation, emits `Synced` | Persist `RETRYABLE_WAIT`; keep user visible | 401/403 -> `BLOCKED`; 422 -> remove mutation and emit `CreateFailed` |
-| `RetryableWait` | Retry time/explicit refresh | Return to CREATE attempt | Persist later retry using backoff | Reclassify using response; never loop immediately |
-| `Blocked` (authentication) | Next sync after configuration is corrected | Reset to pending and retry CREATE | Follow retryable path | Block again if credentials remain invalid |
-| `Blocked` (other permanent failure) | Automatic sync trigger | No operation | Not applicable | Remain blocked until explicit Retry |
-| `CreateFailed` | Explicit Retry | Create one new mutation and emit `PendingCreate` | Follow retryable path | Remain failed with new reason |
-| `PendingCreate`/`CreateFailed` | Confirm delete | Remove local row and CREATE mutation | Local transaction failure leaves prior state | Send neither POST nor DELETE after successful cancellation |
+| No local row | Submit valid form | POST succeeds with HTTP 201; merge returned user and close form | Keep form open; do not insert a row | Duplicate submit is ignored while request runs |
+| No local row | POST returns HTTP 422 | Keep form values | Not applicable | Show an alert with every returned field/message pair; no local row is created |
+| No local row | POST fails for authentication, network, or server reasons | Keep form values and feed unchanged | User may resubmit manually | Show the classified failure; no local row is created |
 
 ## Delete and Undo
 
 | Current state | Event | Success | Retryable failure | Permanent failure / edge case |
 | --- | --- | --- | --- | --- |
 | Visible synchronized user | Confirm delete | Call DELETE; HTTP 204/404 removes the local row and presents Undo | Keep the row visible and show the failure | Repeated confirmation is ignored while the request runs |
-| Visible local-only user | Confirm delete | Remove the local row and its CREATE mutation; no DELETE is needed | Local transaction failure leaves the row visible | No remote request is made |
 | Successfully deleted user | Undo | POST the saved user data, merge the response, and show the new remote ID | Keep the row deleted and show the failure | Authentication, validation, and permanent failures keep the row deleted |
 | Successfully deleted user | Snackbar dismissed or process restart | Keep the deletion; Undo is no longer available | Not applicable | Undo is an in-memory UI affordance, not a durable deletion state |
 

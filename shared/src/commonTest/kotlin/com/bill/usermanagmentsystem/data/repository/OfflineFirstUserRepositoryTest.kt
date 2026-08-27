@@ -29,41 +29,54 @@ import kotlin.time.Instant
 @OptIn(ExperimentalCoroutinesApi::class)
 class OfflineFirstUserRepositoryTest {
     @Test
-    fun addCommitsLocalIntentBeforeTriggeringSynchronization() = runTest {
+    fun addInsertsTheUserOnlyAfterRemoteCreationSucceeds() = runTest {
         val local = FakeUserLocalDataSource()
         val sync = FakeSyncCoordinator()
-        val repository = repository(local, sync)
+        val remote = FakeUserRemoteDataSource().apply {
+            createHandler = { RemoteResult.Success(remoteUser(remoteId = 99)) }
+        }
+        val repository = repository(local, sync, remote)
 
         val result = repository.addUser(input())
         runCurrent()
 
-        assertEquals("1", result.getOrNull())
-        assertEquals("1", local.insertedCreates.single().localId)
-        assertEquals("mutation-id", local.insertedCreates.single().mutationId)
-        assertEquals(1, sync.syncCalls)
+        assertEquals("99", result.getOrNull())
+        assertTrue(local.insertedCreates.isEmpty())
+        assertEquals(99, local.mergedPages.single().single().remoteId)
+        assertEquals(0, sync.syncCalls)
     }
 
     @Test
-    fun remoteSyncFailureDoesNotRollBackSuccessfulLocalAdd() = runTest {
+    fun validationFailureDoesNotInsertALocalUser() = runTest {
         val local = FakeUserLocalDataSource()
-        val sync = FakeSyncCoordinator(Result.failure(IllegalStateException("offline")))
-        val repository = repository(local, sync)
+        val sync = FakeSyncCoordinator()
+        val remote = FakeUserRemoteDataSource().apply {
+            createHandler = { RemoteResult.ValidationFailure("email: has already been taken") }
+        }
+        val repository = repository(local, sync, remote)
 
         val result = repository.addUser(input())
         runCurrent()
 
-        assertEquals("1", result.getOrNull())
-        assertEquals(1, local.insertedCreates.size)
-        assertEquals(1, sync.syncCalls)
+        assertEquals(
+            UserDataError.ValidationRejected("email: has already been taken"),
+            result.exceptionOrNull()?.userDataErrorOrNull(),
+        )
+        assertTrue(local.insertedCreates.isEmpty())
+        assertTrue(local.mergedPages.isEmpty())
+        assertEquals(0, sync.syncCalls)
     }
 
     @Test
     fun localWriteFailureIsTypedAndDoesNotTriggerSynchronization() = runTest {
         val local = FakeUserLocalDataSource().apply {
-            insertFailure = IllegalStateException("disk full")
+            mergePageFailure = IllegalStateException("disk full")
         }
         val sync = FakeSyncCoordinator()
-        val repository = repository(local, sync)
+        val remote = FakeUserRemoteDataSource().apply {
+            createHandler = { RemoteResult.Success(remoteUser(remoteId = 99)) }
+        }
+        val repository = repository(local, sync, remote)
 
         val result = repository.addUser(input())
         runCurrent()
@@ -214,6 +227,15 @@ class OfflineFirstUserRepositoryTest {
             email = "local@example.com",
             gender = Gender.Female,
             status = UserStatus.Active,
+        )
+
+        fun remoteUser(remoteId: Long) = RemoteUser(
+            remoteId = remoteId,
+            name = "Local user",
+            email = "local@example.com",
+            gender = Gender.Female,
+            status = UserStatus.Active,
+            serverPosition = null,
         )
 
         fun storedUser() = StoredUser(

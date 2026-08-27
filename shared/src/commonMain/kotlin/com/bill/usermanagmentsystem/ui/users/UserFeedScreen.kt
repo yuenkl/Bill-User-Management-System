@@ -83,6 +83,7 @@ fun UserFeedRoute(
         onAddUserGenderSelected = viewModel::selectAddUserGender,
         onAddUserStatusSelected = viewModel::selectAddUserStatus,
         onAddUserSubmitted = viewModel::submitAddUser,
+        onAddUserValidationAlertDismissed = viewModel::dismissAddUserValidationAlert,
         onRetryUserCreation = viewModel::retryUserCreation,
         onMessageConsumed = viewModel::consumeMessage,
         onUserLongClick = viewModel::selectUserForDeletion,
@@ -111,6 +112,7 @@ fun UserFeedScreen(
     onAddUserSubmitted: () -> Unit,
     onRetryUserCreation: (String) -> Unit,
     onMessageConsumed: (Long) -> Unit,
+    onAddUserValidationAlertDismissed: () -> Unit = {},
     onUserLongClick: (String) -> Unit = {},
     onDeleteCancel: () -> Unit = {},
     onDeleteConfirm: () -> Unit = {},
@@ -261,6 +263,27 @@ fun UserFeedScreen(
                 }
             }
         }
+    }
+
+    state.addUserValidationAlert?.let { alert ->
+        AlertDialog(
+            onDismissRequest = onAddUserValidationAlertDismissed,
+            title = { Text("Unable to add user") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    alert.errors.forEach { error ->
+                        Text(
+                            text = error.field.replaceFirstChar(Char::uppercase),
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                        Text(error.message)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = onAddUserValidationAlertDismissed) { Text("OK") }
+            },
+        )
     }
 
     state.deleteConfirmation?.let { user ->

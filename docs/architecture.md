@@ -135,7 +135,7 @@ Actions include initial load, refresh, add-form open/close, field changes, submi
 - `undo_deadline_epoch_ms INTEGER NULL`
 - `last_sync_error TEXT NULL`
 
-Visible-user queries exclude hidden rows and order pending local users newest-first, followed by server position. Successfully created users are optimistic until the next successful refresh, which adopts the API snapshot order. Upserts preserve the original `observed_at` and do not overwrite pending local mutations.
+Visible-user queries exclude hidden rows and order any legacy pending local users newest-first, followed by server position. New form submissions create no pending row: HTTP 201 merges the returned remote user at the top. Upserts preserve the original `observed_at` and do not overwrite pending local mutations.
 
 ### `pending_mutations`
 
@@ -149,17 +149,17 @@ Visible-user queries exclude hidden rows and order pending local users newest-fi
 - `last_error TEXT NULL`
 - Unique constraint preventing duplicate active operations of the same kind for one local user.
 
-Create state changes and their outbox rows occur in the same database transaction. Deletion is an immediate remote operation: after the DELETE succeeds, the local row and any mutation for it are removed in one transaction.
+New create submissions are direct remote operations: only HTTP 201 is merged into the local database. Deletion is an immediate remote operation: after the DELETE succeeds, the local row and any mutation for it are removed in one transaction.
 
 ## Synchronization algorithm
 
 `SyncCoordinator` keeps one active-run handle. A `Mutex` protects only the short critical section that reads, creates, publishes, or clears that handle. The network/database synchronization work runs outside the mutex. If a run already exists, every new trigger captures and awaits that same run and receives its result. Triggers must not wait for the mutex and then start complete synchronization runs back-to-back. When the run completes, clear the handle only if it still refers to that completed run.
 
 1. Read pending mutations FIFO.
-2. For each `CREATE`, POST the current local row. On 201, attach the remote ID, mark synchronized, and remove the mutation transactionally.
+2. For any legacy `CREATE` mutation, POST the current local row. On 201, attach the remote ID, mark synchronized, and remove the mutation transactionally. New form submissions POST directly and merge only an HTTP 201 response.
 3. Stop processing on connectivity loss. Keep remaining work durable.
 4. After mutations, fetch `GET /users` without pagination parameters, read `X-Links-Next`, and set the next-page cursor from that link when it is present.
-5. Transactionally replace the remote snapshot with the initial response while preserving pending and failed local rows. A successfully created row is optimistic until this transaction; then the API response determines its presence and server position. Each successful scroll fetch follows the returned `X-Links-Next` value (`page=2`, `page=3`, and so on). Every refresh fetches the initial response again and resets the cursor from its link.
+5. Transactionally replace the remote snapshot with the initial response while preserving pending delete state. Each successful scroll fetch follows the returned `X-Links-Next` value (`page=2`, `page=3`, and so on). Every refresh fetches the initial response again and resets the cursor from its link.
 
 Failure policy:
 

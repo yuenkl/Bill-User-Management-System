@@ -45,15 +45,37 @@ internal class OfflineFirstUserRepository(
     override suspend fun loadNextPage(): Result<PageLoadResult> = syncCoordinator.loadNextPage()
 
     override suspend fun addUser(input: AddUserInput): Result<String> {
-        val result = durableOperation {
-            localDataSource.insertPendingCreate(
-                mutationId = idGenerator.nextId(),
-                input = input,
-                observedAt = timeProvider.now(),
-            )
+        return durableOperation {
+            when (val result = remoteDataSource.createUser(
+                CreateUserRequest(
+                    name = input.name,
+                    email = input.email,
+                    gender = input.gender,
+                    status = input.status,
+                ),
+            )) {
+                is RemoteResult.Success -> {
+                    localDataSource.mergePage(
+                        users = listOf(result.value.toSnapshotUser()),
+                        observedAt = timeProvider.now(),
+                    )
+                    result.value.remoteId.toString()
+                }
+                RemoteResult.AuthenticationFailure -> throw UserDataException(UserDataError.AuthenticationRequired)
+                is RemoteResult.RetryableFailure -> throw UserDataException(
+                    UserDataError.RemoteContract(result.reason),
+                )
+                is RemoteResult.ValidationFailure -> throw UserDataException(
+                    UserDataError.ValidationRejected(result.reason),
+                )
+                RemoteResult.NotFound -> throw UserDataException(
+                    UserDataError.RemoteContract("The create-user endpoint was not found."),
+                )
+                is RemoteResult.PermanentFailure -> throw UserDataException(
+                    UserDataError.RemoteContract(result.reason),
+                )
+            }
         }
-        triggerSyncAfter(result)
-        return result
     }
 
     override suspend fun deleteImmediately(localId: String): Result<DeletedUserUndo> = durableOperation {

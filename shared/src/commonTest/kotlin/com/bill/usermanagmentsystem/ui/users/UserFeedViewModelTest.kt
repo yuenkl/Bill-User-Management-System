@@ -304,6 +304,14 @@ class UserFeedViewModelTest {
             assertNull(failed.emailError)
             assertEquals("has already been taken", failed.emailApiError)
             assertEquals(false, failed.canSubmit)
+            assertEquals(
+                AddUserApiFieldError(field = "email", message = "has already been taken"),
+                viewModel.uiState.value.addUserValidationAlert?.errors?.single(),
+            )
+
+            viewModel.dismissAddUserValidationAlert()
+            runCurrent()
+            assertNull(viewModel.uiState.value.addUserValidationAlert)
 
             viewModel.updateAddUserEmail("ada2@example.com")
             runCurrent()

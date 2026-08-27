@@ -49,6 +49,7 @@ internal class FakeUserLocalDataSource : UserLocalDataSource {
     var finalizedDeleteCalls = 0
     var finalizedDeleteResult = 0
     var insertFailure: Throwable? = null
+    var mergePageFailure: Throwable? = null
     var nextInsertedLocalId: String = "1"
 
     override fun observeVisibleUsers(): Flow<List<UserRecord>> = visibleUsers
@@ -141,6 +142,7 @@ internal class FakeUserLocalDataSource : UserLocalDataSource {
     }
 
     override suspend fun mergePage(users: List<SnapshotUser>, observedAt: Instant) {
+        mergePageFailure?.let { throw it }
         mergedPages += users
     }
 }
