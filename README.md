@@ -50,12 +50,6 @@ flowchart TD
 
 ### 💭 Why I Made These Choices
 
-#### One shared feature, thin platform layers
-
-I used Kotlin Multiplatform and Compose Multiplatform so Android and iOS can share the same user journey, validation rules, and UI states. This reduces the chance of fixing a bug on one platform and forgetting the other.
-
-I deliberately kept platform code small rather than forcing platform APIs into shared code. Native lifecycle, connectivity, database-driver, and HTTP-engine implementations are injected at the app boundary, while the shared feature depends only on platform-neutral interfaces.
-
 #### MVVM and one-way state
 
 The screen sends clear user actions to `UserFeedViewModel`, and the ViewModel publishes one immutable UI state back to the screen. That gives one place to understand what the feed is doing and makes states such as “cached users are visible while refresh failed” explicit instead of being hidden across composables.
@@ -64,15 +58,17 @@ I use one-time events only for temporary effects, such as a Snackbar or scrollin
 
 #### Local-first reads, server-confirmed writes
 
-I made SQLDelight the source observed by the UI. The app always has one consistent place to read the feed from, so a refresh failure does not wipe out useful cached users or make the UI flicker between data sources.
+I treat SQLDelight as the single source of truth for the UI: the app always trusts the database. A refresh failure does not wipe out useful cached users or make the UI flicker between data sources.
+
+The UI does not need to decide whether network data or cached data is more trustworthy, or manage timing differences between responses. Network results update the database first, and the UI simply observes the latest stored data.
 
 For writes, I chose server confirmation over optimistic local rows. A new user appears only after GoRest returns `201`; a deletion is removed locally only after the server accepts it (or confirms it is already absent with `404`). This is slightly less immediate than an optimistic update, but it avoids showing data that the server rejected.
 
 #### Repository as the consistency boundary
 
-The repository owns both remote calls and database changes. It serializes refresh, pagination, create, delete, and Undo work so responses cannot race each other and leave the local database in an inconsistent state.
+I use `UserRepositoryImpl` to keep the real data logic out of the ViewModel. The ViewModel handles UI actions, UI state, and temporary events; `UserRepositoryImpl` handles API calls, database updates, pagination, and failures.
 
-I also chose transactional database updates: a refresh replaces its remote snapshot in one step, and a page is appended only when its cursor can advance with it. If a request fails, the existing feed and pagination position remain valid and the user can retry.
+This makes the ViewModel smaller and easier to test. It also isolates the shared data logic, so the same rules can be reused later without coupling them to one screen. The repository serializes refresh, pagination, create, delete, and Undo work so responses cannot race and leave the local database in an inconsistent state.
 
 #### Dependency injection for testability
 
@@ -83,6 +79,8 @@ Koin wires the application together at the Android and iOS entry points. Classes
 This approach adds some structure for a small app: there are interfaces, UI-state mapping, and platform composition roots that a single-platform prototype might not need. I accepted that cost because offline behaviour and cross-platform consistency were part of the problem I wanted to solve.
 
 I did not build a full offline write queue. Create, delete, and Undo need a server response before the database changes. That keeps the behaviour honest and easy to reason about for this exercise, while a production app with stronger offline requirements could add a queued mutation system later.
+
+This approach is suitable for the challenge-sized directory. If the data set grew beyond around 100,000 users, I would not try to keep a full remote snapshot on the device. I would use server-side search and filtering, cursor-based pagination, and a bounded local cache so the app only stores and renders the users currently needed. That would keep refreshes, database queries, and memory use manageable at a larger scale.
 
 ### 🔄 Repository Synchronization
 
