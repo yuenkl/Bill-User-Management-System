@@ -1,21 +1,35 @@
-# User Management System
+# 👤 User Management System
 
-A production-minded Kotlin Multiplatform user directory for Android and iOS. The app shares its Compose UI, ViewModel, domain rules, repository, Ktor client, SQLDelight schema, and dependency graph.
+> A production-minded **Kotlin Multiplatform** user directory for Android and iOS.
+
+The app shares its **Compose UI, ViewModel, domain rules, repository, Ktor client, SQLDelight schema, and dependency graph**.
 
 The feed reads from the local database at all times. Network work refreshes that database in the background, so cached and locally created users remain useful through connectivity and server failures.
 
-## What it demonstrates
+![Kotlin](https://img.shields.io/badge/Kotlin-Multiplatform-7F52FF?logo=kotlin\&logoColor=white)
+![Compose Multiplatform](https://img.shields.io/badge/Compose-Multiplatform-4285F4?logo=jetpackcompose\&logoColor=white)
+![Ktor](https://img.shields.io/badge/Ktor-Client-087CFA?logo=ktor\&logoColor=white)
+![SQLDelight](https://img.shields.io/badge/SQLDelight-Database-6DB33F?logo=sqlite\&logoColor=white)
+![Koin](https://img.shields.io/badge/Koin-Dependency%20Injection-FF6B35)
 
-- Portrait uses a one-column feed; landscape uses an exact two-column grid.
-- Shared Material 3 light/dark presentation and accessible loading, empty, offline, and error states.
-- Server-confirmed user creation: rows are added only after HTTP 201, and API validation errors are shown in the form.
-- Long-press delete that removes the remote user first, then offers Undo to recreate it.
-- Lifecycle- and connectivity-aware refreshes with one serialized repository operation at a time.
-- Deterministic shared, persistence, Compose, and platform dependency-injection tests.
+---
 
-## Architecture
+## ✨ What It Demonstrates
 
-The app uses MVVM and unidirectional data flow. Platform code supplies lifecycle, connectivity, network-engine, SQL-driver, and token configuration implementations; feature behavior stays in `shared`.
+* 📱 Portrait uses a one-column feed; landscape uses an exact two-column grid.
+* 🎨 Shared Material 3 light/dark presentation and accessible loading, empty, offline, and error states.
+* 👤 Server-confirmed user creation: rows are added only after HTTP `201`, and API validation errors are shown in the form.
+* 🗑️ Long-press delete that removes the remote user first, then offers Undo to recreate it.
+* 🔄 Lifecycle- and connectivity-aware refreshes with one serialized repository operation at a time.
+* 🧪 Deterministic shared, persistence, Compose, and platform dependency-injection tests.
+
+---
+
+## 🏗️ Architecture
+
+The app uses **MVVM and unidirectional data flow**.
+
+Platform code supplies lifecycle, connectivity, network-engine, SQL-driver, and token configuration implementations; feature behavior stays in `shared`.
 
 ```mermaid
 flowchart TD
@@ -32,31 +46,111 @@ flowchart TD
     C -->|one-time SharedFlow events| B
 ```
 
-The repository serializes each refresh, page load, create, restore, and delete operation. A successful initial GoRest `/users` response replaces the stored remote snapshot in one transaction; a failure leaves the current database and pagination cursor intact. Reaching the feed end appends the page named by `X-Links-Next` (`page=2`, `page=3`, and so on). New server-confirmed users have no server position until a refresh, so the query shows them first by local observation time and descending local ID. The detailed contract is in [`docs/state-transitions.md`](docs/state-transitions.md); architectural boundaries are in [`docs/architecture.md`](docs/architecture.md).
+### 🔄 Repository Synchronization
 
-## Most important class
+The repository serializes each:
 
-[`UserFeedViewModel`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedViewModel.kt) is the central coordinator for the user experience. It combines the database-backed feed, connectivity, clock, and durable presentation state into one immutable UI state, and turns UI actions into explicit use-case calls for pull-to-refresh, pagination, form submission, delete, and undo. Synchronization is automatic at startup, foreground, and restored connectivity.
+* 🔄 Refresh
+* 📄 Page load
+* ➕ Create
+* 🗑️ Delete
+* ↩️ Restore / Undo
 
-The ViewModel uses [`UserFeedEvent`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedEvent.kt) for one-time effects: opening or dismissing the add-user sheet, showing API validation errors, Snackbars, the delete/Undo prompt, and scrolling to the newest user. The add-user field values, client-side errors, and submitting state remain immutable state so input is not lost; delete confirmation remains state because it represents an unfinished user decision. The repository owns remote calls and SQLDelight updates; the ViewModel observes the database rather than holding another copy of the feed. Form-state logic lives in [`AddUserFormState.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/AddUserFormState.kt), while the [`presentation`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/presentation) package owns feed-state mapping and user-facing error messages.
+A successful initial GoRest `/users` response replaces the stored remote snapshot in one transaction.
 
-### User feature structure
+A failure leaves the current database and pagination cursor intact.
 
-- [`UserFeedScreen.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedScreen.kt) owns route wiring, top-level layout selection, pull-to-refresh, and consumption of one-time display events. Its saved local sheet-visibility flag prevents a rotation from hiding an open form.
-- [`UserFeedContent.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedContent.kt) renders feed loading, list/grid content, pagination, banners, and empty states.
-- [`UserFeedDialogs.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedDialogs.kt) contains the add-user sheet/dialog, API validation alert, and delete confirmation.
-- [`AddUserFormState.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/AddUserFormState.kt) contains pure add-user form updates, validation, and API-error parsing.
-- [`presentation/UserFeedUiStateMapper.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/presentation/UserFeedUiStateMapper.kt) maps persisted users and presentation state into the immutable feed UI state.
+Reaching the feed end appends the page named by `X-Links-Next`:
 
-## Prerequisites
+```text
+page=2 → page=3 → page=4 → ...
+```
 
-- Android Studio with the Android SDK configured and a JDK compatible with the Gradle wrapper.
-- Xcode and an Apple-silicon iOS Simulator for the iOS app and simulator tests.
-- A GoRest access token for create/delete operations. Public feed loading works without one.
+New server-confirmed users have no server position until a refresh, so the query shows them first by local observation time and descending local ID.
 
-Never commit a real token. The local configuration files below are ignored by Git, and the tracked examples contain placeholders only.
+For more details:
 
-### Shared Android and iOS token setup
+* 📐 [`docs/architecture.md`](docs/architecture.md)
+* 🔀 [`docs/state-transitions.md`](docs/state-transitions.md)
+
+---
+
+## 🤖 AI-assisted Development
+
+AI was used as a development accelerator throughout the project, mainly to reduce setup time, speed up unfamiliar areas, and catch implementation details early.
+
+### 🧠 Upfront Planning
+
+AI was used as a thinking partner during the initial planning phase.
+
+Through an iterative question-and-answer process, it helped:
+
+* Clarify requirements
+* Challenge assumptions
+* Surface overlooked details
+* Define technical scope
+* Turn broad requirements into a concrete development plan
+
+### 🏃 Sprint-based Implementation
+
+The work was split into small, achievable sprints, with each sprint having a clear target.
+
+This made it easier to implement and verify the project step by step rather than trying to build the entire system at once.
+
+### 📚 Picking Up Unfamiliar Libraries
+
+When working with libraries or frameworks that I had not used before, AI provided a quick way to understand:
+
+* APIs
+* Typical usage patterns
+* Integration points
+
+This reduced the time spent getting familiar with new technologies and allowed implementation to continue without a long learning cycle.
+
+### 🍎 Cross-platform Setup
+
+As an Android-focused developer with less experience on iOS, AI was particularly useful for getting the iOS side of the Kotlin Multiplatform project running quickly.
+
+It helped with:
+
+* Project configuration
+* Xcode setup
+* Platform-specific integration
+* Troubleshooting initial setup issues
+
+### 🔍 Handling Implementation Details
+
+AI was also useful for checking details that are easy to miss during development.
+
+Database changes are a good example, where schema updates and migrations can easily introduce errors. Using AI as an additional check helped identify potential migration issues and reduced the chance of small implementation mistakes making their way into the final build.
+
+> 💡 AI-generated suggestions were treated as implementation assistance rather than authority.
+>
+> Changes were still reviewed against the requirements and architecture, then verified through tests and platform builds.
+
+---
+
+## ⚙️ Prerequisites
+
+Before running the project, make sure you have:
+
+* 🟣 Android Studio with the Android SDK configured
+* ☕ A JDK compatible with the Gradle wrapper
+* 🍎 Xcode
+* 💻 An Apple-silicon Mac with an iOS Simulator
+* 🔑 A GoRest access token for create/delete operations
+
+> ℹ️ Public feed loading works without a GoRest token.
+
+> ⚠️ **Never commit a real token.**
+>
+> Local configuration files are ignored by Git, and tracked examples contain placeholders only.
+
+---
+
+## 🔐 Token Configuration
+
+### 🌐 Shared Android & iOS Token
 
 Keep the `sdk.dir` generated by Android Studio in the root `local.properties`, then add:
 
@@ -64,37 +158,88 @@ Keep the `sdk.dir` generated by Android Studio in the root `local.properties`, t
 GOREST_ACCESS_TOKEN=YOUR_GOREST_ACCESS_TOKEN
 ```
 
-[`local.properties.example`](local.properties.example) contains the same placeholder. Android reads this file through Gradle; the iOS build extracts only `GOREST_ACCESS_TOKEN` from it into its local app bundle. One local token therefore configures both apps. A `GOREST_ACCESS_TOKEN` Gradle property or environment variable also works for Android and takes precedence over `local.properties` there.
+[`local.properties.example`](local.properties.example) contains the same placeholder.
 
-The token is included in each app's local build. After changing it, rebuild and reinstall the app; simply reopening an already-installed build does not update the token.
+Android reads this file through Gradle.
 
-### Optional iOS-only token override
+The iOS build extracts `GOREST_ACCESS_TOKEN` from it into the local app bundle.
 
-Copy the ignored secrets template and replace the placeholder:
+This means **one local token configures both apps**.
+
+A `GOREST_ACCESS_TOKEN` Gradle property or environment variable also works for Android and takes precedence over `local.properties`.
+
+### 🔄 After Changing the Token
+
+The token is included in each app's local build.
+
+After changing it:
+
+1. Rebuild the application
+2. Reinstall the application
+3. Run it again
+
+Simply reopening an already-installed build does not update the token.
+
+### 🍎 Optional iOS-only Token Override
+
+Copy the ignored secrets template:
 
 ```shell
 cp iosApp/Configuration/Secrets.xcconfig.example iosApp/Configuration/Secrets.xcconfig
 ```
 
+Then configure:
+
 ```text
 GOREST_ACCESS_TOKEN=YOUR_GOREST_ACCESS_TOKEN
 ```
 
-`Config.xcconfig` optionally includes this file as a higher-priority iOS-only override. Otherwise, iOS uses the token extracted from root `local.properties`. If both are absent or blank, the feed still loads but write attempts show an authentication/configuration error. After correcting configuration, rebuild the app and use Retry.
+`Config.xcconfig` optionally includes this file as a higher-priority iOS-only override.
 
-## Run
+Otherwise, iOS uses the token extracted from root `local.properties`.
 
-Android:
+If both are absent or blank:
+
+* 📖 Feed loading still works
+* ❌ Write operations show an authentication/configuration error
+
+After correcting the configuration, rebuild the app and use **Retry**.
+
+---
+
+# 🚀 Run
+
+## 🤖 Android
+
+Build the debug application:
 
 ```shell
 ./gradlew :androidApp:assembleDebug
 ```
 
-Install/run the resulting debug app from Android Studio, or use its Android run configuration.
+Install and run the resulting application from Android Studio, or use its Android run configuration.
 
-iOS: open `iosApp/iosApp.xcodeproj` in Xcode, choose the `iosApp` scheme and an iOS Simulator, then Run. The Xcode build invokes Gradle to produce the shared static framework.
+## 🍎 iOS
 
-## Test
+Open:
+
+```text
+iosApp/iosApp.xcodeproj
+```
+
+in Xcode.
+
+Then:
+
+1. Select the `iosApp` scheme
+2. Select an iOS Simulator
+3. Click **Run**
+
+The Xcode build invokes Gradle to produce the shared static framework.
+
+---
+
+# 🧪 Test
 
 Run the required verification suite from the repository root:
 
@@ -104,43 +249,324 @@ Run the required verification suite from the repository root:
 ./gradlew :androidApp:assembleDebug
 ```
 
-Coverage includes incremental pagination and Retry, the compact/wide breakpoint, light/dark tokens, accessibility semantics, ViewModel state, Ktor parsing and HTTP failure classes, repository/database transitions, and Android/iOS Koin graphs. Tests use controlled dispatchers, clocks, mock HTTP engines, fakes, and temporary databases rather than the live API or real delays.
+### 📊 Test Coverage
 
-## Offline synchronization and Undo
+Coverage includes:
 
-- Create posts the form directly to GoRest. Only HTTP 201 merges the returned user into the database and displays it at the top.
-- A failed create leaves no local row. HTTP 422 keeps the form open and presents the API field and message in an alert.
-- Delete calls the remote endpoint first. On HTTP 204 (or an already-absent 404), the local row is removed and the UI offers Undo.
-- Undo sends a new POST with the deleted user's data. A successful response is merged locally with its new remote ID; a failed restore leaves the user deleted and explains the problem.
-- Refresh never clears a good cache because of an offline, authentication, rate-limit, 5xx, or malformed-response failure.
-- The initial `/users` response replaces the refreshable remote snapshot. Pages named by `X-Links-Next` append in server order when scrolled into view. A page failure keeps all loaded users visible and exposes an explicit Retry without advancing the cursor.
+* 📄 Incremental pagination and Retry
+* 📐 Compact / wide breakpoint
+* 🌗 Light / dark tokens
+* ♿ Accessibility semantics
+* 🧠 ViewModel state
+* 🌐 Ktor parsing and HTTP failure classes
+* 💾 Repository / database transitions
+* 💉 Android / iOS Koin graphs
 
-## Technology choices and tradeoffs
+Tests use:
 
-- **Compose Multiplatform:** one adaptive feature UI and semantics model on Android and iOS. Native entry points remain intentionally thin.
-- **SQLDelight:** typed shared persistence and transactional snapshot/page updates. This makes the database the single source observed by the UI; it also provides deterministic latest-first ordering for locally confirmed creates.
-- **Ktor:** one strict GoRest contract with OkHttp and Darwin engines. Reads include the configured bearer token when present; writes require it. Debug header logging redacts authorization values.
-- **Koin:** constructor-injected shared modules with small platform composition roots and replaceable test doubles.
-- **Dispatchers:** the ViewModel confines orchestration and state changes to its main scope, while Ktor and SQLDelight work run on injected I/O dispatchers and feed-to-UI mapping runs on an injected default dispatcher.
-- **Observed local time:** GoRest has no user creation/update timestamp, so the relative label records when a row was first observed locally rather than claiming a server event time.
-- **Fixed two-column wide layout:** this follows the product contract and keeps behavior predictable; it intentionally does not grow to three or more columns on very large displays.
+* Controlled dispatchers
+* Controlled clocks
+* Mock HTTP engines
+* Fakes
+* Temporary databases
 
-## AI-assisted development
+No live API or real delays are required for deterministic tests.
 
-AI assistance was used to explore implementation options, draft focused changes, and identify edge cases. Every accepted change was checked against the sprint briefs and state-transition contract, reviewed in the repository diff, and verified with deterministic tests and platform builds. Generated suggestions were treated as candidates rather than authority; unsupported abstractions, dependency churn, and behavior outside the documented scope were excluded.
+---
 
-## Known limitations
+# 🔄 Offline Synchronization & Undo
 
-- GoRest is a public demonstration service and may reset or change its data independently of this app.
-- The token is compiled into each demo binary. Ignored local files prevent source-control leakage, but this is not appropriate secret storage for a production-distributed client; a backend should own privileged credentials.
-- Relative user time is based on local observation because the API provides no timestamp.
-- The product intentionally targets Android and iOS only; desktop, web, user editing, and production deployment are out of scope.
+The application intentionally treats the local database as the source observed by the UI.
 
-## Repository map
+### ➕ Create
 
-- `shared/src/commonMain`: shared UI (screen, content, dialogs, and reusable components), ViewModel/helpers, domain, repository, Ktor, SQLDelight-facing code, and Koin modules.
-- `shared/src/androidMain` / `shared/src/iosMain`: platform implementations and composition roots.
-- `shared/src/commonTest`, `androidHostTest`, and `iosTest`: deterministic shared and platform verification.
-- `androidApp`: Android application entry point and local token injection.
-- `iosApp`: SwiftUI host, Xcode configuration, and iOS token injection.
-- `docs`: product requirements, architecture, transition contract, and sprint workflow.
+1. Submit the form directly to GoRest
+2. Wait for the server response
+3. Accept only HTTP `201`
+4. Merge the returned user into the database
+5. Display the user at the top
+
+A failed create leaves **no local row**.
+
+HTTP `422` keeps the form open and presents the API field and message in an alert.
+
+### 🗑️ Delete
+
+Delete calls the remote endpoint first.
+
+| Response      | Behaviour                                                 |
+| ------------- | --------------------------------------------------------- |
+| `204`         | Remove local user and offer Undo                          |
+| `404`         | Treat as already absent, remove local user and offer Undo |
+| Other failure | Keep the local user                                       |
+
+### ↩️ Undo
+
+Undo creates a new remote user using the deleted user's data.
+
+On success:
+
+* The returned user is merged locally
+* The new remote ID is stored
+
+On failure:
+
+* The user remains deleted
+* The UI explains the restore failure
+
+### 🔄 Refresh
+
+Refresh never clears a valid cache because of:
+
+* 📡 Offline state
+* 🔐 Authentication errors
+* 🚦 Rate limiting
+* 💥 HTTP `5xx`
+* ⚠️ Malformed responses
+
+The initial `/users` response replaces the refreshable remote snapshot.
+
+Pages identified by `X-Links-Next` are appended in server order as the user reaches the end of the feed.
+
+If a page request fails:
+
+* Already-loaded users remain visible
+* The pagination cursor does not advance
+* An explicit **Retry** action is exposed
+
+---
+
+# 🧰 Technology Choices & Trade-offs
+
+| Technology                   | Purpose                                            |
+| ---------------------------- | -------------------------------------------------- |
+| 🟣 **Compose Multiplatform** | Shared adaptive UI and accessibility semantics     |
+| 💾 **SQLDelight**            | Typed shared persistence and transactional updates |
+| 🌐 **Ktor**                  | Shared GoRest networking layer                     |
+| 💉 **Koin**                  | Dependency injection and test replacements         |
+| 🧵 **Kotlin Coroutines**     | Structured concurrency and background execution    |
+
+### 🎨 Compose Multiplatform
+
+One adaptive feature UI and semantics model is shared between Android and iOS.
+
+Native entry points remain intentionally thin.
+
+### 💾 SQLDelight
+
+SQLDelight provides:
+
+* Typed shared persistence
+* Transactional snapshot updates
+* Transactional pagination updates
+* Deterministic latest-first ordering for locally confirmed creates
+
+The database is the **single source observed by the UI**.
+
+### 🌐 Ktor
+
+The networking layer uses:
+
+* OkHttp on Android
+* Darwin on iOS
+
+Reads include the configured bearer token when available.
+
+Writes require authentication.
+
+Debug header logging redacts authorization values.
+
+### 💉 Koin
+
+Koin provides constructor-injected shared modules with:
+
+* Small platform composition roots
+* Replaceable test doubles
+* Shared dependency configuration
+
+### 🧵 Dispatchers
+
+The ViewModel keeps orchestration and state changes within its main scope.
+
+Background work is separated through injected dispatchers:
+
+```text
+ViewModel
+   │
+   ├── Main
+   │
+   ├── I/O
+   │    ├── Ktor
+   │    └── SQLDelight
+   │
+   └── Default
+        └── Feed → UI mapping
+```
+
+### 🕐 Observed Local Time
+
+GoRest does not provide a user creation/update timestamp.
+
+Therefore, the relative user-time label represents **when the user was first observed locally**, rather than a server event timestamp.
+
+### 📐 Wide Layout
+
+The wide layout intentionally uses a fixed two-column grid.
+
+---
+
+# 🧠 Most Important Class
+
+[`UserFeedViewModel`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedViewModel.kt) is the central coordinator for the user experience.
+
+It combines:
+
+* 💾 Database-backed feed
+* 📡 Connectivity
+* 🕐 Clock
+* 🎨 Presentation state
+* 👆 User actions
+* ⚡ One-time UI events
+
+into one immutable UI state.
+
+The ViewModel coordinates:
+
+* 🔄 Pull-to-refresh
+* 📄 Pagination
+* ➕ Form submission
+* 🗑️ Delete
+* ↩️ Undo
+* 🔁 Automatic synchronization
+
+Synchronization occurs at:
+
+* App startup
+* Foreground transitions
+* Connectivity recovery
+
+### ⚡ One-time Events
+
+[`UserFeedEvent`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedEvent.kt) handles transient effects such as:
+
+* Opening / dismissing the add-user sheet
+* API validation errors
+* Snackbars
+* Delete / Undo prompts
+* Scrolling to the newest user
+
+Persistent form information remains in immutable state so user input is not lost.
+
+Delete confirmation also remains state because it represents an unfinished user decision.
+
+The repository owns remote calls and SQLDelight updates. The ViewModel observes the database rather than maintaining another copy of the feed.
+
+---
+
+## 📂 User Feature Structure
+
+| Component                                                                                                                              | Responsibility                                                  |
+| -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| [`UserFeedScreen.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedScreen.kt)                            | Route wiring, adaptive layout, pull-to-refresh, one-time events |
+| [`UserFeedContent.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedContent.kt)                          | Feed content, loading, pagination, banners, empty states        |
+| [`UserFeedDialogs.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedDialogs.kt)                          | Add-user sheet, validation alert, delete confirmation           |
+| [`AddUserFormState.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/AddUserFormState.kt)                        | Form updates, validation, API-error parsing                     |
+| [`UserFeedUiStateMapper.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/presentation/UserFeedUiStateMapper.kt) | Maps persisted users into immutable UI state                    |
+
+---
+
+# ⚠️ Known Limitations
+
+* 🌐 GoRest is a public demonstration service and may reset or change its data independently of the app.
+* 🔑 The token is compiled into each demo binary. Ignored local files prevent source-control leakage, but this is not appropriate secret storage for a production-distributed client.
+* 🕐 Relative user time is based on local observation because the API provides no timestamp.
+* 📱 The product intentionally targets Android and iOS only.
+* 🚫 Desktop, web, user editing, and production deployment are out of scope.
+
+For a production system, privileged credentials should be owned by a backend rather than embedded in the client.
+
+---
+
+# 🗺️ Repository Map
+
+```text
+.
+├── shared/
+│   └── src/
+│       ├── commonMain/
+│       │   ├── UI
+│       │   ├── ViewModel / helpers
+│       │   ├── domain
+│       │   ├── repository
+│       │   ├── Ktor
+│       │   ├── SQLDelight
+│       │   └── Koin modules
+│       │
+│       ├── androidMain/
+│       ├── iosMain/
+│       ├── commonTest/
+│       ├── androidHostTest/
+│       └── iosTest/
+│
+├── androidApp/
+│   └── Android application entry point
+│
+├── iosApp/
+│   ├── SwiftUI host
+│   ├── Xcode configuration
+│   └── iOS token injection
+│
+└── docs/
+    ├── Product requirements
+    ├── Architecture
+    ├── State transition contract
+    └── Sprint workflow
+```
+
+### 📁 Directory Responsibilities
+
+| Directory                    | Purpose                                                              |
+| ---------------------------- | -------------------------------------------------------------------- |
+| `shared/src/commonMain`      | Shared UI, ViewModel, domain, repository, Ktor, SQLDelight, and Koin |
+| `shared/src/androidMain`     | Android platform implementations                                     |
+| `shared/src/iosMain`         | iOS platform implementations                                         |
+| `shared/src/commonTest`      | Shared tests                                                         |
+| `shared/src/androidHostTest` | Android host tests                                                   |
+| `shared/src/iosTest`         | iOS simulator tests                                                  |
+| `androidApp`                 | Android application entry point and token injection                  |
+| `iosApp`                     | SwiftUI host, Xcode configuration, and token injection               |
+| `docs`                       | Requirements, architecture, transition contract, and sprint workflow |
+
+---
+
+## 📌 Summary
+
+This project demonstrates a **local-first Kotlin Multiplatform architecture** where Android and iOS share the majority of the application stack:
+
+```text
+                ┌──────────────────────┐
+                │ Compose Multiplatform│
+                └──────────┬───────────┘
+                           ↓
+                ┌──────────────────────┐
+                │      ViewModel       │
+                └──────────┬───────────┘
+                           ↓
+                ┌──────────────────────┐
+                │      Use Cases       │
+                └──────────┬───────────┘
+                           ↓
+                ┌──────────────────────┐
+                │     Repository       │
+                └───────┬───────┬──────┘
+                        ↓       ↓
+                 ┌──────────┐ ┌──────┐
+                 │SQLDelight│ │ Ktor │
+                 └──────────┘ └───┬──┘
+                                  ↓
+                              ┌───────┐
+                              │GoRest │
+                              └───────┘
+```
+
+The main architectural goal is to keep **platform-specific code thin**, while making application behaviour shared, deterministic, testable, and resilient to connectivity failures.
