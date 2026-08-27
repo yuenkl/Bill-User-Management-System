@@ -83,13 +83,14 @@ AI was used as a development accelerator throughout the project, mainly to reduc
 
 AI was used as a thinking partner during the initial planning phase.
 
-Through an iterative question-and-answer process, it helped:
+Through an iterative question-and-answer process, it helped me:
 
 * Clarify requirements
 * Challenge assumptions
 * Surface overlooked details
 * Define technical scope
 * Turn broad requirements into a concrete development plan
+* Set up a solid plan to execute
 
 ### 🏃 Sprint-based Implementation
 
@@ -99,11 +100,12 @@ This made it easier to implement and verify the project step by step rather than
 
 ### 📚 Picking Up Unfamiliar Libraries
 
-When working with libraries or frameworks that I had not used before, AI provided a quick way to understand:
+When i working with libraries or frameworks that I had not used/less experience before, AI provided a quick way to understand:
 
 * APIs
 * Typical usage patterns
 * Integration points
+* Diff between similar libraries, such as Room KMP VS SQLDelight. I know database. I know Room. But i never use SQLDelight.
 
 This reduced the time spent getting familiar with new technologies and allowed implementation to continue without a long learning cycle.
 
@@ -111,7 +113,7 @@ This reduced the time spent getting familiar with new technologies and allowed i
 
 As an Android-focused developer with less experience on iOS, AI was particularly useful for getting the iOS side of the Kotlin Multiplatform project running quickly.
 
-It helped with:
+It helped me with:
 
 * Project configuration
 * Xcode setup
