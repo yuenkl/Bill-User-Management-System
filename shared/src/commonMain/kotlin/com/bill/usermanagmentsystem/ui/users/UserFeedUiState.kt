@@ -2,7 +2,6 @@ package com.bill.usermanagmentsystem.ui.users
 
 import com.bill.usermanagmentsystem.domain.model.Gender
 import com.bill.usermanagmentsystem.domain.model.UserStatus
-import kotlin.time.Instant
 
 data class UserFeedUiState(
     val users: List<UserItemUiModel> = emptyList(),
@@ -13,38 +12,67 @@ data class UserFeedUiState(
     val loadMoreError: String? = null,
     val emptyState: UserFeedEmptyState? = null,
     val banner: UserFeedBanner? = null,
-    val message: UserFeedMessage? = null,
     val addUserForm: AddUserFormUiState? = null,
     val deleteConfirmation: UserItemUiModel? = null,
     val deleteInProgress: Boolean = false,
-    val undoSnackbar: DeleteUndoUiModel? = null,
 )
 
 data class AddUserFormUiState(
-    val name: String = "",
-    val email: String = "",
-    val gender: Gender? = null,
-    val status: UserStatus = UserStatus.Active,
-    val nameTouched: Boolean = false,
-    val emailTouched: Boolean = false,
-    val genderTouched: Boolean = false,
-    val nameError: String? = null,
-    val emailError: String? = null,
-    val genderError: String? = null,
-    val nameApiError: String? = null,
-    val emailApiError: String? = null,
-    val submissionError: String? = null,
+    val details: List<AddUserFormEntry> = defaultAddUserFormEntries(),
+    val touchedFields: Set<AddUserFormEntryType> = emptySet(),
     val isValid: Boolean = false,
     val submitting: Boolean = false,
 ) {
+    fun valueFor(field: AddUserFormEntryType): String? = details.firstOrNull { it.type == field }?.value
+
+    fun errorMessage(field: AddUserFormEntryType): String? = details.firstOrNull { it.type == field }?.error
+
+    fun gender(): Gender? = Gender.entries.firstOrNull { it.apiValue == valueFor(AddUserFormEntryType.Gender) }
+
+    fun status(): UserStatus =
+        UserStatus.entries.firstOrNull { it.apiValue == valueFor(AddUserFormEntryType.Status) }
+            ?: UserStatus.Active
+
     val canSubmit: Boolean
-        get() = isValid && nameApiError == null && emailApiError == null && !submitting
+        get() = isValid && details.none { it.type != AddUserFormEntryType.Form && it.error != null } && !submitting
 }
 
-enum class AddUserField {
+enum class AddUserFormEntryType {
     Name,
     Email,
+    Gender,
+    Status,
+    Form,
+    ;
+
+    companion object {
+        fun fromApiName(value: String): AddUserFormEntryType? =
+            entries.firstOrNull { it.name.equals(value, ignoreCase = true) && it != Form }
+    }
 }
+
+data class AddUserFormEntry(
+    val type: AddUserFormEntryType,
+    val value: String? = null,
+    val error: String? = null,
+)
+
+private fun defaultAddUserFormEntries(): List<AddUserFormEntry> =
+    listOf(
+        AddUserFormEntry(AddUserFormEntryType.Name),
+        AddUserFormEntry(AddUserFormEntryType.Email),
+        AddUserFormEntry(AddUserFormEntryType.Gender),
+        AddUserFormEntry(AddUserFormEntryType.Status, value = UserStatus.Active.apiValue),
+    )
+
+data class AddUserValidationAlert(
+    val errors: List<AddUserApiFieldError>,
+)
+
+data class AddUserApiFieldError(
+    val field: String,
+    val message: String,
+)
 
 data class UserItemUiModel(
     val localId: String,
@@ -53,38 +81,26 @@ data class UserItemUiModel(
     val gender: Gender,
     val status: UserStatus,
     val relativeTime: String,
-    val synchronization: UserItemSynchronization,
 )
-
-sealed interface UserItemSynchronization {
-    data object Synced : UserItemSynchronization
-    data object Pending : UserItemSynchronization
-    data class Failed(
-        val reason: String,
-        val retrying: Boolean = false,
-    ) : UserItemSynchronization
-}
 
 sealed interface UserFeedEmptyState {
     data object Empty : UserFeedEmptyState
+
     data object Offline : UserFeedEmptyState
+
     data object AuthenticationRequired : UserFeedEmptyState
-    data class Error(val message: String) : UserFeedEmptyState
+
+    data class Error(
+        val message: String,
+    ) : UserFeedEmptyState
 }
 
 sealed interface UserFeedBanner {
     data object Offline : UserFeedBanner
+
     data object AuthenticationRequired : UserFeedBanner
-    data class RefreshFailed(val message: String) : UserFeedBanner
+
+    data class RefreshFailed(
+        val message: String,
+    ) : UserFeedBanner
 }
-
-data class UserFeedMessage(
-    val id: Long,
-    val text: String,
-)
-
-data class DeleteUndoUiModel(
-    val localId: String,
-    val userName: String,
-    val deadline: Instant,
-)

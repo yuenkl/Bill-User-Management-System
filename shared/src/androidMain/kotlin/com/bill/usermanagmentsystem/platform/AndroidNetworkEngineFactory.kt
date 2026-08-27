@@ -8,9 +8,10 @@ import io.ktor.client.plugins.logging.Logger
 class AndroidNetworkEngineFactory : NetworkEngineFactory {
     override fun create(): HttpClientEngine = OkHttp.create()
 
-    override val apiLogger: Logger = object : Logger {
-        override fun log(message: String) {
-            Log.d("GoRestApi", message)
+    override val apiLogger: Logger =
+        object : Logger {
+            override fun log(message: String) {
+                Log.d("GoRestApi", message)
+            }
         }
-    }
 }

@@ -5,9 +5,10 @@ import com.bill.usermanagmentsystem.domain.model.UserStatus
 import kotlin.time.Instant
 
 internal interface UserRemoteDataSource {
-    suspend fun fetchLastPage(): RemoteResult<RemotePage>
+    /** Fetches the initial page returned by the public users endpoint. */
+    suspend fun fetchInitialPage(): RemoteResult<RemotePage>
 
-    suspend fun fetchPage(page: Long): RemoteResult<List<RemoteUser>>
+    suspend fun fetchPage(page: Long): RemoteResult<RemotePage>
 
     suspend fun createUser(request: CreateUserRequest): RemoteResult<RemoteUser>
 
@@ -17,7 +18,7 @@ internal interface UserRemoteDataSource {
 internal data class RemotePage(
     val users: List<RemoteUser>,
     val page: Long,
-    val totalPages: Long,
+    val nextPage: Long?,
 )
 
 internal data class CreateUserRequest(
@@ -37,7 +38,9 @@ internal data class RemoteUser(
 )
 
 internal sealed interface RemoteResult<out T> {
-    data class Success<T>(val value: T) : RemoteResult<T>
+    data class Success<T>(
+        val value: T,
+    ) : RemoteResult<T>
 
     data class RetryableFailure(
         val reason: String,
@@ -46,9 +49,13 @@ internal sealed interface RemoteResult<out T> {
 
     data object AuthenticationFailure : RemoteResult<Nothing>
 
-    data class ValidationFailure(val reason: String) : RemoteResult<Nothing>
+    data class ValidationFailure(
+        val reason: String,
+    ) : RemoteResult<Nothing>
 
     data object NotFound : RemoteResult<Nothing>
 
-    data class PermanentFailure(val reason: String) : RemoteResult<Nothing>
+    data class PermanentFailure(
+        val reason: String,
+    ) : RemoteResult<Nothing>
 }

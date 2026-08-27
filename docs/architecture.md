@@ -4,7 +4,7 @@
 
 Keep one `shared` Gradle module for challenge-sized delivery while enforcing boundaries with packages, interfaces, constructor injection, and internal visibility.
 
-The twelve engineering invariants in [README](README.md#engineering-invariants) are mandatory. Architecture and implementation decisions must preserve them even when a shortcut appears simpler.
+Architecture and implementation decisions must preserve clear ownership, a database-backed feed, server-confirmed mutations, and deterministic failure handling.
 
 ```text
 shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/
@@ -12,9 +12,17 @@ shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/
 |   |-- theme/
 |   `-- users/
 |       |-- components/
+|       |-- AddUserFormState.kt
+|       |-- UserFeedContent.kt
+|       |-- UserFeedDialogs.kt
 |       |-- UserFeedScreen.kt
+|       |-- UserFeedEvent.kt
 |       |-- UserFeedUiState.kt
-|       `-- UserFeedViewModel.kt
+|       |-- UserFeedViewModel.kt
+|       `-- presentation/
+|           |-- UserErrorMessages.kt
+|           |-- UserFeedPresentationState.kt
+|           `-- UserFeedUiStateMapper.kt
 |-- domain/
 |   |-- model/
 |   |-- repository/
@@ -23,9 +31,11 @@ shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/
 |   |-- local/
 |   |-- remote/
 |   |-- repository/
-|   `-- sync/
 |-- di/
-`-- platform/
+|-- platform/
+`-- utils/
+    |-- AddUserValidator.kt
+    `-- RelativeTimeFormatter.kt
 ```
 
 Android and iOS source sets contain SQLDelight drivers, Ktor engines, lifecycle/connectivity adapters, and platform configuration. Platform types must not leak into common domain or UI contracts.
@@ -38,7 +48,7 @@ Compose UI -> ViewModel -> Use cases -> Repository interface
                                          |
                        Repository implementation
                          /       |       \
-                  SQLDelight   GoRest   Sync coordinator
+                  SQLDelight   GoRest
 ```
 
 - UI depends on domain-facing ViewModel state and actions.
@@ -70,17 +80,10 @@ data class AddUserInput(
 
 data class UserRecord(
     val user: User,
-    val synchronization: UserSynchronization,
 )
-
-sealed interface UserSynchronization {
-    data object Synced : UserSynchronization
-    data object PendingCreate : UserSynchronization
-    data class CreateFailed(val reason: String) : UserSynchronization
-}
 ```
 
-`User` contains stable business data only. It does not contain `isDeleted`, `hidden`, dialog visibility, Snackbar state, or other temporary UI/persistence lifecycle flags. `UserRecord` is a repository projection that pairs a user with synchronization metadata required by presentation. Delete lifecycle fields remain internal to persistence and are excluded from visible-user results.
+`User` contains stable business data only. It does not contain dialog visibility, Snackbar state, or other temporary UI/persistence lifecycle flags. `UserRecord` is the repository projection emitted from SQLDelight.
 
 `Gender` and `UserStatus` encode the GoRest-supported values. Network DTOs mirror JSON. SQLDelight rows include persistence-only fields. UI models add rendered relative time, field errors, and display flags.
 
@@ -89,16 +92,15 @@ sealed interface UserSynchronization {
 ```kotlin
 interface UserRepository {
     fun observeUsers(): Flow<List<UserRecord>>
-    fun observeSyncState(): Flow<SyncState>
     suspend fun refresh(): Result<Unit>
+    suspend fun loadNextPage(): Result<PageLoadResult>
     suspend fun addUser(input: AddUserInput): Result<String>
-    suspend fun requestDelete(localId: String, undoDeadline: Instant): Result<Unit>
-    suspend fun undoDelete(localId: String): Result<Unit>
-    suspend fun syncPending(): Result<Unit>
+    suspend fun deleteImmediately(localId: String): Result<DeletedUserUndo>
+    suspend fun restoreDeletedUser(input: AddUserInput): Result<String>
 }
 ```
 
-Use cases wrap these operations where they contain business rules: validation, refresh orchestration, relative time, deletion deadline calculation, and synchronization triggers.
+Use cases wrap repository operations. `AddUserValidator` and `RelativeTimeFormatter` are pure shared utilities used by the ViewModel and are supplied through Koin.
 
 The UI only receives repository flows derived from SQLDelight queries. Ktor responses are mapped and committed in the data layer before database emissions can change UI state.
 
@@ -111,15 +113,17 @@ data class UserFeedUiState(
     val users: List<UserItemUiModel>,
     val initialLoading: Boolean,
     val refreshing: Boolean,
-    val offline: Boolean,
-    val emptyState: EmptyState?,
-    val addForm: AddUserFormUiState?,
+    val loadingMore: Boolean,
+    val canLoadMore: Boolean,
+    val loadMoreError: String?,
+    val emptyState: UserFeedEmptyState?,
+    val banner: UserFeedBanner?,
+    val addUserForm: AddUserFormUiState?,
     val deleteConfirmation: UserItemUiModel?,
-    val snackbar: SnackbarMessage?,
 )
 ```
 
-Actions include initial load, refresh, add-form open/close, field changes, submit, user long-press, delete confirm/cancel, Undo, Retry, and message consumption. One-off messages use an explicit event/channel contract and are not encoded as permanently replayed state.
+The screen automatically synchronizes at startup, foreground, and restored connectivity. Pull-to-refresh invokes the same synchronization path; the top app bar has no Refresh button. User actions also include add-form open/close, field changes, submit, user long-press, delete confirm/cancel, Undo, and next-page Retry. One-off Snackbar effects are emitted as `SharedFlow<UserFeedEvent>` values, so they are not replayed by the screen state after recomposition. The ViewModel keeps only the current Undo input needed to validate a restore action.
 
 ## SQLDelight design
 
@@ -130,47 +134,26 @@ Actions include initial load, refresh, add-form open/close, field changes, submi
 - `name`, `email`, `gender`, `status`
 - `observed_at_epoch_ms INTEGER`
 - `server_position INTEGER NULL`
-- `sync_status TEXT`
-- `hidden INTEGER AS BOOLEAN`
-- `undo_deadline_epoch_ms INTEGER NULL`
-- `last_sync_error TEXT NULL`
+Visible-user queries place server-confirmed creates (which have no server position until the next refresh) above the pages returned by GoRest. New form submissions create no pending row: HTTP 201 merges the returned remote user at the top. Snapshot and page merges run transactionally.
 
-Visible-user queries exclude hidden rows and order pending/local creations first, followed by server position. Upserts preserve the original `observed_at` and do not overwrite pending local mutations.
+New create submissions are direct remote operations: only HTTP 201 is merged into the local database. Deletion is an immediate remote operation: after DELETE succeeds, the local row is removed.
 
-### `pending_mutations`
+## Repository operation algorithm
 
-- `mutation_id TEXT PRIMARY KEY`
-- `user_local_id INTEGER`
-- `kind TEXT` constrained to `CREATE` or `DELETE`
-- `created_at_epoch_ms INTEGER`
-- `attempt_count INTEGER`
-- `state TEXT` constrained to `PENDING`, `RETRYABLE_WAIT`, or `BLOCKED`
-- `retry_at_epoch_ms INTEGER NULL`
-- `last_error TEXT NULL`
-- Unique constraint preventing duplicate active operations of the same kind for one local user.
+`UserRepositoryImpl` owns remote calls, pagination state, and SQLDelight writes. A `Mutex` serializes refresh, page, create, delete, and restore operations so a response cannot race a database update.
 
-Create/delete state changes and their outbox rows occur in the same database transaction.
-
-## Synchronization algorithm
-
-`SyncCoordinator` keeps one active-run handle. A `Mutex` protects only the short critical section that reads, creates, publishes, or clears that handle. The network/database synchronization work runs outside the mutex. If a run already exists, every new trigger captures and awaits that same run and receives its result. Triggers must not wait for the mutex and then start complete synchronization runs back-to-back. When the run completes, clear the handle only if it still refers to that completed run.
-
-1. Finalize persisted undoable deletions whose deadlines have expired.
-2. Read pending mutations FIFO.
-3. For each `CREATE`, POST the current local row. On 201, attach the remote ID, mark synchronized, and remove the mutation transactionally.
-4. For each `DELETE`, skip the network when no remote ID exists. Otherwise call DELETE; treat 204/404 as success and remove the row/mutation transactionally.
-5. Stop processing on connectivity loss. Keep remaining work durable.
-6. After mutations, probe page 1 with `per_page=20`, read `X-Pagination-Pages`, fetch the reported last page, and set the next-page cursor to `last - 1`.
-7. Transactionally replace the remote snapshot with the last page while preserving pending, failed, and successfully created local rows. Each successful scroll fetch decrements the cursor through `last-1`, `last-2`, and earlier pages. Every refresh reads the headers again and resets the cursor from the current page count.
+1. Refresh fetches `GET /users` without pagination parameters, reads `X-Links-Next`, and commits the received snapshot in one database transaction.
+2. Each successful scroll fetch follows the returned `X-Links-Next` value (`page=2`, `page=3`, and so on), appends the page transactionally, and advances the cursor only after the write succeeds.
+3. Create and restore POST first; only HTTP 201 merges the returned user locally.
+4. Delete calls DELETE first; HTTP 204 and 404 then remove the local row. Undo POSTs the retained input as a new server user.
 
 Failure policy:
 
-- I/O, 5xx, and 429 are retryable. Persist attempt count and next retry time using exponential backoff from two seconds up to five minutes; for 429, respect the server reset/retry header when it is later.
-- Automatic sync selects only pending mutations or retryable mutations whose persisted retry time is due.
-- 401/403 marks affected mutations `BLOCKED`, exposes a configuration/authentication error, and prevents automatic retries until configuration changes or the user explicitly retries.
-- CREATE 422 removes the mutation and becomes `CreateFailed` with the API field message retained. It is retried only by an explicit user action.
-- Permanent DELETE failure removes the mutation, restores the visible row, and surfaces the reason.
-- DELETE 404 completes successfully.
+- I/O, 5xx, and 429 keep the existing database contents and surface a retryable failure. Pull-to-refresh, the next automatic synchronization, and a failed page retry can try again without clearing cached users.
+- 401/403 preserve the database contents and expose a configuration/authentication error.
+- CREATE 422 creates no local row and presents the returned field errors while retaining the form values.
+- An explicit DELETE treats HTTP 204 and 404 as success. The row remains visible when that request fails.
+- Undo is an explicit POST using the deleted data; a successful response is merged as a new user with its server-assigned remote ID.
 - Serialization or invariant failures are permanent for that attempt: stop the affected operation, surface a diagnostic error, and preserve cached state without an automatic retry loop.
 
 The complete transition contract is defined in [state-transitions.md](state-transitions.md).
@@ -179,18 +162,22 @@ The complete transition contract is defined in [state-transitions.md](state-tran
 
 - Ktor common client configuration: JSON content negotiation, Kotlin serialization, timeouts, default GoRest base URL, bearer authentication, and status-to-domain error mapping.
 - Android provides the OkHttp engine; iOS provides Darwin.
-- The page-1 probe returns typed pagination metadata. Header parsing is case-insensitive and rejects missing/invalid page counts with a controlled error; the last page and each preceding page retain newest-to-oldest display order.
+- The initial `/users` response returns typed next-page metadata. Header parsing is case-insensitive; an absent `X-Links-Next` ends pagination and an invalid link is a controlled data-contract error. The initial response and all subsequent pages retain server display order.
 - Network logging is debug-only and must redact `Authorization`.
+
+## Threading
+
+`UserFeedViewModel` uses its default main `viewModelScope` for state transitions, job handles, and event emission. The remote source wraps HTTP calls in the injected I/O dispatcher; the SQLDelight source performs queries and writes on that dispatcher. The combined feed-to-UI mapping runs on the injected default dispatcher before publishing immutable state, so UI collection is not blocked by network, database, or list-mapping work.
 
 ## Connectivity and lifecycle
 
-Define platform-neutral `ConnectivityObserver` and `AppLifecycleObserver` interfaces. Android implementations use platform lifecycle/connectivity APIs; iOS implementations use the equivalent Apple lifecycle and network path APIs. They trigger synchronization but never determine correctness: every network call must still handle connectivity races.
+Define platform-neutral `ConnectivityObserver` and `AppLifecycleObserver` interfaces. Android implementations use platform lifecycle/connectivity APIs; iOS implementations use the equivalent Apple lifecycle and network path APIs. They trigger refreshes but never determine correctness: every network call must still handle connectivity races.
 
-Triggers are startup, foreground, transition to connected, manual refresh, and successful local mutation while connected.
+Triggers are startup, foreground, transition to connected, and pull-to-refresh.
 
 ## Koin graph
 
-- Common modules provide clock, validators, formatters, remote/local data sources, repository, sync coordinator, use cases, and ViewModel.
+- Common modules provide clock, validators, formatters, remote/local data sources, repository, use cases, and ViewModel.
 - Platform modules provide Ktor engine, SQLDelight driver, connectivity/lifecycle observers, dispatcher providers where needed, and `AppConfig`.
 - ViewModels and domain/data classes use constructor injection.
 - Tests load the common graph with fake remote, clock, connectivity, configuration, and in-memory SQL driver overrides.
@@ -199,8 +186,8 @@ Triggers are startup, foreground, transition to connected, manual refresh, and s
 ## Adaptive Material 3 UI
 
 - Use one screen and one ViewModel across layouts.
-- Below 600dp, render a `LazyColumn`. At 600dp or wider, render a two-column `LazyVerticalGrid`.
-- Reuse `UserCard`, `UserForm`, shimmer card, empty/error surface, sync indicator, and delete confirmation components.
+- In portrait, render a `LazyColumn`. In landscape, render a two-column `LazyVerticalGrid`.
+- Reuse `UserCard`, `UserForm`, shimmer card, empty/error surface, and delete confirmation components.
 - Use `AnimatedVisibility` or item placement/removal animation without delaying database truth.
 - Compact add form uses `ModalBottomSheet`; wider form uses a Material 3 dialog/card with the same state and callbacks.
 - System light/dark selection feeds a shared colour scheme and typography. Core appearance is identical across platforms.
@@ -211,9 +198,9 @@ Triggers are startup, foreground, transition to connected, manual refresh, and s
 
 ## Testing strategy
 
-- Pure common tests: validation, relative time, reducers/state transitions, use cases, sync decisions, error mapping.
-- Data tests: in-memory SQLDelight driver, fake remote service, fake clock, fake connectivity, transaction and restart scenarios.
-- ViewModel tests: deterministic dispatchers and no real delay; advance the fake clock for Undo deadlines.
+- Pure common tests: validation, relative time, ViewModel state, use cases, and error mapping.
+- Data tests: in-memory SQLDelight driver, fake remote service, fake clock, fake connectivity, and transactional snapshot/page/mutation scenarios.
+- ViewModel tests: deterministic dispatchers with immediate remote-delete and remote-restore outcomes.
 - Compose tests: semantics and layout assertions for loading, offline, validation, confirmation, Undo, and column count.
 - Contract tests: deserialize representative GoRest success/error payloads and parse pagination headers.
 - Platform smoke checks: Android debug build/host tests and iOS simulator tests.
@@ -224,6 +211,5 @@ Triggers are startup, foreground, transition to connected, manual refresh, and s
 - Do not call Koin lookup functions inside application classes or composables.
 - Do not let composables perform repository work or contain business validation.
 - Do not clear cached users before a remote refresh succeeds.
-- Do not use in-memory-only mutation queues or Undo state.
-- Do not let a permanent failure remain eligible for automatic retry.
+- The Undo Snackbar is intentionally temporary because it recreates a successfully deleted remote user through POST.
 - Keep the existing package name spelling unless a separate rename task is approved.

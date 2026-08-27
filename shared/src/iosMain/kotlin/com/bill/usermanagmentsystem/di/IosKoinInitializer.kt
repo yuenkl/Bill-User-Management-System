@@ -7,10 +7,11 @@ fun startKoinIos(
     enableApiLogging: Boolean,
 ) {
     initKoin(
-        appConfig = AppConfig(
-            apiToken = apiToken,
-            enableApiLogging = enableApiLogging,
-        ),
+        appConfig =
+            AppConfig(
+                apiToken = apiToken,
+                enableApiLogging = enableApiLogging,
+            ),
         platformModule = iosPlatformModule(),
     )
 }

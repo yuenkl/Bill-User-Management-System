@@ -35,21 +35,24 @@ fun UserCardShimmer(modifier: Modifier = Modifier) {
     val alpha by transition.animateFloat(
         initialValue = 0.35f,
         targetValue = 0.7f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(700),
-            repeatMode = RepeatMode.Reverse,
-        ),
+        animationSpec =
+            infiniteRepeatable(
+                animation = tween(700),
+                repeatMode = RepeatMode.Reverse,
+            ),
         label = "user-card-shimmer-alpha",
     )
     val placeholder = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)
 
     Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .semantics { contentDescription = "Loading users" },
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .semantics { contentDescription = "Loading users" },
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            ),
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -80,8 +83,9 @@ private fun Placeholder(
     color: Color,
 ) {
     Spacer(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(color),
+        modifier =
+            modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(color),
     )
 }

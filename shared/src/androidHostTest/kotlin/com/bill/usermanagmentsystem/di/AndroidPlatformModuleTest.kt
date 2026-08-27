@@ -11,33 +11,32 @@ import com.bill.usermanagmentsystem.platform.AppLifecycleObserver
 import com.bill.usermanagmentsystem.platform.ConnectivityObserver
 import com.bill.usermanagmentsystem.platform.NetworkEngineFactory
 import com.bill.usermanagmentsystem.platform.SqlDriverFactory
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlin.test.Test
-import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
 import org.junit.runner.RunWith
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
 import org.robolectric.RobolectricTestRunner
+import kotlin.test.Test
+import kotlin.test.assertNotNull
 
 @RunWith(RobolectricTestRunner::class)
 class AndroidPlatformModuleTest {
     @Test
     fun platformGraphCreatesFoundationServices() {
         val androidApplication = ApplicationProvider.getApplicationContext<Application>()
-        val application = koinApplication {
-            modules(
-                commonModule(AppConfig(apiToken = "token")),
-                androidPlatformModule(androidApplication),
-            )
-        }
+        val application =
+            koinApplication {
+                modules(
+                    commonModule(AppConfig(apiToken = "token")),
+                    androidPlatformModule(androidApplication),
+                )
+            }
 
         val engine = application.koin.get<NetworkEngineFactory>().create()
-        val driver = application.koin.get<SqlDriverFactory>().create(
-            schema = TestSqlSchema,
-            name = "foundation-platform-test.db",
-        )
+        val driver =
+            application.koin.get<SqlDriverFactory>().create(
+                schema = TestSqlSchema,
+                name = "foundation-platform-test.db",
+            )
         try {
             assertNotNull(application.koin.get<ConnectivityObserver>())
             assertNotNull(application.koin.get<AppLifecycleObserver>())
@@ -51,22 +50,22 @@ class AndroidPlatformModuleTest {
     }
 
     @Test
-    fun platformGraphCreatesOfflineRepositoryAndClosesItsScope() {
+    fun platformGraphCreatesOfflineRepository() {
         val androidApplication = ApplicationProvider.getApplicationContext<Application>()
         val databaseName = "offline-data-graph-test.db"
         androidApplication.deleteDatabase(databaseName)
-        val application = koinApplication {
-            modules(
-                commonModule(AppConfig(apiToken = "token")),
-                androidPlatformModule(androidApplication),
-                module {
-                    single<UserRemoteDataSource> { FakeUserRemoteDataSource() }
-                },
-                offlineDataModule(databaseName),
-            )
-        }
+        val application =
+            koinApplication {
+                modules(
+                    commonModule(AppConfig(apiToken = "token")),
+                    androidPlatformModule(androidApplication),
+                    module {
+                        single<UserRemoteDataSource> { FakeUserRemoteDataSource() }
+                    },
+                    userFeatureModule(databaseName),
+                )
+            }
 
-        val applicationScope = application.koin.get<CoroutineScope>()
         try {
             assertNotNull(application.koin.get<UserManagementDatabase>())
             assertNotNull(application.koin.get<UserRepository>())
@@ -74,7 +73,5 @@ class AndroidPlatformModuleTest {
             application.close()
             androidApplication.deleteDatabase(databaseName)
         }
-
-        assertTrue(applicationScope.coroutineContext[Job]?.isCancelled == true)
     }
 }

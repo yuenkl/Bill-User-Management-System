@@ -12,9 +12,10 @@ import com.bill.usermanagmentsystem.platform.SqlDriverFactory
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
-fun androidPlatformModule(application: Application): Module = module {
-    single<NetworkEngineFactory> { AndroidNetworkEngineFactory() }
-    single<SqlDriverFactory> { AndroidSqlDriverFactory(application) }
-    single<ConnectivityObserver> { AndroidConnectivityObserver(application) }
-    single<AppLifecycleObserver> { AndroidAppLifecycleObserver(application) }
-}
+fun androidPlatformModule(application: Application): Module =
+    module {
+        single<NetworkEngineFactory> { AndroidNetworkEngineFactory() }
+        single<SqlDriverFactory> { AndroidSqlDriverFactory(application) }
+        single<ConnectivityObserver> { AndroidConnectivityObserver(application) }
+        single<AppLifecycleObserver> { AndroidAppLifecycleObserver(application) }
+    }

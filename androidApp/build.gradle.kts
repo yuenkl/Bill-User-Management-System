@@ -1,23 +1,27 @@
-import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
 
-val localProperties = Properties().apply {
-    val localPropertiesFile = rootProject.file("local.properties")
-    if (localPropertiesFile.exists()) {
-        localPropertiesFile.inputStream().use(::load)
+val localProperties =
+    Properties().apply {
+        val localPropertiesFile = rootProject.file("local.properties")
+        if (localPropertiesFile.exists()) {
+            localPropertiesFile.inputStream().use(::load)
+        }
     }
-}
 
-val goRestAccessToken = providers.gradleProperty("GOREST_ACCESS_TOKEN")
-    .orElse(providers.environmentVariable("GOREST_ACCESS_TOKEN"))
-    .orElse(localProperties.getProperty("GOREST_ACCESS_TOKEN", ""))
-    .get()
-    .replace("\\", "\\\\")
-    .replace("\"", "\\\"")
+val goRestAccessToken =
+    providers
+        .gradleProperty("GOREST_ACCESS_TOKEN")
+        .orElse(providers.environmentVariable("GOREST_ACCESS_TOKEN"))
+        .orElse(localProperties.getProperty("GOREST_ACCESS_TOKEN", ""))
+        .get()
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
 
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.composeCompiler)
+    alias(libs.plugins.ktlint)
 }
 
 kotlin {
@@ -35,12 +39,21 @@ dependencies {
 
 android {
     namespace = "com.bill.usermanagmentsystem"
-    compileSdk = libs.versions.android.compileSdk.get().toInt()
+    compileSdk =
+        libs.versions.android.compileSdk
+            .get()
+            .toInt()
 
     defaultConfig {
         applicationId = "com.bill.usermanagmentsystem"
-        minSdk = libs.versions.android.minSdk.get().toInt()
-        targetSdk = libs.versions.android.targetSdk.get().toInt()
+        minSdk =
+            libs.versions.android.minSdk
+                .get()
+                .toInt()
+        targetSdk =
+            libs.versions.android.targetSdk
+                .get()
+                .toInt()
         versionCode = 1
         versionName = "1.0"
     }
@@ -54,7 +67,7 @@ android {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
             )
         }
     }

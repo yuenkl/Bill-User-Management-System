@@ -1,5 +1,8 @@
 package com.bill.usermanagmentsystem.domain.usecase
 
+import com.bill.usermanagmentsystem.utils.AddUserValidator
+import com.bill.usermanagmentsystem.utils.EmailValidationError
+import com.bill.usermanagmentsystem.utils.NameValidationError
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -37,8 +40,10 @@ class AddUserValidatorTest {
         assertEquals(EmailValidationError.FinalLabelTooShort, validator.validateEmail("ada@example.c"))
         assertEquals(
             EmailValidationError.TooLong,
-            validator.validateEmail("a".repeat(64) + "@" + "b".repeat(63) + "." +
-                "c".repeat(63) + "." + "d".repeat(62)),
+            validator.validateEmail(
+                "a".repeat(64) + "@" + "b".repeat(63) + "." +
+                    "c".repeat(63) + "." + "d".repeat(62),
+            ),
         )
     }
 

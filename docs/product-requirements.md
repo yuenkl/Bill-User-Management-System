@@ -2,7 +2,7 @@
 
 ## Goal
 
-Build a production-minded Kotlin Multiplatform user directory that demonstrates shared architecture, offline-first behaviour, adaptive Compose UI, and clear recovery from network failures. The intended audience is a technical evaluator reviewing Android/KMP quality, UX polish, and AI-assisted engineering discipline.
+Build a production-minded Kotlin Multiplatform user directory that demonstrates shared architecture, database-backed cached viewing, adaptive Compose UI, and clear recovery from network failures. The intended audience is a technical evaluator reviewing Android/KMP quality, UX polish, and AI-assisted engineering discipline.
 
 There are three primary capabilities:
 
@@ -16,25 +16,25 @@ All behaviour must preserve the [engineering invariants](README.md#engineering-i
 
 ### Behaviour
 
-- Discover and fetch the last page from `GET /public/v2/users`, then load `last-1`, `last-2`, and earlier pages as the user reaches the end of the feed.
-- Request 20 users per page. Read `X-Pagination-Pages` from the first response, use it as the initial page, and stop after page 1.
+- Fetch `GET /public/v2/users` as the initial, newest page, then follow `X-Links-Next` (`page=2`, `page=3`, and so on) as the user reaches the end of the feed.
+- Read `X-Links-Next` from each response. Its absence marks the end of the feed.
 - Persist the remote snapshot before exposing it to the UI. The UI observes SQLDelight only and never displays a network response directly.
 - Each row displays name, email, gender/status indicators where useful, and a relative timestamp based on when the record was first observed locally.
-- Preserve server order across appended pages. Locally created users appear above the remote snapshot.
-- Refresh is available through pull-to-refresh or an equivalent explicit Material 3 action; it rereads the current page count and refreshes the snapshot before restarting earlier-page loading.
+- Preserve server order across appended pages. A newly created user is merged at the top only after GoRest returns HTTP 201.
+- Refresh is available through pull-to-refresh or an equivalent explicit Material 3 action; it refreshes the initial response before restarting next-page loading.
 
 ### Loading and failure states
 
 - Show shimmer placeholders only when the database has no visible users and the initial refresh is running.
 - If cached users exist, keep them visible during refresh and use a non-blocking refresh indicator.
-- With no cache and no network, show a full offline state with Retry.
+- With no cache and no network, show a full offline state. A later connectivity restoration or pull-to-refresh retries the initial request.
 - With cached users and no network, show a compact offline banner or supporting message without blocking the feed.
 - Empty data is distinct from loading and failure.
 - Authentication, rate-limit, validation, server, and connectivity failures map to user-readable messages while retaining diagnostic detail for logs.
 
 ### Acceptance criteria
 
-- Cold start online displays the last page and scrolling progressively appends every earlier page in descending page order.
+- Cold start online displays the initial response and scrolling progressively appends each subsequent page in server order.
 - Cold start offline displays cached users, or the offline empty state if no cache exists.
 - Refresh never clears valid cached content before replacement data is committed.
 - Relative-time boundaries are correct and update while the screen remains open.
@@ -56,45 +56,43 @@ All behaviour must preserve the [engineering invariants](README.md#engineering-i
 - Email must be at most 254 characters, contain exactly one `@`, contain no whitespace, have a non-empty local part of at most 64 characters, and have a domain composed of valid non-empty labels with a final label of at least two characters.
 - Show errors after field interaction and update them in real time. Keep API field errors separate from local syntax errors.
 
-### Offline-first creation
+### Server-confirmed creation
 
-- Submission always writes a temporary local user and a `CREATE` outbox entry in one transaction.
-- The temporary user appears at the top immediately, online or offline.
-- Online state triggers synchronization immediately; offline state leaves the operation pending.
-- On HTTP 201, replace the nullable remote ID and mark the same local user synchronized without changing its local identity or visual position unexpectedly.
-- A transient failure keeps the operation durable and retryable. A permanent API validation failure removes the operation from automatic retry and keeps the user visible with a failed-sync indication and readable reason.
+- Submission POSTs the normalized form directly to GoRest without first inserting a local user.
+- Only HTTP 201 merges the returned user into the local database, where it appears at the top of the feed.
+- Any failed create leaves the feed unchanged and keeps the form open.
+- HTTP 422 presents an alert that lists the API field and its message, while retaining the values for correction and resubmission.
 
 ### Acceptance criteria
 
-- Valid submission closes the form and immediately shows the user at the top.
+- HTTP 201 closes the form and shows the returned user at the top.
 - Rotation or layout change preserves form state while the form is open.
-- Offline creation survives process restart and synchronizes after connectivity returns.
-- Repeated taps cannot create duplicate local or remote requests.
+- A failed or offline submission creates no local row.
+- Repeated taps cannot create duplicate remote requests.
 
 ## Delete with Undo
 
 ### Behaviour
 
 - Long-pressing a user opens a confirmation dialog containing enough identity information to avoid deleting the wrong row.
-- Confirming hides the row with an animation and persists an undoable-delete state with a five-second deadline.
-- Show a Snackbar with Undo for the same five-second window.
-- Undo before the deadline restores the row and prevents a remote DELETE.
-- When the deadline expires, create a `DELETE` outbox entry. Synchronize immediately if online or later if offline.
-- HTTP 204 and 404 both complete deletion. A permanent authentication failure restores the row and reports the failure; transient failures remain queued.
-- Deleting a user whose `CREATE` has not synchronized cancels the create mutation and removes the local user without sending a remote DELETE.
+- Confirming calls DELETE immediately. Only HTTP 204 or an already-absent HTTP 404 removes the local row, with an item-removal animation.
+- After a successful deletion, show a Snackbar with Undo. Dismissing the Snackbar leaves the deletion complete.
+- Undo creates a replacement user through POST and inserts that server-confirmed response at the top of the feed.
+- If DELETE fails, keep the row visible and show the classified failure.
+- New users are displayed only after HTTP 201, so every visible user has a remote ID and deletion calls the remote endpoint.
 
 ### Acceptance criteria
 
-- Undo produces no remote DELETE.
-- No Undo produces exactly one DELETE after the deadline.
-- The deadline survives process death; expired deletions finalize on the next startup.
-- Offline deletion remains hidden, survives restart, and completes after reconnection.
+- Confirmation produces one DELETE request.
+- HTTP 204 and HTTP 404 remove the local row; any other failure leaves it visible.
+- Undo produces a new POST request and scrolls the feed to the new top row on success.
+- The Undo affordance is transient and does not survive process death.
 
 ## Adaptive layout and shared UI
 
 - All feature UI is Compose Multiplatform and shared between Android and iOS.
-- Available width, not device orientation alone, determines layout.
-- Width below 600dp uses a single list. Width at least 600dp uses exactly two grid columns.
+- Available window orientation determines layout. Portrait uses a single list; landscape uses
+  exactly two grid columns.
 - Cards, forms, loading placeholders, error surfaces, dialogs, and empty states are reusable composables.
 - Support system light/dark mode with one shared Material 3 theme. Do not depend on Android-only dynamic colour for core appearance.
 - Interactive elements have semantics, readable contrast, adequate touch targets, and meaningful content descriptions where required.
@@ -102,13 +100,12 @@ All behaviour must preserve the [engineering invariants](README.md#engineering-i
 ## Offline and synchronization contract
 
 - SQLDelight is authoritative for visible state.
-- Mutations follow one local-first code path regardless of current connectivity.
-- Synchronization runs at app startup, return to foreground, connectivity restoration, and manual refresh.
+- Feed synchronization runs at app startup, return to foreground, connectivity restoration, and pull-to-refresh. There is no top-bar Refresh button.
+- Create, delete, and Undo are direct server-confirmed operations. Offline mutations do not create a local row or durable outbox entry.
 - Only one synchronization run may execute at a time.
-- Pending mutations are processed FIFO before fetching the latest remote snapshot.
 - Database updates for each remote result are transactional, and database flows update the UI automatically afterward.
-- Retryable operations remain durable rather than being lost with a coroutine or process.
-- Permanent failures leave the automatic retry set, surface a clear reason, and require configuration change or explicit user action before another attempt.
+- A failed initial snapshot preserves the current cache and can be retried by pull-to-refresh or the next lifecycle/connectivity synchronization. A failed next page exposes an explicit Retry without advancing its cursor.
+- Permanent failures preserve the cache and surface a clear reason. Create failures keep the form open for correction or resubmission.
 - Core `User` domain data never carries `isDeleted`, `hidden`, dialog, Snackbar, or other temporary lifecycle flags.
 - Compose renders state and forwards actions; validation, mutation, synchronization, and retry decisions remain in shared ViewModel/domain/data code.
 

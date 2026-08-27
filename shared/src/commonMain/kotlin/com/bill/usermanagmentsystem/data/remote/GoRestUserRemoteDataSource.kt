@@ -28,48 +28,52 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.withContext
 import kotlinx.io.IOException
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
-private const val PAGE_SIZE = 20
+private const val PAGE_SIZE = 10
 private const val MAX_PAGE_NUMBER = Long.MAX_VALUE / PAGE_SIZE
-private const val PAGINATION_PAGES_HEADER = "X-Pagination-Pages"
+private const val LINKS_NEXT_HEADER = "X-Links-Next"
 private const val RATE_LIMIT_RESET_HEADER = "X-RateLimit-Reset"
 
 internal fun createGoRestHttpClient(
     engineFactory: NetworkEngineFactory,
     enableApiLogging: Boolean = false,
-): HttpClient = createGoRestHttpClient(
-    engine = engineFactory.create(),
-    enableApiLogging = enableApiLogging,
-    logger = engineFactory.apiLogger,
-)
+): HttpClient =
+    createGoRestHttpClient(
+        engine = engineFactory.create(),
+        enableApiLogging = enableApiLogging,
+        logger = engineFactory.apiLogger,
+    )
 
 internal fun createGoRestHttpClient(
     engine: HttpClientEngine,
     enableApiLogging: Boolean = false,
     logger: Logger = NoOpLogger,
-): HttpClient = HttpClient(engine) {
-    expectSuccess = false
-    install(ContentNegotiation) {
-        json(goRestJson)
-    }
-    install(HttpTimeout) {
-        requestTimeoutMillis = 15.seconds.inWholeMilliseconds
-        connectTimeoutMillis = 10.seconds.inWholeMilliseconds
-        socketTimeoutMillis = 15.seconds.inWholeMilliseconds
-    }
-    if (enableApiLogging) {
-        install(Logging) {
-            this.logger = logger
-            level = LogLevel.HEADERS
-            sanitizeHeader { header -> header.equals(HttpHeaders.Authorization, ignoreCase = true) }
+): HttpClient =
+    HttpClient(engine) {
+        expectSuccess = false
+        install(ContentNegotiation) {
+            json(goRestJson)
+        }
+        install(HttpTimeout) {
+            requestTimeoutMillis = 15.seconds.inWholeMilliseconds
+            connectTimeoutMillis = 10.seconds.inWholeMilliseconds
+            socketTimeoutMillis = 15.seconds.inWholeMilliseconds
+        }
+        if (enableApiLogging) {
+            install(Logging) {
+                this.logger = logger
+                level = LogLevel.HEADERS
+                sanitizeHeader { header -> header.equals(HttpHeaders.Authorization, ignoreCase = true) }
+            }
         }
     }
-}
 
 private object NoOpLogger : Logger {
     override fun log(message: String) = Unit
@@ -79,121 +83,128 @@ internal class GoRestUserRemoteDataSource(
     private val httpClient: HttpClient,
     private val appConfig: AppConfig,
     private val timeProvider: TimeProvider,
+    private val networkDispatcher: CoroutineDispatcher,
 ) : UserRemoteDataSource {
     private val usersUrl = "${appConfig.baseUrl.trimEnd('/')}/users"
 
-    override suspend fun fetchLastPage(): RemoteResult<RemotePage> = remoteCall {
-        when (val firstPage = fetchPageResponse(page = 1, requirePageCount = true)) {
-            is PageResult.Failure -> firstPage.failure
-            is PageResult.Success -> {
-                val lastPageNumber = requireNotNull(firstPage.pageCount)
-                val lastPageUsers = if (lastPageNumber == 1L) {
-                    firstPage.users
-                } else {
-                    when (val lastPage = fetchPageResponse(page = lastPageNumber, requirePageCount = false)) {
-                        is PageResult.Failure -> return@remoteCall lastPage.failure
-                        is PageResult.Success -> lastPage.users
-                    }
+    override suspend fun fetchInitialPage(): RemoteResult<RemotePage> =
+        withContext(networkDispatcher) {
+            remoteCall {
+                when (val initialPage = fetchPageResponse(page = null)) {
+                    is PageResult.Failure -> initialPage.failure
+                    is PageResult.Success ->
+                        RemoteResult.Success(
+                            RemotePage(
+                                users = initialPage.users.toRemoteUsers(page = 1),
+                                page = 1,
+                                nextPage = initialPage.nextPage.after(page = 1),
+                            ),
+                        )
                 }
-                RemoteResult.Success(
-                    RemotePage(
-                        users = lastPageUsers.toRemoteUsers(page = lastPageNumber),
-                        page = lastPageNumber,
-                        totalPages = lastPageNumber,
-                    ),
-                )
             }
         }
-    }
 
-    override suspend fun fetchPage(page: Long): RemoteResult<List<RemoteUser>> = remoteCall {
-        require(page in 1..MAX_PAGE_NUMBER) { "Page number is outside the supported range." }
-        when (val result = fetchPageResponse(page = page, requirePageCount = false)) {
-            is PageResult.Failure -> result.failure
-            is PageResult.Success -> RemoteResult.Success(result.users.toRemoteUsers(page))
+    override suspend fun fetchPage(page: Long): RemoteResult<RemotePage> =
+        withContext(networkDispatcher) {
+            remoteCall {
+                require(page in 1..MAX_PAGE_NUMBER) { "Page number is outside the supported range." }
+                when (val result = fetchPageResponse(page = page)) {
+                    is PageResult.Failure -> result.failure
+                    is PageResult.Success ->
+                        RemoteResult.Success(
+                            RemotePage(
+                                users = result.users.toRemoteUsers(page),
+                                page = page,
+                                nextPage = result.nextPage.after(page),
+                            ),
+                        )
+                }
+            }
         }
-    }
 
     override suspend fun createUser(request: CreateUserRequest): RemoteResult<RemoteUser> {
         if (appConfig.apiToken.isBlank()) return RemoteResult.AuthenticationFailure
-        return remoteCall {
-            val response = httpClient.post(usersUrl) {
-                bearerToken()
-                contentType(ContentType.Application.Json)
-                setBody(
-                    GoRestCreateUserDto(
-                        name = request.name,
-                        email = request.email,
-                        gender = request.gender.apiValue,
-                        status = request.status.apiValue,
-                    ),
-                )
-            }
-            if (response.status.value in 200..299) {
-                RemoteResult.Success(response.body<GoRestUserDto>().toRemoteUser(serverPosition = null))
-            } else {
-                response.toFailure()
+        return withContext(networkDispatcher) {
+            remoteCall {
+                val response =
+                    httpClient.post(usersUrl) {
+                        bearerToken()
+                        contentType(ContentType.Application.Json)
+                        setBody(
+                            GoRestCreateUserDto(
+                                name = request.name,
+                                email = request.email,
+                                gender = request.gender.apiValue,
+                                status = request.status.apiValue,
+                            ),
+                        )
+                    }
+                if (response.status == HttpStatusCode.Created) {
+                    RemoteResult.Success(response.body<GoRestUserDto>().toRemoteUser(serverPosition = null))
+                } else {
+                    response.toFailure()
+                }
             }
         }
     }
 
     override suspend fun deleteUser(remoteId: Long): RemoteResult<Unit> {
         if (appConfig.apiToken.isBlank()) return RemoteResult.AuthenticationFailure
-        return remoteCall {
-            val response = httpClient.delete("$usersUrl/$remoteId") { bearerToken() }
-            when {
-                response.status.value in 200..299 -> RemoteResult.Success(Unit)
-                response.status == HttpStatusCode.NotFound -> RemoteResult.NotFound
-                else -> response.toFailure()
+        return withContext(networkDispatcher) {
+            remoteCall {
+                val response = httpClient.delete("$usersUrl/$remoteId") { bearerToken() }
+                when {
+                    response.status.value in 200..299 -> RemoteResult.Success(Unit)
+                    response.status == HttpStatusCode.NotFound -> RemoteResult.NotFound
+                    else -> response.toFailure()
+                }
             }
         }
     }
 
-    private suspend fun fetchPageResponse(
-        page: Long,
-        requirePageCount: Boolean,
-    ): PageResult {
-        val response = httpClient.get(usersUrl) {
-            parameter("page", page)
-            parameter("per_page", PAGE_SIZE)
-        }
+    private suspend fun fetchPageResponse(page: Long?): PageResult {
+        val response =
+            httpClient.get(usersUrl) {
+                header(HttpHeaders.CacheControl, "no-cache")
+                bearerToken()
+                page?.let { parameter("page", it) }
+            }
         if (response.status.value !in 200..299) {
             return PageResult.Failure(response.toFailure())
         }
 
-        val pageCount = if (requirePageCount) {
-            response.headers[PAGINATION_PAGES_HEADER]
+        val nextPage =
+            response.headers[LINKS_NEXT_HEADER]
                 ?.trim()
-                ?.toLongOrNull()
-                ?.takeIf { it in 1..MAX_PAGE_NUMBER }
-                ?: return PageResult.Failure(
-                    RemoteResult.PermanentFailure("The server returned invalid pagination metadata."),
-                )
-        } else {
-            null
-        }
-        return PageResult.Success(response.body(), pageCount)
+                ?.let(::parseNextPage)
+                ?: return PageResult.Success(response.body(), nextPage = null)
+        return PageResult.Success(response.body(), nextPage)
     }
 
     private fun io.ktor.client.request.HttpRequestBuilder.bearerToken() {
-        header(HttpHeaders.Authorization, "Bearer ${appConfig.apiToken}")
+        appConfig.apiToken
+            .takeIf(String::isNotBlank)
+            ?.let { token -> header(HttpHeaders.Authorization, "Bearer $token") }
     }
 
-    private suspend fun HttpResponse.toFailure(): RemoteResult<Nothing> = when (status.value) {
-        401, 403 -> RemoteResult.AuthenticationFailure
-        422 -> RemoteResult.ValidationFailure(readValidationMessage())
-        429 -> RemoteResult.RetryableFailure(
-            reason = "The service is rate limited.",
-            serverRetryAt = retryAt(),
-        )
-        in 500..599 -> RemoteResult.RetryableFailure("The service returned HTTP ${status.value}.")
-        else -> RemoteResult.PermanentFailure("The service returned HTTP ${status.value}.")
-    }
+    private suspend fun HttpResponse.toFailure(): RemoteResult<Nothing> =
+        when (status.value) {
+            401, 403 -> RemoteResult.AuthenticationFailure
+            422 -> RemoteResult.ValidationFailure(readValidationMessage())
+            429 ->
+                RemoteResult.RetryableFailure(
+                    reason = "The service is rate limited.",
+                    serverRetryAt = retryAt(),
+                )
+            in 500..599 -> RemoteResult.RetryableFailure("The service returned HTTP ${status.value}.")
+            else -> RemoteResult.PermanentFailure("The service returned HTTP ${status.value}.")
+        }
 
     private suspend fun HttpResponse.readValidationMessage(): String {
         val payload = bodyAsText()
         return try {
-            goRestJson.decodeFromString<List<GoRestFieldErrorDto>>(payload)
+            goRestJson
+                .decodeFromString<List<GoRestFieldErrorDto>>(payload)
                 .joinToString(separator = "; ") { error -> "${error.field}: ${error.message}" }
                 .ifBlank { "The server rejected the user details." }
         } catch (_: SerializationException) {
@@ -221,35 +232,58 @@ internal class GoRestUserRemoteDataSource(
     private sealed interface PageResult {
         data class Success(
             val users: List<GoRestUserDto>,
-            val pageCount: Long?,
+            val nextPage: Long?,
         ) : PageResult
 
-        data class Failure(val failure: RemoteResult<Nothing>) : PageResult
+        data class Failure(
+            val failure: RemoteResult<Nothing>,
+        ) : PageResult
     }
 }
 
-private inline fun <T> remoteCall(block: () -> RemoteResult<T>): RemoteResult<T> = try {
-    block()
-} catch (cancellation: CancellationException) {
-    throw cancellation
-} catch (_: HttpRequestTimeoutException) {
-    RemoteResult.RetryableFailure("The request timed out.")
-} catch (failure: IOException) {
-    RemoteResult.RetryableFailure(failure.message ?: "The network request failed.")
-} catch (failure: SerializationException) {
-    RemoteResult.PermanentFailure(failure.message ?: "The service returned malformed data.")
-} catch (failure: IllegalArgumentException) {
-    RemoteResult.PermanentFailure(failure.message ?: "The service returned invalid data.")
-} catch (failure: Throwable) {
-    RemoteResult.PermanentFailure(failure.message ?: "The remote request failed unexpectedly.")
+private fun parseNextPage(nextLink: String): Long {
+    val pageValue =
+        nextLink
+            .substringAfter("?", missingDelimiterValue = "")
+            .split("&")
+            .firstOrNull { it.substringBefore("=") == "page" }
+            ?.substringAfter("=", missingDelimiterValue = "")
+            ?.toLongOrNull()
+    return requireNotNull(pageValue?.takeIf { it in 1..MAX_PAGE_NUMBER }) {
+        "The service returned an invalid next-page link."
+    }
 }
+
+private fun Long?.after(page: Long): Long? =
+    this?.also { nextPage ->
+        require(nextPage > page) { "The service returned a non-forward next-page link." }
+    }
+
+private inline fun <T> remoteCall(block: () -> RemoteResult<T>): RemoteResult<T> =
+    try {
+        block()
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (_: HttpRequestTimeoutException) {
+        RemoteResult.RetryableFailure("The request timed out.")
+    } catch (failure: IOException) {
+        RemoteResult.RetryableFailure(failure.message ?: "The network request failed.")
+    } catch (failure: SerializationException) {
+        RemoteResult.PermanentFailure(failure.message ?: "The service returned malformed data.")
+    } catch (failure: IllegalArgumentException) {
+        RemoteResult.PermanentFailure(failure.message ?: "The service returned invalid data.")
+    } catch (failure: Throwable) {
+        RemoteResult.PermanentFailure(failure.message ?: "The remote request failed unexpectedly.")
+    }
 
 private fun GoRestUserDto.toRemoteUser(serverPosition: Long?): RemoteUser {
     require(id > 0) { "The service returned an invalid user ID." }
-    val parsedGender = Gender.entries.firstOrNull { it.apiValue == gender }
-        ?: throw IllegalArgumentException("The service returned an unsupported gender value.")
-    val parsedStatus = UserStatus.entries.firstOrNull { it.apiValue == status }
-        ?: throw IllegalArgumentException("The service returned an unsupported status value.")
+    val parsedGender =
+        Gender.entries.firstOrNull { it.apiValue == gender }
+            ?: throw IllegalArgumentException("The service returned an unsupported gender value.")
+    val parsedStatus =
+        UserStatus.entries.firstOrNull { it.apiValue == status }
+            ?: throw IllegalArgumentException("The service returned an unsupported status value.")
     return RemoteUser(
         remoteId = id,
         name = name,
@@ -262,15 +296,14 @@ private fun GoRestUserDto.toRemoteUser(serverPosition: Long?): RemoteUser {
 
 private fun List<GoRestUserDto>.toRemoteUsers(page: Long): List<RemoteUser> =
     mapIndexed { index, user ->
-        // Pages are loaded newest-to-oldest. Negative page offsets keep the
-        // first displayed page ahead of earlier pages in the ascending DB order.
-        val serverPosition = -(page * PAGE_SIZE) + index
+        val serverPosition = ((page - 1) * PAGE_SIZE) + index
         user.toRemoteUser(serverPosition)
     }
 
-private val goRestJson = Json {
-    ignoreUnknownKeys = true
-    isLenient = false
-    coerceInputValues = false
-    explicitNulls = true
-}
+private val goRestJson =
+    Json {
+        ignoreUnknownKeys = true
+        isLenient = false
+        coerceInputValues = false
+        explicitNulls = true
+    }
