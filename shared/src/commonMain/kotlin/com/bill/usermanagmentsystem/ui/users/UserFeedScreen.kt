@@ -22,7 +22,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
@@ -57,7 +59,6 @@ fun UserFeedRoute(
         onAddUserGenderSelected = viewModel::selectAddUserGender,
         onAddUserStatusSelected = viewModel::selectAddUserStatus,
         onAddUserSubmitted = viewModel::submitAddUser,
-        onAddUserValidationAlertDismissed = viewModel::dismissAddUserValidationAlert,
         onUserLongClick = viewModel::selectUserForDeletion,
         onDeleteCancel = viewModel::cancelDelete,
         onDeleteConfirm = viewModel::confirmDelete,
@@ -82,7 +83,6 @@ fun UserFeedScreen(
     onAddUserGenderSelected: (Gender) -> Unit,
     onAddUserStatusSelected: (UserStatus) -> Unit,
     onAddUserSubmitted: () -> Unit,
-    onAddUserValidationAlertDismissed: () -> Unit = {},
     onUserLongClick: (String) -> Unit = {},
     onDeleteCancel: () -> Unit = {},
     onDeleteConfirm: () -> Unit = {},
@@ -94,10 +94,15 @@ fun UserFeedScreen(
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     var scrollToTopRequest by remember { mutableIntStateOf(0) }
+    var addUserFormVisible by rememberSaveable { mutableStateOf(false) }
+    var addUserValidationAlert by remember { mutableStateOf<AddUserValidationAlert?>(null) }
     LaunchedEffect(events) {
         events.collect { event ->
             when (event) {
+                UserFeedEvent.ShowAddUserForm -> addUserFormVisible = true
+                UserFeedEvent.DismissAddUserForm -> addUserFormVisible = false
                 UserFeedEvent.ScrollToTop -> scrollToTopRequest += 1
+                is UserFeedEvent.ShowAddUserValidationAlert -> addUserValidationAlert = event.alert
                 is UserFeedEvent.ShowSnackbar -> snackbarHostState.showSnackbar(event.message)
                 is UserFeedEvent.ShowDeleteUndoSnackbar -> {
                     snackbarHostState.currentSnackbarData?.dismiss()
@@ -204,7 +209,7 @@ fun UserFeedScreen(
             }
         }
 
-        state.addUserForm?.let { form ->
+        state.addUserForm?.takeIf { addUserFormVisible }?.let { form ->
             AddUserFormOverlay(
                 form = form,
                 layoutMode = layoutMode,
@@ -219,10 +224,10 @@ fun UserFeedScreen(
         }
     }
 
-    state.addUserValidationAlert?.let { alert ->
+    addUserValidationAlert?.let { alert ->
         AddUserValidationAlertDialog(
             alert = alert,
-            onDismiss = onAddUserValidationAlertDismissed,
+            onDismiss = { addUserValidationAlert = null },
         )
     }
 

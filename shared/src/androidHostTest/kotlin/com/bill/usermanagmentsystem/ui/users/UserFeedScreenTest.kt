@@ -159,6 +159,7 @@ class UserFeedScreenTest {
     @Config(qualifiers = "w800dp-h1000dp")
     fun compactFormUsesSheetAndRendersValues() =
         runComposeUiTest {
+            val events = MutableSharedFlow<UserFeedEvent>(extraBufferCapacity = 1)
             val form =
                 AddUserFormUiState(
                     details = validAddUserDetails(),
@@ -166,9 +167,13 @@ class UserFeedScreenTest {
                 )
             setContent {
                 Box(Modifier.size(width = 500.dp, height = 800.dp)) {
-                    screen(UserFeedUiState(initialLoading = false, addUserForm = form))
+                    screen(
+                        state = UserFeedUiState(initialLoading = false, addUserForm = form),
+                        events = events,
+                    )
                 }
             }
+            runOnIdle { events.tryEmit(UserFeedEvent.ShowAddUserForm) }
 
             onNodeWithContentDescription("Add user sheet").fetchSemanticsNode()
             onNodeWithText("Ada Lovelace").fetchSemanticsNode()
@@ -180,6 +185,7 @@ class UserFeedScreenTest {
     fun compactFormShowsSubmitAction() =
         runComposeUiTest {
             var submissions = 0
+            val events = MutableSharedFlow<UserFeedEvent>(extraBufferCapacity = 1)
             val form =
                 AddUserFormUiState(
                     details = validAddUserDetails(),
@@ -189,34 +195,38 @@ class UserFeedScreenTest {
                 Box(Modifier.size(width = 500.dp, height = 800.dp)) {
                     screen(
                         state = UserFeedUiState(initialLoading = false, addUserForm = form),
+                        events = events,
                         onAddUserSubmitted = { submissions += 1 },
                     )
                 }
             }
+            runOnIdle { events.tryEmit(UserFeedEvent.ShowAddUserForm) }
 
             onNodeWithContentDescription("Submit user").performClick()
             assertEquals(1, submissions)
         }
 
     @Test
-    fun apiValidationAlertShowsEveryFieldMessageAndCanBeDismissed() =
+    fun apiValidationAlertEventShowsEveryFieldMessageAndCanBeDismissed() =
         runComposeUiTest {
-            var dismissCalls = 0
+            val events = MutableSharedFlow<UserFeedEvent>(extraBufferCapacity = 1)
             setContent {
                 screen(
-                    state =
-                        UserFeedUiState(
-                            initialLoading = false,
-                            addUserValidationAlert =
-                                AddUserValidationAlert(
-                                    errors =
-                                        listOf(
-                                            AddUserApiFieldError("email", "has already been taken"),
-                                            AddUserApiFieldError("gender", "is invalid"),
-                                        ),
+                    state = UserFeedUiState(initialLoading = false),
+                    events = events,
+                )
+            }
+            runOnIdle {
+                events.tryEmit(
+                    UserFeedEvent.ShowAddUserValidationAlert(
+                        AddUserValidationAlert(
+                            errors =
+                                listOf(
+                                    AddUserApiFieldError("email", "has already been taken"),
+                                    AddUserApiFieldError("gender", "is invalid"),
                                 ),
                         ),
-                    onAddUserValidationAlertDismissed = { dismissCalls += 1 },
+                    ),
                 )
             }
 
@@ -226,7 +236,7 @@ class UserFeedScreenTest {
             onNodeWithText("Gender").fetchSemanticsNode()
             onNodeWithText("is invalid").fetchSemanticsNode()
             onNodeWithText("OK").performClick()
-            assertEquals(1, dismissCalls)
+            assertTrue(onAllNodesWithText("Unable to add user").fetchSemanticsNodes().isEmpty())
         }
 
     @Test
@@ -288,6 +298,7 @@ class UserFeedScreenTest {
     @Config(qualifiers = "w800dp-h1000dp")
     fun formExposesValidationErrorAndDisabledSubmitSemantics() =
         runComposeUiTest {
+            val events = MutableSharedFlow<UserFeedEvent>(extraBufferCapacity = 1)
             setContent {
                 Box(Modifier.size(width = 500.dp, height = 800.dp)) {
                     screen(
@@ -305,9 +316,11 @@ class UserFeedScreenTest {
                                         ),
                                 ),
                         ),
+                        events = events,
                     )
                 }
             }
+            runOnIdle { events.tryEmit(UserFeedEvent.ShowAddUserForm) }
 
             onNode(
                 SemanticsMatcher.expectValue(
@@ -530,7 +543,6 @@ class UserFeedScreenTest {
         onLoadNextPage: () -> Unit = {},
         onRetryNextPage: () -> Unit = {},
         onAddUserSubmitted: () -> Unit = {},
-        onAddUserValidationAlertDismissed: () -> Unit = {},
         onUndoDeleteDismissed: (AddUserInput) -> Unit = {},
     ) {
         UserManagementTheme {
@@ -544,7 +556,6 @@ class UserFeedScreenTest {
                 onAddUserGenderSelected = {},
                 onAddUserStatusSelected = {},
                 onAddUserSubmitted = onAddUserSubmitted,
-                onAddUserValidationAlertDismissed = onAddUserValidationAlertDismissed,
                 onUndoDeleteDismissed = onUndoDeleteDismissed,
                 onLoadNextPage = onLoadNextPage,
                 onRetryNextPage = onRetryNextPage,

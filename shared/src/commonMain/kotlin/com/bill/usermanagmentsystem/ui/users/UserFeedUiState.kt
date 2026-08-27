@@ -13,7 +13,6 @@ data class UserFeedUiState(
     val emptyState: UserFeedEmptyState? = null,
     val banner: UserFeedBanner? = null,
     val addUserForm: AddUserFormUiState? = null,
-    val addUserValidationAlert: AddUserValidationAlert? = null,
     val deleteConfirmation: UserItemUiModel? = null,
     val deleteInProgress: Boolean = false,
 )

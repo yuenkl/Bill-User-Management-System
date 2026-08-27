@@ -116,22 +116,19 @@ class UserFeedViewModel(
             presentation.update { state ->
                 state.copy(
                     addUserForm = createAddUserFormState(validator = addUserValidator),
-                    addUserValidationAlert = null,
                 )
             }
+            viewModelScope.launch { mutableEvents.emit(UserFeedEvent.ShowAddUserForm) }
         }
     }
 
     fun dismissAddUserForm() {
         if (presentation.value.addUserForm?.submitting != true) {
             presentation.update { state ->
-                state.copy(addUserForm = null, addUserValidationAlert = null)
+                state.copy(addUserForm = null)
             }
+            viewModelScope.launch { mutableEvents.emit(UserFeedEvent.DismissAddUserForm) }
         }
-    }
-
-    fun dismissAddUserValidationAlert() {
-        presentation.update { state -> state.copy(addUserValidationAlert = null) }
     }
 
     fun updateAddUserName(name: String) {
@@ -227,7 +224,7 @@ class UserFeedViewModel(
 
         val submitting = validated.copy(submitting = true)
         presentation.update { state ->
-            state.copy(addUserForm = submitting, addUserValidationAlert = null)
+            state.copy(addUserForm = submitting)
         }
         viewModelScope.launch {
             val result =
@@ -240,6 +237,7 @@ class UserFeedViewModel(
                     ),
                 )
             val activeForm = presentation.value.addUserForm ?: return@launch
+            val validationAlert = result.exceptionOrNull().toAddUserValidationAlert()
             presentation.update { state ->
                 if (result.isSuccess) {
                     state.copy(addUserForm = null)
@@ -247,11 +245,15 @@ class UserFeedViewModel(
                     val failure = result.exceptionOrNull()
                     state.copy(
                         addUserForm = activeForm.withSubmissionFailure(failure),
-                        addUserValidationAlert = failure.toAddUserValidationAlert(),
                     )
                 }
             }
-            if (result.isSuccess) mutableEvents.emit(UserFeedEvent.ScrollToTop)
+            if (result.isSuccess) {
+                mutableEvents.emit(UserFeedEvent.DismissAddUserForm)
+                mutableEvents.emit(UserFeedEvent.ScrollToTop)
+            } else {
+                validationAlert?.let { mutableEvents.emit(UserFeedEvent.ShowAddUserValidationAlert(it)) }
+            }
         }
     }
 
@@ -408,10 +410,7 @@ class UserFeedViewModel(
     private fun updateForm(transform: (AddUserFormUiState) -> AddUserFormUiState) {
         val current = presentation.value.addUserForm ?: return
         presentation.update { state ->
-            state.copy(
-                addUserForm = transform(current),
-                addUserValidationAlert = null,
-            )
+            state.copy(addUserForm = transform(current))
         }
     }
 }

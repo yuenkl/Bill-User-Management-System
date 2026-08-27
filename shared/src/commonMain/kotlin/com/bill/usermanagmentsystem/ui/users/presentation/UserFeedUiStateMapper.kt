@@ -47,7 +47,6 @@ internal fun buildUserFeedUiState(
         emptyState = emptyState,
         banner = banner,
         addUserForm = presentation.addUserForm,
-        addUserValidationAlert = presentation.addUserValidationAlert,
         deleteConfirmation = items.firstOrNull { it.localId == presentation.selectedUserId },
         deleteInProgress = presentation.deleteInProgress,
     )

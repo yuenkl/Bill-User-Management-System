@@ -197,7 +197,7 @@ class UserFeedViewModelTest {
                 viewModel.updateAddUserName("  Ada Lovelace  ")
                 viewModel.updateAddUserEmail(" ada@example.com ")
                 viewModel.selectAddUserGender(Gender.Female)
-                val event = async { viewModel.events.first() }
+                val event = async { viewModel.events.first { it == UserFeedEvent.ScrollToTop } }
                 runCurrent()
                 viewModel.submitAddUser()
                 runCurrent()
@@ -222,6 +222,11 @@ class UserFeedViewModelTest {
                 viewModel.updateAddUserName("Ada Lovelace")
                 viewModel.updateAddUserEmail("ada@example.com")
                 viewModel.selectAddUserGender(Gender.Female)
+                val event =
+                    async {
+                        viewModel.events.first { it is UserFeedEvent.ShowAddUserValidationAlert }
+                    }
+                runCurrent()
                 viewModel.submitAddUser()
                 runCurrent()
 
@@ -232,10 +237,29 @@ class UserFeedViewModelTest {
                 )
                 assertEquals(
                     AddUserApiFieldError("email", "has already been taken"),
-                    viewModel.uiState.value.addUserValidationAlert
-                        ?.errors
-                        ?.single(),
+                    (event.await() as UserFeedEvent.ShowAddUserValidationAlert).alert.errors.single(),
                 )
+            }
+        }
+
+    @Test
+    fun openingAndDismissingTheAddUserFormEmitOneTimeEvents() =
+        runTest {
+            withFixture {
+                val showEvent = async { viewModel.events.first() }
+                runCurrent()
+
+                viewModel.openAddUserForm()
+
+                assertEquals(UserFeedEvent.ShowAddUserForm, showEvent.await())
+                assertNotNull(viewModel.uiState.value.addUserForm)
+
+                val dismissEvent = async { viewModel.events.first() }
+                runCurrent()
+                viewModel.dismissAddUserForm()
+
+                assertEquals(UserFeedEvent.DismissAddUserForm, dismissEvent.await())
+                assertNull(viewModel.uiState.value.addUserForm)
             }
         }
 
