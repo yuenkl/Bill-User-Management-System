@@ -88,20 +88,12 @@ fun UserForm(
                 )
             }
 
-            OutlinedTextField(
+            UserOutlinedTextField(
                 value = state.valueFor(AddUserField.Name).orEmpty(),
                 onValueChange = onNameChange,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .semantics {
-                            if (nameErrorMessage != null) error(nameErrorMessage)
-                        },
                 enabled = fieldsEnabled,
-                singleLine = true,
-                label = { Text("Name") },
-                isError = nameErrorMessage != null,
-                supportingText = supportingError(nameErrorMessage),
+                label = "Name",
+                errorMessage = nameErrorMessage,
                 keyboardOptions =
                     KeyboardOptions(
                         capitalization = KeyboardCapitalization.Words,
@@ -113,21 +105,15 @@ fun UserForm(
                     ),
             )
 
-            OutlinedTextField(
+            UserOutlinedTextField(
                 value = state.valueFor(AddUserField.Email).orEmpty(),
                 onValueChange = onEmailChange,
                 modifier =
                     Modifier
-                        .fillMaxWidth()
-                        .focusRequester(emailFocusRequester)
-                        .semantics {
-                            if (emailErrorMessage != null) error(emailErrorMessage)
-                        },
+                        .focusRequester(emailFocusRequester),
                 enabled = fieldsEnabled,
-                singleLine = true,
-                label = { Text("Email") },
-                isError = emailErrorMessage != null,
-                supportingText = supportingError(emailErrorMessage),
+                label = "Email",
+                errorMessage = emailErrorMessage,
                 keyboardOptions =
                     KeyboardOptions(
                         keyboardType = KeyboardType.Email,
@@ -221,6 +207,36 @@ fun UserForm(
             }
         }
     }
+}
+
+@Composable
+private fun UserOutlinedTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    enabled: Boolean,
+    label: String,
+    errorMessage: String?,
+    keyboardOptions: KeyboardOptions,
+    keyboardActions: KeyboardActions,
+    modifier: Modifier = Modifier,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .semantics {
+                    if (errorMessage != null) error(errorMessage)
+                },
+        enabled = enabled,
+        singleLine = true,
+        label = { Text(label) },
+        isError = errorMessage != null,
+        supportingText = supportingError(errorMessage),
+        keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
+    )
 }
 
 @Composable
