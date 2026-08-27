@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -18,7 +17,6 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -262,33 +260,25 @@ private fun FeedBanner(banner: UserFeedBanner) {
 }
 
 @Composable
-internal fun EmptyFeed(
-    emptyState: UserFeedEmptyState,
-    onRetry: () -> Unit,
-) {
+internal fun EmptyFeed(emptyState: UserFeedEmptyState) {
     val title: String
     val message: String
-    val retryable: Boolean
     when (emptyState) {
         UserFeedEmptyState.Empty -> {
             title = "No users yet"
-            message = "Pull to refresh and check again."
-            retryable = false
+            message = "New users will appear here."
         }
         UserFeedEmptyState.Offline -> {
             title = "You're offline"
             message = "Connect to the internet to load the user directory."
-            retryable = true
         }
         UserFeedEmptyState.AuthenticationRequired -> {
             title = "Access token required"
-            message = "Check the local GoRest configuration, then retry."
-            retryable = true
+            message = "Check the local GoRest configuration."
         }
         is UserFeedEmptyState.Error -> {
             title = "Couldn't load users"
             message = emptyState.message
-            retryable = true
         }
     }
     Box(
@@ -312,10 +302,6 @@ internal fun EmptyFeed(
                 style = MaterialTheme.typography.bodyLarge,
                 textAlign = TextAlign.Center,
             )
-            if (retryable) {
-                Spacer(Modifier.size(4.dp))
-                Button(onClick = onRetry) { Text("Retry") }
-            }
         }
     }
 }

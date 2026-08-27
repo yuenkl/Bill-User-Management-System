@@ -123,39 +123,6 @@ class UserFeedScreenTest {
         }
 
     @Test
-    fun retryAndAccessibleRefreshActionsForwardEvents() =
-        runComposeUiTest {
-            var retryCalls = 0
-            var refreshCalls = 0
-            setContent {
-                UserManagementTheme {
-                    UserFeedScreen(
-                        state =
-                            UserFeedUiState(
-                                initialLoading = false,
-                                emptyState = UserFeedEmptyState.Offline,
-                            ),
-                        onRefresh = { refreshCalls += 1 },
-                        onRetry = { retryCalls += 1 },
-                        onAddUser = {},
-                        onAddUserDismissed = {},
-                        onAddUserNameChanged = {},
-                        onAddUserEmailChanged = {},
-                        onAddUserGenderSelected = {},
-                        onAddUserStatusSelected = {},
-                        onAddUserSubmitted = {},
-                    )
-                }
-            }
-
-            onNodeWithText("Retry").performClick()
-            onNodeWithText("Refresh").performClick()
-
-            assertEquals(1, retryCalls)
-            assertEquals(1, refreshCalls)
-        }
-
-    @Test
     fun accessibleFabForwardsAddUserEvent() =
         runComposeUiTest {
             var addCalls = 0
@@ -163,8 +130,6 @@ class UserFeedScreenTest {
                 UserManagementTheme {
                     UserFeedScreen(
                         state = UserFeedUiState(initialLoading = false),
-                        onRefresh = {},
-                        onRetry = {},
                         onAddUser = { addCalls += 1 },
                         onAddUserDismissed = {},
                         onAddUserNameChanged = {},
@@ -178,6 +143,16 @@ class UserFeedScreenTest {
 
             onNodeWithContentDescription("Add user").performClick()
             assertEquals(1, addCalls)
+        }
+
+    @Test
+    fun manualRefreshControlsAreNotRendered() =
+        runComposeUiTest {
+            setContent {
+                screen(state = UserFeedUiState(initialLoading = false))
+            }
+
+            assertTrue(onAllNodesWithText("Refresh").fetchSemanticsNodes().isEmpty())
         }
 
     @Test
@@ -440,8 +415,6 @@ class UserFeedScreenTest {
                 UserManagementTheme {
                     UserFeedScreen(
                         state = state,
-                        onRefresh = {},
-                        onRetry = {},
                         onAddUser = {},
                         onAddUserDismissed = {},
                         onAddUserNameChanged = {},
@@ -501,8 +474,6 @@ class UserFeedScreenTest {
                                 emptyState = UserFeedEmptyState.Empty,
                             ),
                         events = events,
-                        onRefresh = {},
-                        onRetry = {},
                         onAddUser = {},
                         onAddUserDismissed = {},
                         onAddUserNameChanged = {},
@@ -566,8 +537,6 @@ class UserFeedScreenTest {
             UserFeedScreen(
                 state = state,
                 events = events,
-                onRefresh = {},
-                onRetry = {},
                 onAddUser = {},
                 onAddUserDismissed = {},
                 onAddUserNameChanged = {},

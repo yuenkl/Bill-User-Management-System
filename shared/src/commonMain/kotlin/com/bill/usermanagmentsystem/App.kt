@@ -72,8 +72,6 @@ private fun PreviewFeed(
     UserManagementTheme(darkTheme = darkTheme) {
         UserFeedScreen(
             state = state,
-            onRefresh = {},
-            onRetry = {},
             onAddUser = {},
             onAddUserDismissed = {},
             onAddUserNameChanged = {},

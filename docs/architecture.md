@@ -106,7 +106,6 @@ The ViewModel exposes one immutable `StateFlow<UserFeedUiState>` and accepts exp
 data class UserFeedUiState(
     val users: List<UserItemUiModel>,
     val initialLoading: Boolean,
-    val refreshing: Boolean,
     val offline: Boolean,
     val emptyState: EmptyState?,
     val addForm: AddUserFormUiState?,
@@ -114,7 +113,7 @@ data class UserFeedUiState(
 )
 ```
 
-Actions include initial load, refresh, add-form open/close, field changes, submit, user long-press, delete confirm/cancel, Undo, and Retry. One-off Snackbar effects are emitted as `SharedFlow<UserFeedEvent>` values, so they are not replayed by the screen state after recomposition. The ViewModel keeps only the current Undo input needed to validate a restore action.
+The screen automatically synchronizes at startup, foreground, and restored connectivity. User actions include add-form open/close, field changes, submit, user long-press, delete confirm/cancel, Undo, and next-page Retry. One-off Snackbar effects are emitted as `SharedFlow<UserFeedEvent>` values, so they are not replayed by the screen state after recomposition. The ViewModel keeps only the current Undo input needed to validate a restore action.
 
 ## SQLDelight design
 
@@ -140,7 +139,7 @@ New create submissions are direct remote operations: only HTTP 201 is merged int
 
 Failure policy:
 
-- I/O, 5xx, and 429 keep the existing database contents and surface a retryable failure. The user can explicitly retry the failed refresh, page, or form submission.
+- I/O, 5xx, and 429 keep the existing database contents and surface a retryable failure. The next automatic synchronization retries a failed refresh; a failed page can be explicitly retried.
 - 401/403 preserve the database contents and expose a configuration/authentication error.
 - CREATE 422 creates no local row and presents the returned field errors while retaining the form values.
 - An explicit DELETE treats HTTP 204 and 404 as success. The row remains visible when that request fails.
@@ -160,7 +159,7 @@ The complete transition contract is defined in [state-transitions.md](state-tran
 
 Define platform-neutral `ConnectivityObserver` and `AppLifecycleObserver` interfaces. Android implementations use platform lifecycle/connectivity APIs; iOS implementations use the equivalent Apple lifecycle and network path APIs. They trigger refreshes but never determine correctness: every network call must still handle connectivity races.
 
-Triggers are startup, foreground, transition to connected, and manual refresh.
+Triggers are startup, foreground, and transition to connected.
 
 ## Koin graph
 

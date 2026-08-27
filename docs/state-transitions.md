@@ -17,9 +17,9 @@ This document is the normative business-state contract. Implementations may rena
 
 | Current state | Event | Success | Retryable failure | Permanent failure / edge case |
 | --- | --- | --- | --- | --- |
-| Empty, idle | Initial load | Fetch and commit the initial `/users` snapshot; emit visible users and enable the `X-Links-Next` cursor when available | Remain empty; show offline/retry state | Show authentication or data-contract error; no loop |
-| Cached, idle | Initial load/refresh | Commit snapshot; keep original `observedAt` | Keep cached users; show non-blocking stale/offline state | Keep cached users; show blocking reason where relevant |
-| Refreshing | Another refresh trigger | Ignore the duplicate trigger | Same active result | Never start a second concurrent refresh |
+| Empty, idle | Initial load | Fetch and commit the initial `/users` snapshot; emit visible users and enable the `X-Links-Next` cursor when available | Remain empty; show offline state | Show authentication or data-contract error; no loop |
+| Cached, idle | Automatic synchronization | Commit snapshot; keep original `observedAt` | Keep cached users; show non-blocking stale/offline state | Keep cached users; show blocking reason where relevant |
+| Synchronizing | Another automatic trigger | Ignore the duplicate trigger | Same active result | Never start a second concurrent refresh |
 | Any | Next-page link invalid | None | None | Keep cache; surface data-contract error; do not clear database |
 | Page loaded | Feed reaches end | Fetch and transactionally append the page named by `X-Links-Next` in display order | Keep loaded users; show explicit page Retry without advancing the cursor | Stop when `X-Links-Next` is absent; never loop or duplicate a page |
 | Any | Initial page is empty | Commit an empty remote snapshot | Keep prior snapshot | No local intent is retained because mutations are server-confirmed |

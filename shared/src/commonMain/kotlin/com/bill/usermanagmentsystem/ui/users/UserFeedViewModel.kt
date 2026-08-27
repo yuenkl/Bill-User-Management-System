@@ -95,16 +95,8 @@ class UserFeedViewModel(
     val events: SharedFlow<UserFeedEvent> = mutableEvents.asSharedFlow()
 
     init {
-        requestSynchronization(manual = false)
+        requestSynchronization()
         observeAutomaticTriggers()
-    }
-
-    fun refresh() {
-        requestSynchronization(manual = true)
-    }
-
-    fun retry() {
-        requestSynchronization(manual = true)
     }
 
     fun loadNextPage() {
@@ -322,25 +314,22 @@ class UserFeedViewModel(
         if (pendingUndoInput == input) pendingUndoInput = null
     }
 
-    private fun requestSynchronization(manual: Boolean) {
+    private fun requestSynchronization() {
         if (synchronizationJob?.isActive == true) return
         pageLoadJob?.cancel()
         synchronizationJob =
             viewModelScope.launch {
-                presentation.update { it.copy(refreshing = manual) }
                 val result = refreshUsers()
                 val failure = result.exceptionOrNull()
                 presentation.update {
                     it.copy(
                         initialAttemptFinished = true,
-                        refreshing = false,
                         loadingNextPage = false,
                         canLoadNextPage = result.isSuccess,
                         nextPageError = null,
                         refreshError = failure?.userDataErrorOrNull(),
                     )
                 }
-                if (manual && failure != null) emitFailure(failure)
             }
     }
 
@@ -387,13 +376,13 @@ class UserFeedViewModel(
             connectivityObserver.status
                 .drop(1)
                 .filter { it == ConnectivityStatus.Available }
-                .collect { requestSynchronization(manual = false) }
+                .collect { requestSynchronization() }
         }
         viewModelScope.launch {
             lifecycleObserver.state
                 .drop(1)
                 .filter { it == AppLifecycleState.Foreground }
-                .collect { requestSynchronization(manual = false) }
+                .collect { requestSynchronization() }
         }
     }
 

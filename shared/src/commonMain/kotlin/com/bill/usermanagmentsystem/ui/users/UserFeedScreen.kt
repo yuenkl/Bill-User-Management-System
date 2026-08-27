@@ -1,5 +1,6 @@
 package com.bill.usermanagmentsystem.ui.users
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,7 +18,6 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -27,7 +27,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -49,8 +48,6 @@ fun UserFeedRoute(
     UserFeedScreen(
         state = state,
         events = viewModel.events,
-        onRefresh = viewModel::refresh,
-        onRetry = viewModel::retry,
         onAddUser = viewModel::openAddUserForm,
         onAddUserDismissed = viewModel::dismissAddUserForm,
         onAddUserNameChanged = viewModel::updateAddUserName,
@@ -75,8 +72,6 @@ fun UserFeedRoute(
 fun UserFeedScreen(
     state: UserFeedUiState,
     events: Flow<UserFeedEvent> = emptyFlow(),
-    onRefresh: () -> Unit,
-    onRetry: () -> Unit,
     onAddUser: () -> Unit,
     onAddUserDismissed: () -> Unit,
     onAddUserNameChanged: (String) -> Unit,
@@ -131,9 +126,6 @@ fun UserFeedScreen(
                             modifier = Modifier.semantics { heading() },
                         )
                     },
-                    actions = {
-                        TextButton(onClick = onRefresh) { Text("Refresh") }
-                    },
                 )
             },
             snackbarHost = {
@@ -174,24 +166,18 @@ fun UserFeedScreen(
                 }
             },
         ) { contentPadding ->
-            PullToRefreshBox(
-                isRefreshing = state.refreshing,
-                onRefresh = onRefresh,
+            Box(
                 modifier =
                     Modifier
                         .fillMaxSize()
                         .padding(contentPadding)
                         .semantics {
-                            contentDescription = "User feed. Pull to refresh."
-                            onClick(label = "Refresh") {
-                                onRefresh()
-                                true
-                            }
+                            contentDescription = "User feed"
                         },
             ) {
                 when {
                     state.initialLoading -> LoadingFeed(layoutMode)
-                    state.emptyState != null && !state.canLoadMore -> EmptyFeed(state.emptyState, onRetry)
+                    state.emptyState != null && !state.canLoadMore -> EmptyFeed(state.emptyState)
                     else ->
                         UserList(
                             users = state.users,
