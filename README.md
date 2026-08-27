@@ -35,7 +35,7 @@ The repository serializes each refresh, page load, create, restore, and delete o
 
 ## Most important class
 
-[`UserFeedViewModel`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedViewModel.kt) is the central coordinator for the user experience. It combines the database-backed feed, connectivity, clock, and presentation state into one immutable UI state, and turns UI actions into explicit use-case calls for refresh, pagination, form submission, delete, and undo. Snackbar errors and delete/Undo prompts are emitted separately as one-time [`UserFeedEvent`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedEvent.kt) values, so they do not reappear after recomposition. The repository owns remote calls and SQLDelight updates; the ViewModel observes the database rather than holding another copy of the feed. Form-state logic lives in [`AddUserFormState.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/AddUserFormState.kt), while [`UserFeedUiStateMapper.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedUiStateMapper.kt) builds presentation state and user-facing messages.
+[`UserFeedViewModel`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedViewModel.kt) is the central coordinator for the user experience. It combines the database-backed feed, connectivity, clock, and presentation state into one immutable UI state, and turns UI actions into explicit use-case calls for refresh, pagination, form submission, delete, and undo. Snackbar errors and delete/Undo prompts are emitted separately as one-time [`UserFeedEvent`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedEvent.kt) values, so they do not reappear after recomposition. The repository owns remote calls and SQLDelight updates; the ViewModel observes the database rather than holding another copy of the feed. Form-state logic lives in [`AddUserFormState.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/AddUserFormState.kt), while the [`presentation`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/presentation) package owns feed-state mapping and user-facing error messages.
 
 ### User feature structure
 
@@ -43,7 +43,7 @@ The repository serializes each refresh, page load, create, restore, and delete o
 - [`UserFeedContent.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedContent.kt) renders feed loading, list/grid content, pagination, banners, and empty states.
 - [`UserFeedDialogs.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedDialogs.kt) contains the add-user sheet/dialog, API validation alert, and delete confirmation.
 - [`AddUserFormState.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/AddUserFormState.kt) contains pure add-user form updates, validation, and API-error parsing.
-- [`UserFeedUiStateMapper.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedUiStateMapper.kt) maps persisted users and presentation state into the immutable feed UI state.
+- [`presentation/UserFeedUiStateMapper.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/presentation/UserFeedUiStateMapper.kt) maps persisted users and presentation state into the immutable feed UI state.
 
 ## Prerequisites
 

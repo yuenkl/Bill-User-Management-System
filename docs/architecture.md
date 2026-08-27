@@ -15,7 +15,11 @@ shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/
 |       |-- UserFeedScreen.kt
 |       |-- UserFeedEvent.kt
 |       |-- UserFeedUiState.kt
-|       `-- UserFeedViewModel.kt
+|       |-- UserFeedViewModel.kt
+|       `-- presentation/
+|           |-- UserErrorMessages.kt
+|           |-- UserFeedPresentationState.kt
+|           `-- UserFeedUiStateMapper.kt
 |-- domain/
 |   |-- model/
 |   |-- repository/

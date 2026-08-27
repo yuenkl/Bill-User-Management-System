@@ -5,6 +5,7 @@ import com.bill.usermanagmentsystem.domain.model.userDataErrorOrNull
 import com.bill.usermanagmentsystem.domain.usecase.AddUserValidator
 import com.bill.usermanagmentsystem.domain.usecase.EmailValidationError
 import com.bill.usermanagmentsystem.domain.usecase.NameValidationError
+import com.bill.usermanagmentsystem.ui.users.presentation.toUserMessage
 
 internal fun createAddUserFormState(
     current: AddUserFormUiState = AddUserFormUiState(),

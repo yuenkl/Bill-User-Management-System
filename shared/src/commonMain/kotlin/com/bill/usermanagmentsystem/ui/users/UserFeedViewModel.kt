@@ -19,6 +19,9 @@ import com.bill.usermanagmentsystem.platform.AppLifecycleState
 import com.bill.usermanagmentsystem.platform.ConnectivityObserver
 import com.bill.usermanagmentsystem.platform.ConnectivityStatus
 import com.bill.usermanagmentsystem.platform.TimeProvider
+import com.bill.usermanagmentsystem.ui.users.presentation.UserFeedPresentationState
+import com.bill.usermanagmentsystem.ui.users.presentation.buildUserFeedUiState
+import com.bill.usermanagmentsystem.ui.users.presentation.toUserMessage
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay

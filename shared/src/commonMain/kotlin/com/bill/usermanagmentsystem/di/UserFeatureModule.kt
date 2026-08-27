@@ -25,7 +25,7 @@ import org.koin.dsl.onClose
 
 private const val USER_DATABASE_NAME = "user-management.db"
 
-internal fun userDataModule(databaseName: String = USER_DATABASE_NAME): Module =
+internal fun userFeatureModule(databaseName: String = USER_DATABASE_NAME): Module =
     module {
         single<CoroutineDispatcher> { Dispatchers.Default }
 
