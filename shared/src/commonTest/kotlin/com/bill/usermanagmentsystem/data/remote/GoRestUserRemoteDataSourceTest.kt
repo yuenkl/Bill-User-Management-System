@@ -7,7 +7,10 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.client.plugins.logging.Logger
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.TextContent
+import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -215,6 +218,59 @@ class GoRestUserRemoteDataSourceTest {
                 ),
             ),
         )
+    }
+
+    @Test
+    fun createSendsTheExpectedJsonBodyAndBearerToken() = runRemoteTest { _ ->
+        var capturedRequest: io.ktor.client.request.HttpRequestData? = null
+        val source = source(
+            engine = engine { request ->
+                capturedRequest = request
+                respond(userJson(7), HttpStatusCode.Created, jsonHeaders())
+            },
+        )
+
+        assertIs<RemoteResult.Success<RemoteUser>>(
+            source.createUser(
+                CreateUserRequest(
+                    name = "Ada Lovelace",
+                    email = "ada@example.com",
+                    gender = com.bill.usermanagmentsystem.domain.model.Gender.Female,
+                    status = com.bill.usermanagmentsystem.domain.model.UserStatus.Active,
+                ),
+            ),
+        )
+
+        val request = checkNotNull(capturedRequest)
+        assertEquals(HttpMethod.Post, request.method)
+        assertEquals("https://example.test/public/v2/users", request.url.toString())
+        assertEquals("Bearer secret", request.headers[HttpHeaders.Authorization])
+        val body = Json.decodeFromString<GoRestCreateUserDto>((request.body as TextContent).text)
+        assertEquals("Ada Lovelace", body.name)
+        assertEquals("ada@example.com", body.email)
+        assertEquals("female", body.gender)
+        assertEquals("active", body.status)
+    }
+
+    @Test
+    fun deleteSendsBearerTokenAndAcceptsNoContent() = runRemoteTest { _ ->
+        val source = source(
+            engine = engine { request ->
+                assertEquals(HttpMethod.Delete, request.method)
+                assertEquals("https://example.test/public/v2/users/7", request.url.toString())
+                assertEquals("Bearer secret", request.headers[HttpHeaders.Authorization])
+                respond("", HttpStatusCode.NoContent)
+            },
+        )
+
+        assertEquals(RemoteResult.Success(Unit), source.deleteUser(7))
+    }
+
+    @Test
+    fun deleteMapsNotFoundToTheIdempotentNotFoundResult() = runRemoteTest { _ ->
+        val source = source(engine = engine { respond("", HttpStatusCode.NotFound) })
+
+        assertEquals(RemoteResult.NotFound, source.deleteUser(7))
     }
 
     @Test

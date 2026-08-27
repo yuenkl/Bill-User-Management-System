@@ -230,6 +230,33 @@ class UserFeedScreenTest {
     }
 
     @Test
+    fun apiValidationAlertShowsEveryFieldMessageAndCanBeDismissed() = runComposeUiTest {
+        var dismissCalls = 0
+        setContent {
+            screen(
+                state = UserFeedUiState(
+                    initialLoading = false,
+                    addUserValidationAlert = AddUserValidationAlert(
+                        errors = listOf(
+                            AddUserApiFieldError("email", "has already been taken"),
+                            AddUserApiFieldError("gender", "is invalid"),
+                        ),
+                    ),
+                ),
+                onAddUserValidationAlertDismissed = { dismissCalls += 1 },
+            )
+        }
+
+        onNodeWithText("Unable to add user").fetchSemanticsNode()
+        onNodeWithText("Email").fetchSemanticsNode()
+        onNodeWithText("has already been taken").fetchSemanticsNode()
+        onNodeWithText("Gender").fetchSemanticsNode()
+        onNodeWithText("is invalid").fetchSemanticsNode()
+        onNodeWithText("OK").performClick()
+        assertEquals(1, dismissCalls)
+    }
+
+    @Test
     fun adaptiveFormPresentationUsesAvailableWindowOrientation() {
         assertEquals(AdaptiveLayoutMode.Compact, adaptiveLayoutMode(width = 900.dp, height = 1_200.dp))
         assertEquals(AdaptiveLayoutMode.Wide, adaptiveLayoutMode(width = 700.dp, height = 500.dp))
@@ -510,6 +537,7 @@ class UserFeedScreenTest {
         onLoadNextPage: () -> Unit = {},
         onRetryNextPage: () -> Unit = {},
         onAddUserSubmitted: () -> Unit = {},
+        onAddUserValidationAlertDismissed: () -> Unit = {},
     ) {
         UserManagementTheme {
             UserFeedScreen(
@@ -523,6 +551,7 @@ class UserFeedScreenTest {
                 onAddUserGenderSelected = {},
                 onAddUserStatusSelected = {},
                 onAddUserSubmitted = onAddUserSubmitted,
+                onAddUserValidationAlertDismissed = onAddUserValidationAlertDismissed,
                 onRetryUserCreation = {},
                 onMessageConsumed = {},
                 onLoadNextPage = onLoadNextPage,

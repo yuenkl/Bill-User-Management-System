@@ -328,6 +328,48 @@ class UserFeedViewModelTest {
     }
 
     @Test
+    fun genericDetailsKeepOtherServerErrorsUntilTheirValueChanges() = runTest {
+        withFixture {
+            addHandler = {
+                Result.failure(
+                    UserDataException(
+                        UserDataError.ValidationRejected("gender: is invalid; status: is invalid"),
+                    ),
+                )
+            }
+            viewModel.openAddUserForm()
+            viewModel.updateAddUserName("Ada Lovelace")
+            viewModel.updateAddUserEmail("ada@example.com")
+            viewModel.selectAddUserGender(Gender.Female)
+            viewModel.submitAddUser()
+            runCurrent()
+
+            val rejected = assertNotNull(viewModel.uiState.value.addUserForm)
+            assertEquals("female", rejected.valueFor(AddUserField.Gender))
+            assertEquals("active", rejected.valueFor(AddUserField.Status))
+            assertEquals("is invalid", rejected.errorMessage(AddUserField.Gender))
+            assertEquals("is invalid", rejected.errorMessage(AddUserField.Status))
+
+            viewModel.selectAddUserGender(Gender.Male)
+            runCurrent()
+
+            val changedGender = assertNotNull(viewModel.uiState.value.addUserForm)
+            assertEquals("male", changedGender.valueFor(AddUserField.Gender))
+            assertNull(changedGender.errorMessage(AddUserField.Gender))
+            assertEquals("is invalid", changedGender.errorMessage(AddUserField.Status))
+            assertTrue(!changedGender.canSubmit)
+
+            viewModel.selectAddUserStatus(UserStatus.Inactive)
+            runCurrent()
+
+            val changedStatus = assertNotNull(viewModel.uiState.value.addUserForm)
+            assertEquals("inactive", changedStatus.valueFor(AddUserField.Status))
+            assertNull(changedStatus.errorMessage(AddUserField.Status))
+            assertTrue(changedStatus.canSubmit)
+        }
+    }
+
+    @Test
     fun retryCreateRejectsOverlappingTaps() = runTest {
         val gate = CompletableDeferred<Result<Unit>>()
         withFixture {
