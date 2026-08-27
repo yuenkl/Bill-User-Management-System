@@ -76,29 +76,31 @@ class UserFeedViewModel(
     private var undoDeadlineJob: Job? = null
     private var scheduledDeletion: UndoableDeletion? = null
 
-    private val feedData = combine(
-        observeUsers(),
-        observeUndoableDeletions(),
-        ::FeedData,
-    ).stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.Eagerly,
-        initialValue = FeedData(),
-    )
+    private val feedData =
+        combine(
+            observeUsers(),
+            observeUndoableDeletions(),
+            ::FeedData,
+        ).stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = FeedData(),
+        )
 
-    val uiState = combine(
-        feedData,
-        observeSyncState(),
-        connectivityObserver.status,
-        minuteTicker(),
-        presentation,
-    ) { data, syncState, connectivity, now, presentationState ->
-        buildUiState(data, syncState, connectivity, now, presentationState)
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.Eagerly,
-        initialValue = UserFeedUiState(),
-    )
+    val uiState =
+        combine(
+            feedData,
+            observeSyncState(),
+            connectivityObserver.status,
+            minuteTicker(),
+            presentation,
+        ) { data, syncState, connectivity, now, presentationState ->
+            buildUiState(data, syncState, connectivity, now, presentationState)
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = UserFeedUiState(),
+        )
 
     init {
         requestSynchronization(manual = false)
@@ -147,47 +149,63 @@ class UserFeedViewModel(
 
     fun updateAddUserName(name: String) {
         updateForm { current ->
-            if (current.submitting) current else createFormState(
-                current.copy(
-                    touchedFields = current.touchedFields + AddUserField.Name,
+            if (current.submitting) {
+                current
+            } else {
+                createFormState(
+                    current
+                        .copy(
+                            touchedFields = current.touchedFields + AddUserField.Name,
+                        ).withValue(AddUserField.Name, name)
+                        .withoutError(AddUserField.Form),
                 )
-                    .withValue(AddUserField.Name, name)
-                    .withoutError(AddUserField.Form),
-            )
+            }
         }
     }
 
     fun updateAddUserEmail(email: String) {
         updateForm { current ->
-            if (current.submitting) current else createFormState(
-                current.copy(
-                    touchedFields = current.touchedFields + AddUserField.Email,
+            if (current.submitting) {
+                current
+            } else {
+                createFormState(
+                    current
+                        .copy(
+                            touchedFields = current.touchedFields + AddUserField.Email,
+                        ).withValue(AddUserField.Email, email)
+                        .withoutError(AddUserField.Form),
                 )
-                    .withValue(AddUserField.Email, email)
-                    .withoutError(AddUserField.Form),
-            )
+            }
         }
     }
 
     fun selectAddUserGender(gender: Gender) {
         updateForm { current ->
-            if (current.submitting) current else createFormState(
-                current.copy(
-                    touchedFields = current.touchedFields + AddUserField.Gender,
+            if (current.submitting) {
+                current
+            } else {
+                createFormState(
+                    current
+                        .copy(
+                            touchedFields = current.touchedFields + AddUserField.Gender,
+                        ).withValue(AddUserField.Gender, gender.apiValue)
+                        .withoutError(AddUserField.Form),
                 )
-                    .withValue(AddUserField.Gender, gender.apiValue)
-                    .withoutError(AddUserField.Form),
-            )
+            }
         }
     }
 
     fun selectAddUserStatus(status: UserStatus) {
         updateForm { current ->
-            if (current.submitting) current else createFormState(
+            if (current.submitting) {
                 current
-                    .withValue(AddUserField.Status, status.apiValue)
-                    .withoutError(AddUserField.Form),
-            )
+            } else {
+                createFormState(
+                    current
+                        .withValue(AddUserField.Status, status.apiValue)
+                        .withoutError(AddUserField.Form),
+                )
+            }
         }
     }
 
@@ -195,15 +213,19 @@ class UserFeedViewModel(
         val current = presentation.value.addUserForm ?: return
         if (current.submitting) return
 
-        val validated = createFormState(
-            current.copy(
-                touchedFields = current.touchedFields + setOf(
-                    AddUserField.Name,
-                    AddUserField.Email,
-                    AddUserField.Gender,
-                ),
-            ).withoutError(AddUserField.Form),
-        )
+        val validated =
+            createFormState(
+                current
+                    .copy(
+                        touchedFields =
+                            current.touchedFields +
+                                setOf(
+                                    AddUserField.Name,
+                                    AddUserField.Email,
+                                    AddUserField.Gender,
+                                ),
+                    ).withoutError(AddUserField.Form),
+            )
         if (!validated.canSubmit) {
             presentation.update { state ->
                 state.copy(addUserForm = validated)
@@ -216,14 +238,15 @@ class UserFeedViewModel(
             state.copy(addUserForm = submitting, addUserValidationAlert = null)
         }
         viewModelScope.launch(dispatcher) {
-            val result = addUser(
-                AddUserInput(
-                    name = addUserValidator.normalize(submitting.valueFor(AddUserField.Name).orEmpty()),
-                    email = addUserValidator.normalize(submitting.valueFor(AddUserField.Email).orEmpty()),
-                    gender = checkNotNull(submitting.gender()),
-                    status = submitting.status(),
-                ),
-            )
+            val result =
+                addUser(
+                    AddUserInput(
+                        name = addUserValidator.normalize(submitting.valueFor(AddUserField.Name).orEmpty()),
+                        email = addUserValidator.normalize(submitting.valueFor(AddUserField.Email).orEmpty()),
+                        gender = checkNotNull(submitting.gender()),
+                        status = submitting.status(),
+                    ),
+                )
             val activeForm = presentation.value.addUserForm ?: return@launch
             presentation.update { state ->
                 if (result.isSuccess) {
@@ -249,9 +272,10 @@ class UserFeedViewModel(
         viewModelScope.launch(dispatcher) {
             val result = retryUserCreationUseCase(localId)
             presentation.update { current ->
-                val retryFinished = current.copy(
-                    retryingUserIds = current.retryingUserIds - localId,
-                )
+                val retryFinished =
+                    current.copy(
+                        retryingUserIds = current.retryingUserIds - localId,
+                    )
                 if (result.isFailure) {
                     retryFinished.withFailureMessage(result.exceptionOrNull())
                 } else {
@@ -285,38 +309,42 @@ class UserFeedViewModel(
             return
         }
 
-        deletionJob = viewModelScope.launch(dispatcher) {
-            presentation.update { it.copy(deleteInProgress = true) }
-            val result = deleteUserWithUndo(localId)
-            presentation.update { current ->
-                val completed = current.copy(
-                    selectedUserId = null,
-                    deleteInProgress = false,
-                )
-                result.fold(
-                    onSuccess = { deleted ->
-                        completed.copy(
-                            undoSnackbar = DeleteUndoUiModel(
-                                userName = deleted.userName,
-                                input = deleted.input,
-                            ),
+        deletionJob =
+            viewModelScope.launch(dispatcher) {
+                presentation.update { it.copy(deleteInProgress = true) }
+                val result = deleteUserWithUndo(localId)
+                presentation.update { current ->
+                    val completed =
+                        current.copy(
+                            selectedUserId = null,
+                            deleteInProgress = false,
                         )
-                    },
-                    onFailure = { completed.withFailureMessage(it) },
-                )
+                    result.fold(
+                        onSuccess = { deleted ->
+                            completed.copy(
+                                undoSnackbar =
+                                    DeleteUndoUiModel(
+                                        userName = deleted.userName,
+                                        input = deleted.input,
+                                    ),
+                            )
+                        },
+                        onFailure = { completed.withFailureMessage(it) },
+                    )
+                }
             }
-        }
     }
 
     fun undoDelete(input: AddUserInput) {
         if (undoJob?.isActive == true) return
         if (presentation.value.undoSnackbar?.input != input) return
 
-        undoJob = viewModelScope.launch(dispatcher) {
-            val result = undoUserDeletion(input)
-            presentation.update { it.copy(undoSnackbar = null) }
-            if (result.isFailure) publishFailure(result.exceptionOrNull())
-        }
+        undoJob =
+            viewModelScope.launch(dispatcher) {
+                val result = undoUserDeletion(input)
+                presentation.update { it.copy(undoSnackbar = null) }
+                if (result.isFailure) publishFailure(result.exceptionOrNull())
+            }
     }
 
     fun dismissUndoDelete(input: AddUserInput) {
@@ -328,29 +356,30 @@ class UserFeedViewModel(
     private fun requestSynchronization(manual: Boolean) {
         if (synchronizationJob?.isActive == true) return
         pageLoadJob?.cancel()
-        synchronizationJob = viewModelScope.launch(dispatcher) {
-            presentation.update { it.copy(refreshing = manual) }
-            val result = refreshUsers()
-            presentation.update { current ->
-                if (manual && result.isFailure) {
-                    current.withFailureMessage(result.exceptionOrNull()).copy(
-                        initialAttemptFinished = true,
-                        refreshing = false,
-                        loadingNextPage = false,
-                        canLoadNextPage = false,
-                        nextPageError = null,
-                    )
-                } else {
-                    current.copy(
-                        initialAttemptFinished = true,
-                        refreshing = false,
-                        loadingNextPage = false,
-                        canLoadNextPage = result.isSuccess,
-                        nextPageError = null,
-                    )
+        synchronizationJob =
+            viewModelScope.launch(dispatcher) {
+                presentation.update { it.copy(refreshing = manual) }
+                val result = refreshUsers()
+                presentation.update { current ->
+                    if (manual && result.isFailure) {
+                        current.withFailureMessage(result.exceptionOrNull()).copy(
+                            initialAttemptFinished = true,
+                            refreshing = false,
+                            loadingNextPage = false,
+                            canLoadNextPage = false,
+                            nextPageError = null,
+                        )
+                    } else {
+                        current.copy(
+                            initialAttemptFinished = true,
+                            refreshing = false,
+                            loadingNextPage = false,
+                            canLoadNextPage = result.isSuccess,
+                            nextPageError = null,
+                        )
+                    }
                 }
             }
-        }
     }
 
     private fun requestNextPage(force: Boolean) {
@@ -368,26 +397,27 @@ class UserFeedViewModel(
                 nextPageError = null,
             )
         }
-        pageLoadJob = viewModelScope.launch(dispatcher) {
-            val result = loadNextUsersPage()
-            presentation.update { active ->
-                result.fold(
-                    onSuccess = { page ->
-                        active.copy(
-                            loadingNextPage = false,
-                            canLoadNextPage = page.hasMore,
-                            nextPageError = null,
-                        )
-                    },
-                    onFailure = { failure ->
-                        active.copy(
-                            loadingNextPage = false,
-                            nextPageError = failure.toUserMessage(),
-                        )
-                    },
-                )
+        pageLoadJob =
+            viewModelScope.launch(dispatcher) {
+                val result = loadNextUsersPage()
+                presentation.update { active ->
+                    result.fold(
+                        onSuccess = { page ->
+                            active.copy(
+                                loadingNextPage = false,
+                                canLoadNextPage = page.hasMore,
+                                nextPageError = null,
+                            )
+                        },
+                        onFailure = { failure ->
+                            active.copy(
+                                loadingNextPage = false,
+                                nextPageError = failure.toUserMessage(),
+                            )
+                        },
+                    )
+                }
             }
-        }
     }
 
     private fun observeAutomaticTriggers() {
@@ -405,12 +435,13 @@ class UserFeedViewModel(
         }
     }
 
-    private fun minuteTicker(): Flow<Instant> = flow {
-        while (true) {
-            emit(timeProvider.now())
-            delay(1.minutes)
-        }
-    }.flowOn(dispatcher)
+    private fun minuteTicker(): Flow<Instant> =
+        flow {
+            while (true) {
+                emit(timeProvider.now())
+                delay(1.minutes)
+            }
+        }.flowOn(dispatcher)
 
     private fun observeUndoDeadlines() {
         viewModelScope.launch(dispatcher) {
@@ -430,14 +461,15 @@ class UserFeedViewModel(
             return
         }
 
-        undoDeadlineJob = viewModelScope.launch(dispatcher) {
-            val remaining = (deletion.deadline - timeProvider.now()).coerceAtLeast(Duration.ZERO)
-            delay(remaining)
-            scheduledDeletion = null
-            undoDeadlineJob = null
-            val result = finalizeExpiredDeletions()
-            if (result.isFailure) publishFailure(result.exceptionOrNull())
-        }
+        undoDeadlineJob =
+            viewModelScope.launch(dispatcher) {
+                val remaining = (deletion.deadline - timeProvider.now()).coerceAtLeast(Duration.ZERO)
+                delay(remaining)
+                scheduledDeletion = null
+                undoDeadlineJob = null
+                val result = finalizeExpiredDeletions()
+                if (result.isFailure) publishFailure(result.exceptionOrNull())
+            }
     }
 
     private fun buildUiState(
@@ -451,20 +483,22 @@ class UserFeedViewModel(
         val offline = connectivity == ConnectivityStatus.Unavailable
         val error = (syncState as? SyncState.Failed)?.error
         val initialLoading = items.isEmpty() && !presentationState.initialAttemptFinished
-        val emptyState = when {
-            items.isNotEmpty() || initialLoading -> null
-            offline -> UserFeedEmptyState.Offline
-            error == UserDataError.AuthenticationRequired -> UserFeedEmptyState.AuthenticationRequired
-            error != null -> UserFeedEmptyState.Error(error.toUserMessage())
-            else -> UserFeedEmptyState.Empty
-        }
-        val banner = when {
-            items.isEmpty() -> null
-            offline -> UserFeedBanner.Offline
-            error == UserDataError.AuthenticationRequired -> UserFeedBanner.AuthenticationRequired
-            error != null -> UserFeedBanner.RefreshFailed(error.toUserMessage())
-            else -> null
-        }
+        val emptyState =
+            when {
+                items.isNotEmpty() || initialLoading -> null
+                offline -> UserFeedEmptyState.Offline
+                error == UserDataError.AuthenticationRequired -> UserFeedEmptyState.AuthenticationRequired
+                error != null -> UserFeedEmptyState.Error(error.toUserMessage())
+                else -> UserFeedEmptyState.Empty
+            }
+        val banner =
+            when {
+                items.isEmpty() -> null
+                offline -> UserFeedBanner.Offline
+                error == UserDataError.AuthenticationRequired -> UserFeedBanner.AuthenticationRequired
+                error != null -> UserFeedBanner.RefreshFailed(error.toUserMessage())
+                else -> null
+            }
         return UserFeedUiState(
             users = items,
             initialLoading = initialLoading,
@@ -477,9 +511,10 @@ class UserFeedViewModel(
             message = presentationState.message,
             addUserForm = presentationState.addUserForm,
             addUserValidationAlert = presentationState.addUserValidationAlert,
-            deleteConfirmation = items.firstOrNull {
-                it.localId == presentationState.selectedUserId
-            },
+            deleteConfirmation =
+                items.firstOrNull {
+                    it.localId == presentationState.selectedUserId
+                },
             deleteInProgress = presentationState.deleteInProgress,
             undoSnackbar = presentationState.undoSnackbar,
         )
@@ -492,10 +527,11 @@ class UserFeedViewModel(
     private fun PresentationState.withFailureMessage(failure: Throwable?): PresentationState {
         val nextSequence = messageSequence + 1
         return copy(
-            message = UserFeedMessage(
-                id = nextSequence,
-                text = failure.toUserMessage(),
-            ),
+            message =
+                UserFeedMessage(
+                    id = nextSequence,
+                    text = failure.toUserMessage(),
+                ),
             messageSequence = nextSequence,
         )
     }
@@ -503,22 +539,25 @@ class UserFeedViewModel(
     private fun UserRecord.toUiModel(
         now: Instant,
         retryingUserIds: Set<String>,
-    ): UserItemUiModel = UserItemUiModel(
-        localId = user.localId,
-        name = user.name,
-        email = user.email,
-        gender = user.gender,
-        status = user.status,
-        relativeTime = relativeTimeFormatter.format(user.observedAt, now),
-        synchronization = when (val state = synchronization) {
-            UserSynchronization.Synced -> UserItemSynchronization.Synced
-            UserSynchronization.PendingCreate -> UserItemSynchronization.Pending
-            is UserSynchronization.CreateFailed -> UserItemSynchronization.Failed(
-                reason = state.reason,
-                retrying = user.localId in retryingUserIds,
-            )
-        },
-    )
+    ): UserItemUiModel =
+        UserItemUiModel(
+            localId = user.localId,
+            name = user.name,
+            email = user.email,
+            gender = user.gender,
+            status = user.status,
+            relativeTime = relativeTimeFormatter.format(user.observedAt, now),
+            synchronization =
+                when (val state = synchronization) {
+                    UserSynchronization.Synced -> UserItemSynchronization.Synced
+                    UserSynchronization.PendingCreate -> UserItemSynchronization.Pending
+                    is UserSynchronization.CreateFailed ->
+                        UserItemSynchronization.Failed(
+                            reason = state.reason,
+                            retrying = user.localId in retryingUserIds,
+                        )
+                },
+        )
 
     private fun updateForm(transform: (AddUserFormUiState) -> AddUserFormUiState) {
         val current = presentation.value.addUserForm ?: return
@@ -530,9 +569,7 @@ class UserFeedViewModel(
         }
     }
 
-    private fun createFormState(
-        current: AddUserFormUiState = AddUserFormUiState(),
-    ): AddUserFormUiState {
+    private fun createFormState(current: AddUserFormUiState = AddUserFormUiState()): AddUserFormUiState {
         val nameValidation = addUserValidator.validateName(current.valueFor(AddUserField.Name).orEmpty())
         val emailValidation = addUserValidator.validateEmail(current.valueFor(AddUserField.Email).orEmpty())
         var form = current
@@ -553,11 +590,12 @@ class UserFeedViewModel(
     private fun AddUserFormUiState.withSubmissionFailure(failure: Throwable?): AddUserFormUiState {
         val fieldErrors = failure.toAddUserApiFieldErrors()
         var form = copy(submitting = false)
-        val fieldsWithErrors = fieldErrors.mapNotNull { error ->
-            AddUserField.fromApiName(error.field)?.also { field ->
-                form = form.withError(field, error.message)
+        val fieldsWithErrors =
+            fieldErrors.mapNotNull { error ->
+                AddUserField.fromApiName(error.field)?.also { field ->
+                    form = form.withError(field, error.message)
+                }
             }
-        }
         return if (fieldsWithErrors.isNotEmpty()) {
             form
         } else {
@@ -568,33 +606,41 @@ class UserFeedViewModel(
     private fun AddUserFormUiState.withValue(
         field: AddUserField,
         value: String,
-    ): AddUserFormUiState = updateDetail(field) { detail ->
-        detail.copy(value = value, error = null)
-    }
+    ): AddUserFormUiState =
+        updateDetail(field) { detail ->
+            detail.copy(value = value, error = null)
+        }
 
     private fun AddUserFormUiState.withError(
         field: AddUserField,
         error: String,
-    ): AddUserFormUiState = updateDetail(field) { detail ->
-        detail.copy(error = error)
-    }
+    ): AddUserFormUiState =
+        updateDetail(field) { detail ->
+            detail.copy(error = error)
+        }
 
-    private fun AddUserFormUiState.withoutError(field: AddUserField): AddUserFormUiState = updateDetail(field) {
-        detail -> detail.copy(error = null)
-    }
+    private fun AddUserFormUiState.withoutError(field: AddUserField): AddUserFormUiState =
+        updateDetail(field) { detail ->
+            detail.copy(error = null)
+        }
 
     private fun AddUserFormUiState.updateDetail(
         field: AddUserField,
         transform: (UserDetail) -> UserDetail,
-    ): AddUserFormUiState = copy(
-        details = details.map { detail ->
-            if (detail.type == field) transform(detail) else detail
-        }.let { updatedDetails ->
-            if (updatedDetails.any { it.type == field }) updatedDetails else {
-                updatedDetails + transform(UserDetail(type = field))
-            }
-        },
-    )
+    ): AddUserFormUiState =
+        copy(
+            details =
+                details
+                    .map { detail ->
+                        if (detail.type == field) transform(detail) else detail
+                    }.let { updatedDetails ->
+                        if (updatedDetails.any { it.type == field }) {
+                            updatedDetails
+                        } else {
+                            updatedDetails + transform(UserDetail(type = field))
+                        }
+                    },
+        )
 
     private data class PresentationState(
         val initialAttemptFinished: Boolean = false,
@@ -618,42 +664,44 @@ class UserFeedViewModel(
     )
 }
 
-private fun NameValidationError.userMessage(): String = when (this) {
-    NameValidationError.Required -> "Enter a name."
-    NameValidationError.TooShort -> "Name must be at least 2 characters."
-    NameValidationError.TooLong -> "Name must be 80 characters or fewer."
-    NameValidationError.MissingLetter -> "Name must contain at least one letter."
-    NameValidationError.ControlCharacter -> "Name contains an unsupported control character."
-}
+private fun NameValidationError.userMessage(): String =
+    when (this) {
+        NameValidationError.Required -> "Enter a name."
+        NameValidationError.TooShort -> "Name must be at least 2 characters."
+        NameValidationError.TooLong -> "Name must be 80 characters or fewer."
+        NameValidationError.MissingLetter -> "Name must contain at least one letter."
+        NameValidationError.ControlCharacter -> "Name contains an unsupported control character."
+    }
 
-private fun EmailValidationError.userMessage(): String = when (this) {
-    EmailValidationError.Required -> "Enter an email address."
-    EmailValidationError.TooLong -> "Email must be 254 characters or fewer."
-    EmailValidationError.ExactlyOneAt -> "Email must contain exactly one @."
-    EmailValidationError.Whitespace -> "Email cannot contain whitespace."
-    EmailValidationError.LocalPartRequired -> "Enter the part before @."
-    EmailValidationError.LocalPartTooLong -> "The part before @ must be 64 characters or fewer."
-    EmailValidationError.InvalidDomain -> "Enter a valid email domain."
-    EmailValidationError.FinalLabelTooShort -> "The final domain label must be at least 2 characters."
-}
+private fun EmailValidationError.userMessage(): String =
+    when (this) {
+        EmailValidationError.Required -> "Enter an email address."
+        EmailValidationError.TooLong -> "Email must be 254 characters or fewer."
+        EmailValidationError.ExactlyOneAt -> "Email must contain exactly one @."
+        EmailValidationError.Whitespace -> "Email cannot contain whitespace."
+        EmailValidationError.LocalPartRequired -> "Enter the part before @."
+        EmailValidationError.LocalPartTooLong -> "The part before @ must be 64 characters or fewer."
+        EmailValidationError.InvalidDomain -> "Enter a valid email domain."
+        EmailValidationError.FinalLabelTooShort -> "The final domain label must be at least 2 characters."
+    }
 
 private fun Throwable?.toUserMessage(): String =
     this?.userDataErrorOrNull()?.toUserMessage() ?: "The user directory could not be refreshed."
 
-private fun Throwable?.toAddUserMessage(): String =
-    this?.userDataErrorOrNull()?.toUserMessage() ?: "The user could not be saved."
+private fun Throwable?.toAddUserMessage(): String = this?.userDataErrorOrNull()?.toUserMessage() ?: "The user could not be saved."
 
-private fun UserDataError.toUserMessage(): String = when (this) {
-    UserDataError.Offline -> "You're offline. Cached users will remain available."
-    UserDataError.AuthenticationRequired -> "Check the GoRest access token, then retry."
-    UserDataError.DeleteTooLate -> "That deletion can no longer be undone."
-    is UserDataError.UserNotFound -> "That user is no longer available."
-    is UserDataError.ValidationRejected -> reason
-    is UserDataError.RetryScheduled -> reason
-    is UserDataError.Persistence -> "Saved users could not be read. $reason"
-    is UserDataError.RemoteContract -> "The service returned unexpected data. $reason"
-    is UserDataError.Unexpected -> reason
-}
+private fun UserDataError.toUserMessage(): String =
+    when (this) {
+        UserDataError.Offline -> "You're offline. Cached users will remain available."
+        UserDataError.AuthenticationRequired -> "Check the GoRest access token, then retry."
+        UserDataError.DeleteTooLate -> "That deletion can no longer be undone."
+        is UserDataError.UserNotFound -> "That user is no longer available."
+        is UserDataError.ValidationRejected -> reason
+        is UserDataError.RetryScheduled -> reason
+        is UserDataError.Persistence -> "Saved users could not be read. $reason"
+        is UserDataError.RemoteContract -> "The service returned unexpected data. $reason"
+        is UserDataError.Unexpected -> reason
+    }
 
 private fun Throwable?.toAddUserValidationAlert(): AddUserValidationAlert? =
     toAddUserApiFieldErrors()
@@ -661,8 +709,9 @@ private fun Throwable?.toAddUserValidationAlert(): AddUserValidationAlert? =
         ?.let(::AddUserValidationAlert)
 
 private fun Throwable?.toAddUserApiFieldErrors(): List<AddUserApiFieldError> {
-    val reason = (this?.userDataErrorOrNull() as? UserDataError.ValidationRejected)?.reason
-        ?: return emptyList()
+    val reason =
+        (this?.userDataErrorOrNull() as? UserDataError.ValidationRejected)?.reason
+            ?: return emptyList()
     return reason
         .split(';')
         .mapNotNull { issue ->

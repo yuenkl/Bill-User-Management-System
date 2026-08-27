@@ -11,9 +11,10 @@ import com.bill.usermanagmentsystem.platform.SqlDriverFactory
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
-fun iosPlatformModule(): Module = module {
-    single<NetworkEngineFactory> { IosNetworkEngineFactory() }
-    single<SqlDriverFactory> { IosSqlDriverFactory() }
-    single<ConnectivityObserver> { IosConnectivityObserver() }
-    single<AppLifecycleObserver> { IosAppLifecycleObserver() }
-}
+fun iosPlatformModule(): Module =
+    module {
+        single<NetworkEngineFactory> { IosNetworkEngineFactory() }
+        single<SqlDriverFactory> { IosSqlDriverFactory() }
+        single<ConnectivityObserver> { IosConnectivityObserver() }
+        single<AppLifecycleObserver> { IosAppLifecycleObserver() }
+    }

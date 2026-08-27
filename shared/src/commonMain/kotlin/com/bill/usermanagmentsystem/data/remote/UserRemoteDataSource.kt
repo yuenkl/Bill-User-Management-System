@@ -38,7 +38,9 @@ internal data class RemoteUser(
 )
 
 internal sealed interface RemoteResult<out T> {
-    data class Success<T>(val value: T) : RemoteResult<T>
+    data class Success<T>(
+        val value: T,
+    ) : RemoteResult<T>
 
     data class RetryableFailure(
         val reason: String,
@@ -47,9 +49,13 @@ internal sealed interface RemoteResult<out T> {
 
     data object AuthenticationFailure : RemoteResult<Nothing>
 
-    data class ValidationFailure(val reason: String) : RemoteResult<Nothing>
+    data class ValidationFailure(
+        val reason: String,
+    ) : RemoteResult<Nothing>
 
     data object NotFound : RemoteResult<Nothing>
 
-    data class PermanentFailure(val reason: String) : RemoteResult<Nothing>
+    data class PermanentFailure(
+        val reason: String,
+    ) : RemoteResult<Nothing>
 }

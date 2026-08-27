@@ -24,12 +24,16 @@ data class DeletedUserUndo(
     val input: AddUserInput,
 )
 
-enum class Gender(val apiValue: String) {
+enum class Gender(
+    val apiValue: String,
+) {
     Female("female"),
     Male("male"),
 }
 
-enum class UserStatus(val apiValue: String) {
+enum class UserStatus(
+    val apiValue: String,
+) {
     Active("active"),
     Inactive("inactive"),
 }
@@ -46,6 +50,10 @@ data class UndoableDeletion(
 
 sealed interface UserSynchronization {
     data object Synced : UserSynchronization
+
     data object PendingCreate : UserSynchronization
-    data class CreateFailed(val reason: String) : UserSynchronization
+
+    data class CreateFailed(
+        val reason: String,
+    ) : UserSynchronization
 }

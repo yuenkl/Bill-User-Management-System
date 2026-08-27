@@ -44,18 +44,20 @@ internal class DefaultSyncCoordinator(
     override val state: StateFlow<SyncState> = mutableState.asStateFlow()
 
     override suspend fun sync(): Result<Unit> {
-        val handle = coordinationMutex.withLock {
-            val existing = activeRun?.takeUnless(Deferred<Result<Unit>>::isCompleted)
-            if (existing != null) {
-                ActiveRun(existing, created = false)
-            } else {
-                val created = applicationScope.async(start = CoroutineStart.LAZY) {
-                    performSync()
+        val handle =
+            coordinationMutex.withLock {
+                val existing = activeRun?.takeUnless(Deferred<Result<Unit>>::isCompleted)
+                if (existing != null) {
+                    ActiveRun(existing, created = false)
+                } else {
+                    val created =
+                        applicationScope.async(start = CoroutineStart.LAZY) {
+                            performSync()
+                        }
+                    activeRun = created
+                    ActiveRun(created, created = true)
                 }
-                activeRun = created
-                ActiveRun(created, created = true)
             }
-        }
 
         if (handle.created) {
             handle.deferred.invokeOnCompletion {
@@ -72,94 +74,105 @@ internal class DefaultSyncCoordinator(
         return handle.deferred.await()
     }
 
-    override suspend fun loadNextPage(): Result<PageLoadResult> = operationMutex.withLock {
-        val page = nextPage ?: return@withLock Result.success(
-            PageLoadResult(loadedCount = 0, hasMore = false),
-        )
-        if (!hasValidatedConnection()) {
-            return@withLock Result.failure(UserDataException(UserDataError.Offline))
-        }
+    override suspend fun loadNextPage(): Result<PageLoadResult> =
+        operationMutex.withLock {
+            val page =
+                nextPage ?: return@withLock Result.success(
+                    PageLoadResult(loadedCount = 0, hasMore = false),
+                )
+            if (!hasValidatedConnection()) {
+                return@withLock Result.failure(UserDataException(UserDataError.Offline))
+            }
 
-        try {
-            when (val result = remoteDataSource.fetchPage(page)) {
-                is RemoteResult.Success -> {
-                    localDataSource.mergePage(
-                        users = result.value.users.map(RemoteUser::toSnapshotUser),
-                        observedAt = timeProvider.now(),
-                    )
-                    nextPage = result.value.nextPage
-                    Result.success(
-                        PageLoadResult(
-                            loadedCount = result.value.users.size,
-                            hasMore = nextPage != null,
-                        ),
-                    )
-                }
-
-                is RemoteResult.RetryableFailure -> Result.failure(
-                    UserDataException(
-                        UserDataError.RetryScheduled(
-                            reason = result.reason,
-                            retryAt = retryPolicy.nextRetryAt(
-                                now = timeProvider.now(),
-                                previousAttemptCount = 0,
-                                serverRetryAt = result.serverRetryAt,
+            try {
+                when (val result = remoteDataSource.fetchPage(page)) {
+                    is RemoteResult.Success -> {
+                        localDataSource.mergePage(
+                            users = result.value.users.map(RemoteUser::toSnapshotUser),
+                            observedAt = timeProvider.now(),
+                        )
+                        nextPage = result.value.nextPage
+                        Result.success(
+                            PageLoadResult(
+                                loadedCount = result.value.users.size,
+                                hasMore = nextPage != null,
                             ),
-                        ),
+                        )
+                    }
+
+                    is RemoteResult.RetryableFailure ->
+                        Result.failure(
+                            UserDataException(
+                                UserDataError.RetryScheduled(
+                                    reason = result.reason,
+                                    retryAt =
+                                        retryPolicy.nextRetryAt(
+                                            now = timeProvider.now(),
+                                            previousAttemptCount = 0,
+                                            serverRetryAt = result.serverRetryAt,
+                                        ),
+                                ),
+                            ),
+                        )
+
+                    RemoteResult.AuthenticationFailure ->
+                        Result.failure(
+                            UserDataException(UserDataError.AuthenticationRequired),
+                        )
+                    is RemoteResult.ValidationFailure ->
+                        Result.failure(
+                            UserDataException(UserDataError.RemoteContract(result.reason)),
+                        )
+                    RemoteResult.NotFound ->
+                        Result.failure(
+                            UserDataException(UserDataError.RemoteContract("The requested users page was not found.")),
+                        )
+                    is RemoteResult.PermanentFailure ->
+                        Result.failure(
+                            UserDataException(UserDataError.RemoteContract(result.reason)),
+                        )
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (failure: Throwable) {
+                Result.failure(
+                    failure as? UserDataException ?: UserDataException(
+                        UserDataError.Unexpected(failure.message ?: "The next users page could not be loaded."),
+                        failure,
                     ),
                 )
-
-                RemoteResult.AuthenticationFailure -> Result.failure(
-                    UserDataException(UserDataError.AuthenticationRequired),
-                )
-                is RemoteResult.ValidationFailure -> Result.failure(
-                    UserDataException(UserDataError.RemoteContract(result.reason)),
-                )
-                RemoteResult.NotFound -> Result.failure(
-                    UserDataException(UserDataError.RemoteContract("The requested users page was not found.")),
-                )
-                is RemoteResult.PermanentFailure -> Result.failure(
-                    UserDataException(UserDataError.RemoteContract(result.reason)),
-                )
             }
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (failure: Throwable) {
-            Result.failure(
-                failure as? UserDataException ?: UserDataException(
-                    UserDataError.Unexpected(failure.message ?: "The next users page could not be loaded."),
-                    failure,
-                ),
-            )
         }
-    }
 
-    private suspend fun performSync(): Result<Unit> = operationMutex.withLock {
-        mutableState.value = SyncState.Running
-        try {
-            performSyncSteps().also { result ->
-                mutableState.value = result.fold(
-                    onSuccess = { SyncState.Idle },
-                    onFailure = { failure ->
-                        SyncState.Failed(
-                            (failure as? UserDataException)?.error
-                                ?: UserDataError.Unexpected(failure.message ?: "Synchronization failed."),
+    private suspend fun performSync(): Result<Unit> =
+        operationMutex.withLock {
+            mutableState.value = SyncState.Running
+            try {
+                performSyncSteps().also { result ->
+                    mutableState.value =
+                        result.fold(
+                            onSuccess = { SyncState.Idle },
+                            onFailure = { failure ->
+                                SyncState.Failed(
+                                    (failure as? UserDataException)?.error
+                                        ?: UserDataError.Unexpected(failure.message ?: "Synchronization failed."),
+                                )
+                            },
                         )
-                    },
-                )
+                }
+            } catch (cancellation: CancellationException) {
+                mutableState.value = SyncState.Idle
+                throw cancellation
+            } catch (failure: Throwable) {
+                val exception =
+                    failure as? UserDataException ?: UserDataException(
+                        UserDataError.Unexpected(failure.message ?: "Synchronization failed unexpectedly."),
+                        failure,
+                    )
+                mutableState.value = SyncState.Failed(exception.error)
+                Result.failure(exception)
             }
-        } catch (cancellation: CancellationException) {
-            mutableState.value = SyncState.Idle
-            throw cancellation
-        } catch (failure: Throwable) {
-            val exception = failure as? UserDataException ?: UserDataException(
-                UserDataError.Unexpected(failure.message ?: "Synchronization failed unexpectedly."),
-                failure,
-            )
-            mutableState.value = SyncState.Failed(exception.error)
-            Result.failure(exception)
         }
-    }
 
     private suspend fun performSyncSteps(): Result<Unit> {
         nextPage = null
@@ -191,11 +204,12 @@ internal class DefaultSyncCoordinator(
 
             is RemoteResult.RetryableFailure -> return retryableFailure(
                 reason = snapshotResult.reason,
-                retryAt = retryPolicy.nextRetryAt(
-                    now = timeProvider.now(),
-                    previousAttemptCount = 0,
-                    serverRetryAt = snapshotResult.serverRetryAt,
-                ),
+                retryAt =
+                    retryPolicy.nextRetryAt(
+                        now = timeProvider.now(),
+                        previousAttemptCount = 0,
+                        serverRetryAt = snapshotResult.serverRetryAt,
+                    ),
             )
 
             RemoteResult.AuthenticationFailure -> return authenticationFailure()
@@ -207,18 +221,20 @@ internal class DefaultSyncCoordinator(
         return permanentFailure?.let(Result.Companion::failure) ?: Result.success(Unit)
     }
 
-    private suspend fun processMutation(mutation: DueMutation): MutationResult = when (mutation.mutation.kind) {
-        MutationKind.Create -> processCreate(mutation)
-        MutationKind.Delete -> processDelete(mutation)
-    }
+    private suspend fun processMutation(mutation: DueMutation): MutationResult =
+        when (mutation.mutation.kind) {
+            MutationKind.Create -> processCreate(mutation)
+            MutationKind.Delete -> processDelete(mutation)
+        }
 
     private suspend fun processCreate(mutation: DueMutation): MutationResult {
-        val request = CreateUserRequest(
-            name = mutation.name,
-            email = mutation.email,
-            gender = mutation.gender,
-            status = mutation.status,
-        )
+        val request =
+            CreateUserRequest(
+                name = mutation.name,
+                email = mutation.email,
+                gender = mutation.gender,
+                status = mutation.status,
+            )
         return when (val result = remoteDataSource.createUser(request)) {
             is RemoteResult.Success -> {
                 localDataSource.completeCreate(
@@ -242,10 +258,11 @@ internal class DefaultSyncCoordinator(
                 )
             }
 
-            RemoteResult.NotFound -> blockPermanentMutation(
-                mutation,
-                "The create-user endpoint was not found.",
-            )
+            RemoteResult.NotFound ->
+                blockPermanentMutation(
+                    mutation,
+                    "The create-user endpoint was not found.",
+                )
 
             is RemoteResult.PermanentFailure -> blockPermanentMutation(mutation, result.reason)
         }
@@ -273,11 +290,12 @@ internal class DefaultSyncCoordinator(
             }
 
             is RemoteResult.RetryableFailure -> scheduleRetry(mutation, result)
-            RemoteResult.AuthenticationFailure -> restorePermanentDeleteFailure(
-                mutation = mutation,
-                reason = "Authentication is required before deletion can continue.",
-                error = UserDataError.AuthenticationRequired,
-            )
+            RemoteResult.AuthenticationFailure ->
+                restorePermanentDeleteFailure(
+                    mutation = mutation,
+                    reason = "Authentication is required before deletion can continue.",
+                    error = UserDataError.AuthenticationRequired,
+                )
             is RemoteResult.ValidationFailure -> restorePermanentDeleteFailure(mutation, result.reason)
             is RemoteResult.PermanentFailure -> restorePermanentDeleteFailure(mutation, result.reason)
         }
@@ -287,11 +305,12 @@ internal class DefaultSyncCoordinator(
         mutation: DueMutation,
         failure: RemoteResult.RetryableFailure,
     ): MutationResult {
-        val retryAt = retryPolicy.nextRetryAt(
-            now = timeProvider.now(),
-            previousAttemptCount = mutation.mutation.attemptCount,
-            serverRetryAt = failure.serverRetryAt,
-        )
+        val retryAt =
+            retryPolicy.nextRetryAt(
+                now = timeProvider.now(),
+                previousAttemptCount = mutation.mutation.attemptCount,
+                serverRetryAt = failure.serverRetryAt,
+            )
         localDataSource.markMutationRetryable(
             mutationId = mutation.mutation.mutationId,
             retryAt = retryAt,
@@ -333,13 +352,11 @@ internal class DefaultSyncCoordinator(
         )
     }
 
-    private fun hasValidatedConnection(): Boolean =
-        connectivityObserver.status.value == ConnectivityStatus.Available
+    private fun hasValidatedConnection(): Boolean = connectivityObserver.status.value == ConnectivityStatus.Available
 
     private fun offlineFailure(): Result<Unit> = Result.failure(UserDataException(UserDataError.Offline))
 
-    private fun authenticationFailure(): Result<Unit> =
-        Result.failure(UserDataException(UserDataError.AuthenticationRequired))
+    private fun authenticationFailure(): Result<Unit> = Result.failure(UserDataException(UserDataError.AuthenticationRequired))
 
     private fun permanentRemoteFailure(reason: String): Result<Unit> =
         Result.failure(UserDataException(UserDataError.RemoteContract(reason)))
@@ -356,16 +373,23 @@ internal class DefaultSyncCoordinator(
 
     private sealed interface MutationResult {
         data object Completed : MutationResult
-        data class CompletedWithFailure(val failure: UserDataException) : MutationResult
-        data class Stop(val failure: UserDataException) : MutationResult
+
+        data class CompletedWithFailure(
+            val failure: UserDataException,
+        ) : MutationResult
+
+        data class Stop(
+            val failure: UserDataException,
+        ) : MutationResult
     }
 }
 
-private fun RemoteUser.toSnapshotUser(): SnapshotUser = SnapshotUser(
-    remoteId = remoteId,
-    name = name,
-    email = email,
-    gender = gender,
-    status = status,
-    serverPosition = serverPosition,
-)
+private fun RemoteUser.toSnapshotUser(): SnapshotUser =
+    SnapshotUser(
+        remoteId = remoteId,
+        name = name,
+        email = email,
+        gender = gender,
+        status = status,
+        serverPosition = serverPosition,
+    )

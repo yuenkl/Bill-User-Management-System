@@ -9,8 +9,9 @@ class IosSqlDriverFactory : SqlDriverFactory {
     override fun create(
         schema: SqlSchema<QueryResult.Value<Unit>>,
         name: String,
-    ): SqlDriver = NativeSqliteDriver(
-        schema = schema,
-        name = name,
-    )
+    ): SqlDriver =
+        NativeSqliteDriver(
+            schema = schema,
+            name = name,
+        )
 }

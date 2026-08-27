@@ -13,34 +13,37 @@ import platform.UIKit.UIApplicationState
 
 @OptIn(ExperimentalForeignApi::class)
 class IosAppLifecycleObserver : AppLifecycleObserver {
-    private val mutableState = MutableStateFlow(
-        if (
-            UIApplication.sharedApplication.applicationState ==
-            UIApplicationState.UIApplicationStateActive
+    private val mutableState =
+        MutableStateFlow(
+            if (
+                UIApplication.sharedApplication.applicationState ==
+                UIApplicationState.UIApplicationStateActive
+            ) {
+                AppLifecycleState.Foreground
+            } else {
+                AppLifecycleState.Background
+            },
+        )
+
+    @Suppress("unused")
+    private val foregroundObserver =
+        NSNotificationCenter.defaultCenter.addObserverForName(
+            name = UIApplicationDidBecomeActiveNotification,
+            `object` = null,
+            queue = NSOperationQueue.mainQueue,
         ) {
-            AppLifecycleState.Foreground
-        } else {
-            AppLifecycleState.Background
-        },
-    )
+            mutableState.value = AppLifecycleState.Foreground
+        }
 
     @Suppress("unused")
-    private val foregroundObserver = NSNotificationCenter.defaultCenter.addObserverForName(
-        name = UIApplicationDidBecomeActiveNotification,
-        `object` = null,
-        queue = NSOperationQueue.mainQueue,
-    ) {
-        mutableState.value = AppLifecycleState.Foreground
-    }
-
-    @Suppress("unused")
-    private val backgroundObserver = NSNotificationCenter.defaultCenter.addObserverForName(
-        name = UIApplicationDidEnterBackgroundNotification,
-        `object` = null,
-        queue = NSOperationQueue.mainQueue,
-    ) {
-        mutableState.value = AppLifecycleState.Background
-    }
+    private val backgroundObserver =
+        NSNotificationCenter.defaultCenter.addObserverForName(
+            name = UIApplicationDidEnterBackgroundNotification,
+            `object` = null,
+            queue = NSOperationQueue.mainQueue,
+        ) {
+            mutableState.value = AppLifecycleState.Background
+        }
 
     override val state: StateFlow<AppLifecycleState> = mutableState.asStateFlow()
 }

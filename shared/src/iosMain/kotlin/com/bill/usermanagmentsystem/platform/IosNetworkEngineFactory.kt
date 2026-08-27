@@ -6,15 +6,17 @@ import io.ktor.client.plugins.logging.Logger
 import platform.Foundation.NSURLRequestReloadIgnoringLocalCacheData
 
 class IosNetworkEngineFactory : NetworkEngineFactory {
-    override fun create(): HttpClientEngine = Darwin.create {
-        configureRequest {
-            setCachePolicy(NSURLRequestReloadIgnoringLocalCacheData)
+    override fun create(): HttpClientEngine =
+        Darwin.create {
+            configureRequest {
+                setCachePolicy(NSURLRequestReloadIgnoringLocalCacheData)
+            }
         }
-    }
 
-    override val apiLogger: Logger = object : Logger {
-        override fun log(message: String) {
-            println("GoRestApi: $message")
+    override val apiLogger: Logger =
+        object : Logger {
+            override fun log(message: String) {
+                println("GoRestApi: $message")
+            }
         }
-    }
 }

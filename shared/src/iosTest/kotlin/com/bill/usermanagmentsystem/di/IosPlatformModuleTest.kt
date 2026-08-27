@@ -9,27 +9,29 @@ import com.bill.usermanagmentsystem.platform.NetworkEngineFactory
 import com.bill.usermanagmentsystem.platform.SqlDriverFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import org.koin.dsl.koinApplication
+import org.koin.dsl.module
 import kotlin.test.Test
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import org.koin.dsl.koinApplication
-import org.koin.dsl.module
 
 class IosPlatformModuleTest {
     @Test
     fun platformGraphCreatesFoundationFactories() {
-        val application = koinApplication {
-            modules(
-                commonModule(AppConfig(apiToken = "token")),
-                iosPlatformModule(),
-            )
-        }
+        val application =
+            koinApplication {
+                modules(
+                    commonModule(AppConfig(apiToken = "token")),
+                    iosPlatformModule(),
+                )
+            }
 
         val engine = application.koin.get<NetworkEngineFactory>().create()
-        val driver = application.koin.get<SqlDriverFactory>().create(
-            schema = TestSqlSchema,
-            name = "foundation-platform-test.db",
-        )
+        val driver =
+            application.koin.get<SqlDriverFactory>().create(
+                schema = TestSqlSchema,
+                name = "foundation-platform-test.db",
+            )
 
         assertNotNull(application.koin.get<UserRemoteDataSource>())
 
@@ -40,16 +42,17 @@ class IosPlatformModuleTest {
 
     @Test
     fun platformGraphCreatesOfflineRepositoryAndClosesItsScope() {
-        val application = koinApplication {
-            modules(
-                commonModule(AppConfig(apiToken = "token")),
-                iosPlatformModule(),
-                module {
-                    single<UserRemoteDataSource> { FakeUserRemoteDataSource() }
-                },
-                offlineDataModule("offline-data-graph-test.db"),
-            )
-        }
+        val application =
+            koinApplication {
+                modules(
+                    commonModule(AppConfig(apiToken = "token")),
+                    iosPlatformModule(),
+                    module {
+                        single<UserRemoteDataSource> { FakeUserRemoteDataSource() }
+                    },
+                    offlineDataModule("offline-data-graph-test.db"),
+                )
+            }
 
         val applicationScope = application.koin.get<CoroutineScope>()
         try {

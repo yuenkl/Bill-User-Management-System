@@ -48,8 +48,7 @@ fun interface DeleteUserWithUndo {
 class DefaultDeleteUserWithUndo(
     private val repository: UserRepository,
 ) : DeleteUserWithUndo {
-    override suspend fun invoke(localId: String): Result<DeletedUserUndo> =
-        repository.deleteImmediately(localId)
+    override suspend fun invoke(localId: String): Result<DeletedUserUndo> = repository.deleteImmediately(localId)
 }
 
 fun interface UndoUserDeletion {

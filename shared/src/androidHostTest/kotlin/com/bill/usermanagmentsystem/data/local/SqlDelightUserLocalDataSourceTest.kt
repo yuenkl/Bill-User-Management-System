@@ -20,39 +20,46 @@ import kotlin.time.Instant
 @OptIn(ExperimentalCoroutinesApi::class)
 class SqlDelightUserLocalDataSourceTest {
     @Test
-    fun snapshotThenPageMergeKeepsServerOrderAndExistingRows() = runTest {
-        withFixture("page-merge") { source ->
-            source.mergeSnapshot(
-                users = listOf(snapshot(remoteId = 41, name = "First page", position = 0)),
-                observedAt = instant(1_000),
-            )
-            source.mergePage(
-                users = listOf(snapshot(remoteId = 21, name = "Next page", position = 1)),
-                observedAt = instant(2_000),
-            )
+    fun snapshotThenPageMergeKeepsServerOrderAndExistingRows() =
+        runTest {
+            withFixture("page-merge") { source ->
+                source.mergeSnapshot(
+                    users = listOf(snapshot(remoteId = 41, name = "First page", position = 0)),
+                    observedAt = instant(1_000),
+                )
+                source.mergePage(
+                    users = listOf(snapshot(remoteId = 21, name = "Next page", position = 1)),
+                    observedAt = instant(2_000),
+                )
 
-            val visible = source.observeVisibleUsers().first()
-            assertEquals(listOf("First page", "Next page"), visible.map { it.user.name })
-            assertEquals(instant(1_000), visible.first().user.observedAt)
-            assertEquals(instant(2_000), visible.last().user.observedAt)
+                val visible = source.observeVisibleUsers().first()
+                assertEquals(listOf("First page", "Next page"), visible.map { it.user.name })
+                assertEquals(instant(1_000), visible.first().user.observedAt)
+                assertEquals(instant(2_000), visible.last().user.observedAt)
+            }
         }
-    }
 
     @Test
-    fun deleteImmediatelyRemovesTheConfirmedUser() = runTest {
-        withFixture("confirmed-delete") { source ->
-            source.mergeSnapshot(
-                users = listOf(snapshot(remoteId = 7, name = "Ada", position = 0)),
-                observedAt = instant(1_000),
-            )
-            val localId = source.observeVisibleUsers().first().single().user.localId
+    fun deleteImmediatelyRemovesTheConfirmedUser() =
+        runTest {
+            withFixture("confirmed-delete") { source ->
+                source.mergeSnapshot(
+                    users = listOf(snapshot(remoteId = 7, name = "Ada", position = 0)),
+                    observedAt = instant(1_000),
+                )
+                val localId =
+                    source
+                        .observeVisibleUsers()
+                        .first()
+                        .single()
+                        .user.localId
 
-            source.deleteImmediately(localId)
+                source.deleteImmediately(localId)
 
-            assertEquals(emptyList(), source.observeVisibleUsers().first())
-            assertEquals(null, source.getUser(localId))
+                assertEquals(emptyList(), source.observeVisibleUsers().first())
+                assertEquals(null, source.getUser(localId))
+            }
         }
-    }
 
     private suspend fun <T> kotlinx.coroutines.test.TestScope.withFixture(
         suffix: String,
@@ -66,9 +73,10 @@ class SqlDelightUserLocalDataSourceTest {
             block(
                 SqlDelightUserLocalDataSource(
                     database = UserManagementDatabase(driver),
-                    idGenerator = object : IdGenerator {
-                        override fun nextId(): String = "unused"
-                    },
+                    idGenerator =
+                        object : IdGenerator {
+                            override fun nextId(): String = "unused"
+                        },
                     queryDispatcher = UnconfinedTestDispatcher(testScheduler),
                 ),
             )
@@ -81,7 +89,11 @@ class SqlDelightUserLocalDataSourceTest {
     private companion object {
         fun instant(epochMilliseconds: Long): Instant = Instant.fromEpochMilliseconds(epochMilliseconds)
 
-        fun snapshot(remoteId: Long, name: String, position: Long) = SnapshotUser(
+        fun snapshot(
+            remoteId: Long,
+            name: String,
+            position: Long,
+        ) = SnapshotUser(
             remoteId = remoteId,
             name = name,
             email = "$remoteId@example.com",

@@ -42,34 +42,40 @@ fun UserCard(
     modifier: Modifier = Modifier,
 ) {
     Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .semantics {
-                contentDescription = "${user.name}, ${user.email}, ${user.relativeTime}"
-                stateDescription = user.synchronization.accessibilityDescription()
-            }
-            .combinedClickable(
-                onClick = {},
-                onLongClickLabel = "Delete user",
-                onLongClick = onLongClick,
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .semantics {
+                    contentDescription = "${user.name}, ${user.email}, ${user.relativeTime}"
+                    stateDescription = user.synchronization.accessibilityDescription()
+                }.combinedClickable(
+                    onClick = {},
+                    onLongClickLabel = "Delete user",
+                    onLongClick = onLongClick,
+                ),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
             ),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer),
+                modifier =
+                    Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = user.name.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
+                    text =
+                        user.name
+                            .firstOrNull()
+                            ?.uppercaseChar()
+                            ?.toString() ?: "?",
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                     fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.titleMedium,
@@ -108,14 +114,16 @@ fun UserCard(
                 )
                 when (val synchronization = user.synchronization) {
                     UserItemSynchronization.Synced -> Unit
-                    UserItemSynchronization.Pending -> SyncStatus(
-                        text = "Pending sync",
-                        failed = false,
-                    )
-                    is UserItemSynchronization.Failed -> SyncStatus(
-                        text = "Sync failed: ${synchronization.reason}",
-                        failed = true,
-                    )
+                    UserItemSynchronization.Pending ->
+                        SyncStatus(
+                            text = "Pending sync",
+                            failed = false,
+                        )
+                    is UserItemSynchronization.Failed ->
+                        SyncStatus(
+                            text = "Sync failed: ${synchronization.reason}",
+                            failed = true,
+                        )
                 }
                 val failure = user.synchronization as? UserItemSynchronization.Failed
                 if (failure != null) {
@@ -152,16 +160,18 @@ private fun SyncStatus(
     failed: Boolean,
 ) {
     Surface(
-        color = if (failed) {
-            MaterialTheme.colorScheme.errorContainer
-        } else {
-            MaterialTheme.colorScheme.tertiaryContainer
-        },
-        contentColor = if (failed) {
-            MaterialTheme.colorScheme.onErrorContainer
-        } else {
-            MaterialTheme.colorScheme.onTertiaryContainer
-        },
+        color =
+            if (failed) {
+                MaterialTheme.colorScheme.errorContainer
+            } else {
+                MaterialTheme.colorScheme.tertiaryContainer
+            },
+        contentColor =
+            if (failed) {
+                MaterialTheme.colorScheme.onErrorContainer
+            } else {
+                MaterialTheme.colorScheme.onTertiaryContainer
+            },
         shape = RoundedCornerShape(8.dp),
     ) {
         Text(
@@ -174,18 +184,21 @@ private fun SyncStatus(
     }
 }
 
-private fun UserItemSynchronization.accessibilityDescription(): String = when (this) {
-    UserItemSynchronization.Synced -> "Synchronized"
-    UserItemSynchronization.Pending -> "Pending synchronization"
-    is UserItemSynchronization.Failed -> "Synchronization failed: $reason"
-}
+private fun UserItemSynchronization.accessibilityDescription(): String =
+    when (this) {
+        UserItemSynchronization.Synced -> "Synchronized"
+        UserItemSynchronization.Pending -> "Pending synchronization"
+        is UserItemSynchronization.Failed -> "Synchronization failed: $reason"
+    }
 
-private fun Gender.displayName(): String = when (this) {
-    Gender.Female -> "Female"
-    Gender.Male -> "Male"
-}
+private fun Gender.displayName(): String =
+    when (this) {
+        Gender.Female -> "Female"
+        Gender.Male -> "Male"
+    }
 
-private fun UserStatus.displayName(): String = when (this) {
-    UserStatus.Active -> "Active"
-    UserStatus.Inactive -> "Inactive"
-}
+private fun UserStatus.displayName(): String =
+    when (this) {
+        UserStatus.Active -> "Active"
+        UserStatus.Inactive -> "Inactive"
+    }

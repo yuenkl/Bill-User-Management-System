@@ -1,24 +1,24 @@
 package com.bill.usermanagmentsystem.data.local
 
+import app.cash.sqldelight.coroutines.asFlow
+import app.cash.sqldelight.coroutines.mapToList
 import com.bill.usermanagmentsystem.data.local.db.Pending_mutations
 import com.bill.usermanagmentsystem.data.local.db.SelectDueMutations
 import com.bill.usermanagmentsystem.data.local.db.SelectUndoableUsers
 import com.bill.usermanagmentsystem.data.local.db.UserManagementDatabase
 import com.bill.usermanagmentsystem.data.local.db.Users
 import com.bill.usermanagmentsystem.domain.model.Gender
+import com.bill.usermanagmentsystem.domain.model.UndoableDeletion
 import com.bill.usermanagmentsystem.domain.model.User
 import com.bill.usermanagmentsystem.domain.model.UserDataError
 import com.bill.usermanagmentsystem.domain.model.UserDataException
 import com.bill.usermanagmentsystem.domain.model.UserRecord
 import com.bill.usermanagmentsystem.domain.model.UserStatus
 import com.bill.usermanagmentsystem.domain.model.UserSynchronization
-import com.bill.usermanagmentsystem.domain.model.UndoableDeletion
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-import app.cash.sqldelight.coroutines.asFlow
-import app.cash.sqldelight.coroutines.mapToList
 import kotlin.time.Instant
 
 internal class SqlDelightUserLocalDataSource(
@@ -29,37 +29,43 @@ internal class SqlDelightUserLocalDataSource(
     private val queries = database.userManagementDatabaseQueries
 
     override fun observeVisibleUsers(): Flow<List<UserRecord>> =
-        queries.selectVisibleUsers()
+        queries
+            .selectVisibleUsers()
             .asFlow()
             .mapToList(queryDispatcher)
             .map { rows -> rows.map(Users::toDomainRecord) }
 
     override fun observeUndoableUsers(): Flow<List<UndoableDeletion>> =
-        queries.selectUndoableUsers()
+        queries
+            .selectUndoableUsers()
             .asFlow()
             .mapToList(queryDispatcher)
             .map { rows -> rows.map(SelectUndoableUsers::toUndoableDeletion) }
 
-    override suspend fun getUser(localId: String): StoredUser? = withContext(queryDispatcher) {
-        queries.selectUserByLocalId(localId.toDatabaseLocalId()).executeAsOneOrNull()?.toStoredUser()
-    }
-
-    override suspend fun deleteImmediately(localId: String): StoredUser = withContext(queryDispatcher) {
-        var deletedUser: StoredUser? = null
-        queries.transaction {
-            val databaseLocalId = localId.toDatabaseLocalId()
-            val user = queries.selectUserByLocalId(databaseLocalId).executeAsOneOrNull()
-                ?: throw UserDataException(UserDataError.UserNotFound(localId))
-            queries.deleteMutationsForUser(databaseLocalId)
-            queries.deleteUser(databaseLocalId)
-            deletedUser = user.toStoredUser()
+    override suspend fun getUser(localId: String): StoredUser? =
+        withContext(queryDispatcher) {
+            queries.selectUserByLocalId(localId.toDatabaseLocalId()).executeAsOneOrNull()?.toStoredUser()
         }
-        requireNotNull(deletedUser)
-    }
 
-    override suspend fun getAllMutations(): List<StoredMutation> = withContext(queryDispatcher) {
-        queries.selectAllMutations().executeAsList().map(Pending_mutations::toStoredMutation)
-    }
+    override suspend fun deleteImmediately(localId: String): StoredUser =
+        withContext(queryDispatcher) {
+            var deletedUser: StoredUser? = null
+            queries.transaction {
+                val databaseLocalId = localId.toDatabaseLocalId()
+                val user =
+                    queries.selectUserByLocalId(databaseLocalId).executeAsOneOrNull()
+                        ?: throw UserDataException(UserDataError.UserNotFound(localId))
+                queries.deleteMutationsForUser(databaseLocalId)
+                queries.deleteUser(databaseLocalId)
+                deletedUser = user.toStoredUser()
+            }
+            requireNotNull(deletedUser)
+        }
+
+    override suspend fun getAllMutations(): List<StoredMutation> =
+        withContext(queryDispatcher) {
+            queries.selectAllMutations().executeAsList().map(Pending_mutations::toStoredMutation)
+        }
 
     override suspend fun requestDelete(
         localId: String,
@@ -67,8 +73,9 @@ internal class SqlDelightUserLocalDataSource(
     ) = withContext(queryDispatcher) {
         queries.transaction {
             val databaseLocalId = localId.toDatabaseLocalId()
-            val user = queries.selectUserByLocalId(databaseLocalId).executeAsOneOrNull()
-                ?: throw UserDataException(UserDataError.UserNotFound(localId))
+            val user =
+                queries.selectUserByLocalId(databaseLocalId).executeAsOneOrNull()
+                    ?: throw UserDataException(UserDataError.UserNotFound(localId))
 
             when (user.syncStatus()) {
                 StoredUserSyncStatus.PendingCreate,
@@ -95,8 +102,9 @@ internal class SqlDelightUserLocalDataSource(
     ) = withContext(queryDispatcher) {
         queries.transaction {
             val databaseLocalId = localId.toDatabaseLocalId()
-            val user = queries.selectUserByLocalId(databaseLocalId).executeAsOneOrNull()
-                ?: throw UserDataException(UserDataError.UserNotFound(localId))
+            val user =
+                queries.selectUserByLocalId(databaseLocalId).executeAsOneOrNull()
+                    ?: throw UserDataException(UserDataError.UserNotFound(localId))
             val deadline = user.undo_deadline_epoch_ms?.let(Instant::fromEpochMilliseconds)
 
             if (
@@ -111,27 +119,29 @@ internal class SqlDelightUserLocalDataSource(
         }
     }
 
-    override suspend fun finalizeExpiredDeletes(now: Instant): Int = withContext(queryDispatcher) {
-        var finalizedCount = 0
-        queries.transaction {
-            val localIds = queries.selectExpiredUndoableUsers(now.toEpochMilliseconds()).executeAsList()
-            localIds.forEach { localId ->
-                queries.insertMutation(
-                    mutation_id = idGenerator.nextId(),
-                    user_local_id = localId,
-                    kind = MutationKind.Delete.databaseValue,
-                    created_at_epoch_ms = now.toEpochMilliseconds(),
-                )
-                queries.markPendingDelete(localId)
-                finalizedCount += 1
+    override suspend fun finalizeExpiredDeletes(now: Instant): Int =
+        withContext(queryDispatcher) {
+            var finalizedCount = 0
+            queries.transaction {
+                val localIds = queries.selectExpiredUndoableUsers(now.toEpochMilliseconds()).executeAsList()
+                localIds.forEach { localId ->
+                    queries.insertMutation(
+                        mutation_id = idGenerator.nextId(),
+                        user_local_id = localId,
+                        kind = MutationKind.Delete.databaseValue,
+                        created_at_epoch_ms = now.toEpochMilliseconds(),
+                    )
+                    queries.markPendingDelete(localId)
+                    finalizedCount += 1
+                }
             }
+            finalizedCount
         }
-        finalizedCount
-    }
 
     override suspend fun getDueMutations(now: Instant): List<DueMutation> =
         withContext(queryDispatcher) {
-            queries.selectDueMutations(now.toEpochMilliseconds())
+            queries
+                .selectDueMutations(now.toEpochMilliseconds())
                 .executeAsList()
                 .map(SelectDueMutations::toDueMutation)
         }
@@ -142,15 +152,16 @@ internal class SqlDelightUserLocalDataSource(
         remoteUser: SnapshotUser,
     ) = withContext(queryDispatcher) {
         queries.transaction {
-            queries.completeCreate(
-                remote_id = remoteUser.remoteId,
-                name = remoteUser.name,
-                email = remoteUser.email,
-                gender = remoteUser.gender.apiValue,
-                status = remoteUser.status.apiValue,
-                server_position = remoteUser.serverPosition,
-                local_id = localId.toDatabaseLocalId(),
-            ).requireSingleUpdate("complete CREATE for $localId")
+            queries
+                .completeCreate(
+                    remote_id = remoteUser.remoteId,
+                    name = remoteUser.name,
+                    email = remoteUser.email,
+                    gender = remoteUser.gender.apiValue,
+                    status = remoteUser.status.apiValue,
+                    server_position = remoteUser.serverPosition,
+                    local_id = localId.toDatabaseLocalId(),
+                ).requireSingleUpdate("complete CREATE for $localId")
             queries.deleteMutation(mutationId)
         }
     }
@@ -161,7 +172,8 @@ internal class SqlDelightUserLocalDataSource(
         reason: String,
     ) = withContext(queryDispatcher) {
         queries.transaction {
-            queries.markCreateFailed(reason, localId.toDatabaseLocalId())
+            queries
+                .markCreateFailed(reason, localId.toDatabaseLocalId())
                 .requireSingleUpdate("mark CREATE failed for $localId")
             queries.deleteMutation(mutationId)
         }
@@ -173,7 +185,8 @@ internal class SqlDelightUserLocalDataSource(
         createdAt: Instant,
     ) = withContext(queryDispatcher) {
         queries.transaction {
-            queries.retryCreate(localId.toDatabaseLocalId())
+            queries
+                .retryCreate(localId.toDatabaseLocalId())
                 .requireSingleUpdate("retry CREATE for $localId")
             queries.insertMutation(
                 mutation_id = mutationId,
@@ -200,7 +213,8 @@ internal class SqlDelightUserLocalDataSource(
         reason: String,
     ) = withContext(queryDispatcher) {
         queries.transaction {
-            queries.restoreFailedDelete(reason, localId.toDatabaseLocalId())
+            queries
+                .restoreFailedDelete(reason, localId.toDatabaseLocalId())
                 .requireSingleUpdate("restore DELETE failure for $localId")
             queries.deleteMutation(mutationId)
         }
@@ -211,7 +225,8 @@ internal class SqlDelightUserLocalDataSource(
         retryAt: Instant,
         reason: String,
     ) = withContext(queryDispatcher) {
-        queries.updateMutationRetryable(retryAt.toEpochMilliseconds(), reason, mutationId)
+        queries
+            .updateMutationRetryable(retryAt.toEpochMilliseconds(), reason, mutationId)
             .requireSingleUpdate("schedule retry for mutation $mutationId")
     }
 
@@ -219,19 +234,23 @@ internal class SqlDelightUserLocalDataSource(
         mutationId: String,
         reason: String,
     ) = withContext(queryDispatcher) {
-        queries.updateMutationBlocked(reason, mutationId)
+        queries
+            .updateMutationBlocked(reason, mutationId)
             .requireSingleUpdate("block mutation $mutationId")
     }
 
-    override suspend fun retryBlockedMutation(mutationId: String) = withContext(queryDispatcher) {
-        queries.resetMutationForExplicitRetry(mutationId)
-            .requireSingleUpdate("retry blocked mutation $mutationId")
-    }
+    override suspend fun retryBlockedMutation(mutationId: String) =
+        withContext(queryDispatcher) {
+            queries
+                .resetMutationForExplicitRetry(mutationId)
+                .requireSingleUpdate("retry blocked mutation $mutationId")
+        }
 
-    override suspend fun retryAuthenticationBlockedMutations() = withContext(queryDispatcher) {
-        queries.retryAuthenticationBlockedMutations().await()
-        Unit
-    }
+    override suspend fun retryAuthenticationBlockedMutations() =
+        withContext(queryDispatcher) {
+            queries.retryAuthenticationBlockedMutations().await()
+            Unit
+        }
 
     override suspend fun mergeSnapshot(
         users: List<SnapshotUser>,
@@ -240,7 +259,9 @@ internal class SqlDelightUserLocalDataSource(
         queries.transaction {
             val snapshotRemoteIds = users.mapTo(mutableSetOf(), SnapshotUser::remoteId)
             mergeUsers(users, observedAt)
-            queries.selectSyncedRemoteUsers().executeAsList()
+            queries
+                .selectSyncedRemoteUsers()
+                .executeAsList()
                 .filterNot { it.remote_id in snapshotRemoteIds }
                 .forEach { queries.deleteUser(it.local_id) }
         }
@@ -290,80 +311,46 @@ internal class SqlDelightUserLocalDataSource(
 }
 
 private val MutationKind.databaseValue: String
-    get() = when (this) {
-        MutationKind.Create -> "CREATE"
-        MutationKind.Delete -> "DELETE"
+    get() =
+        when (this) {
+            MutationKind.Create -> "CREATE"
+            MutationKind.Delete -> "DELETE"
+        }
+
+private fun String.toMutationKind(): MutationKind =
+    when (this) {
+        "CREATE" -> MutationKind.Create
+        "DELETE" -> MutationKind.Delete
+        else -> persistenceFailure("Unknown mutation kind: $this")
     }
 
-private fun String.toMutationKind(): MutationKind = when (this) {
-    "CREATE" -> MutationKind.Create
-    "DELETE" -> MutationKind.Delete
-    else -> persistenceFailure("Unknown mutation kind: $this")
-}
-
-private fun String.toMutationState(): MutationState = when (this) {
-    "PENDING" -> MutationState.Pending
-    "RETRYABLE_WAIT" -> MutationState.RetryableWait
-    "BLOCKED" -> MutationState.Blocked
-    else -> persistenceFailure("Unknown mutation state: $this")
-}
-
-private fun String.toStoredSyncStatus(): StoredUserSyncStatus = when (this) {
-    "SYNCED" -> StoredUserSyncStatus.Synced
-    "PENDING_CREATE" -> StoredUserSyncStatus.PendingCreate
-    "CREATE_FAILED" -> StoredUserSyncStatus.CreateFailed
-    "PENDING_DELETE" -> StoredUserSyncStatus.PendingDelete
-    else -> persistenceFailure("Unknown user synchronization state: $this")
-}
-
-private fun String.toGender(): Gender = Gender.entries.firstOrNull { it.apiValue == this }
-    ?: persistenceFailure("Unknown gender: $this")
-
-private fun String.toUserStatus(): UserStatus = UserStatus.entries.firstOrNull { it.apiValue == this }
-    ?: persistenceFailure("Unknown user status: $this")
-
-private fun Users.toStoredUser(): StoredUser = StoredUser(
-    localId = local_id.toString(),
-    remoteId = remote_id,
-    name = name,
-    email = email,
-    gender = gender.toGender(),
-    status = status.toUserStatus(),
-    observedAt = Instant.fromEpochMilliseconds(observed_at_epoch_ms),
-    serverPosition = server_position,
-    synchronization = syncStatus(),
-    hidden = isHidden(),
-    undoDeadline = undo_deadline_epoch_ms?.let(Instant::fromEpochMilliseconds),
-    lastSyncError = last_sync_error,
-)
-
-private fun Users.toDomainRecord(): UserRecord {
-    val synchronization = when (syncStatus()) {
-        StoredUserSyncStatus.Synced -> UserSynchronization.Synced
-        StoredUserSyncStatus.PendingCreate -> UserSynchronization.PendingCreate
-        StoredUserSyncStatus.CreateFailed -> UserSynchronization.CreateFailed(
-            reason = last_sync_error ?: "Creation requires review before retrying.",
-        )
-        StoredUserSyncStatus.PendingDelete -> persistenceFailure(
-            "Pending-delete user $local_id escaped the visible query.",
-        )
+private fun String.toMutationState(): MutationState =
+    when (this) {
+        "PENDING" -> MutationState.Pending
+        "RETRYABLE_WAIT" -> MutationState.RetryableWait
+        "BLOCKED" -> MutationState.Blocked
+        else -> persistenceFailure("Unknown mutation state: $this")
     }
-    return UserRecord(
-        user = User(
-            localId = local_id.toString(),
-            remoteId = remote_id,
-            name = name,
-            email = email,
-            gender = gender.toGender(),
-            status = status.toUserStatus(),
-            observedAt = Instant.fromEpochMilliseconds(observed_at_epoch_ms),
-        ),
-        synchronization = synchronization,
-    )
-}
 
-private fun SelectUndoableUsers.toUndoableDeletion(): UndoableDeletion = UndoableDeletion(
-    user = User(
+private fun String.toStoredSyncStatus(): StoredUserSyncStatus =
+    when (this) {
+        "SYNCED" -> StoredUserSyncStatus.Synced
+        "PENDING_CREATE" -> StoredUserSyncStatus.PendingCreate
+        "CREATE_FAILED" -> StoredUserSyncStatus.CreateFailed
+        "PENDING_DELETE" -> StoredUserSyncStatus.PendingDelete
+        else -> persistenceFailure("Unknown user synchronization state: $this")
+    }
+
+private fun String.toGender(): Gender =
+    Gender.entries.firstOrNull { it.apiValue == this }
+        ?: persistenceFailure("Unknown gender: $this")
+
+private fun String.toUserStatus(): UserStatus =
+    UserStatus.entries.firstOrNull { it.apiValue == this }
+        ?: persistenceFailure("Unknown user status: $this")
+
+private fun Users.toStoredUser(): StoredUser =
+    StoredUser(
         localId = local_id.toString(),
         remoteId = remote_id,
         name = name,
@@ -371,23 +358,59 @@ private fun SelectUndoableUsers.toUndoableDeletion(): UndoableDeletion = Undoabl
         gender = gender.toGender(),
         status = status.toUserStatus(),
         observedAt = Instant.fromEpochMilliseconds(observed_at_epoch_ms),
-    ),
-    deadline = Instant.fromEpochMilliseconds(undo_deadline_epoch_ms),
-)
+        serverPosition = server_position,
+        synchronization = syncStatus(),
+        hidden = isHidden(),
+        undoDeadline = undo_deadline_epoch_ms?.let(Instant::fromEpochMilliseconds),
+        lastSyncError = last_sync_error,
+    )
 
-private fun Pending_mutations.toStoredMutation(): StoredMutation = StoredMutation(
-    mutationId = mutation_id,
-    userLocalId = user_local_id.toString(),
-    kind = kind.toMutationKind(),
-    createdAt = Instant.fromEpochMilliseconds(created_at_epoch_ms),
-    attemptCount = attempt_count,
-    state = state.toMutationState(),
-    retryAt = retry_at_epoch_ms?.let(Instant::fromEpochMilliseconds),
-    lastError = last_error,
-)
+private fun Users.toDomainRecord(): UserRecord {
+    val synchronization =
+        when (syncStatus()) {
+            StoredUserSyncStatus.Synced -> UserSynchronization.Synced
+            StoredUserSyncStatus.PendingCreate -> UserSynchronization.PendingCreate
+            StoredUserSyncStatus.CreateFailed ->
+                UserSynchronization.CreateFailed(
+                    reason = last_sync_error ?: "Creation requires review before retrying.",
+                )
+            StoredUserSyncStatus.PendingDelete ->
+                persistenceFailure(
+                    "Pending-delete user $local_id escaped the visible query.",
+                )
+        }
+    return UserRecord(
+        user =
+            User(
+                localId = local_id.toString(),
+                remoteId = remote_id,
+                name = name,
+                email = email,
+                gender = gender.toGender(),
+                status = status.toUserStatus(),
+                observedAt = Instant.fromEpochMilliseconds(observed_at_epoch_ms),
+            ),
+        synchronization = synchronization,
+    )
+}
 
-private fun SelectDueMutations.toDueMutation(): DueMutation = DueMutation(
-    mutation = StoredMutation(
+private fun SelectUndoableUsers.toUndoableDeletion(): UndoableDeletion =
+    UndoableDeletion(
+        user =
+            User(
+                localId = local_id.toString(),
+                remoteId = remote_id,
+                name = name,
+                email = email,
+                gender = gender.toGender(),
+                status = status.toUserStatus(),
+                observedAt = Instant.fromEpochMilliseconds(observed_at_epoch_ms),
+            ),
+        deadline = Instant.fromEpochMilliseconds(undo_deadline_epoch_ms),
+    )
+
+private fun Pending_mutations.toStoredMutation(): StoredMutation =
+    StoredMutation(
         mutationId = mutation_id,
         userLocalId = user_local_id.toString(),
         kind = kind.toMutationKind(),
@@ -396,13 +419,27 @@ private fun SelectDueMutations.toDueMutation(): DueMutation = DueMutation(
         state = state.toMutationState(),
         retryAt = retry_at_epoch_ms?.let(Instant::fromEpochMilliseconds),
         lastError = last_error,
-    ),
-    remoteId = remote_id,
-    name = name,
-    email = email,
-    gender = gender.toGender(),
-    status = status.toUserStatus(),
-)
+    )
+
+private fun SelectDueMutations.toDueMutation(): DueMutation =
+    DueMutation(
+        mutation =
+            StoredMutation(
+                mutationId = mutation_id,
+                userLocalId = user_local_id.toString(),
+                kind = kind.toMutationKind(),
+                createdAt = Instant.fromEpochMilliseconds(created_at_epoch_ms),
+                attemptCount = attempt_count,
+                state = state.toMutationState(),
+                retryAt = retry_at_epoch_ms?.let(Instant::fromEpochMilliseconds),
+                lastError = last_error,
+            ),
+        remoteId = remote_id,
+        name = name,
+        email = email,
+        gender = gender.toGender(),
+        status = status.toUserStatus(),
+    )
 
 private fun Users.syncStatus(): StoredUserSyncStatus = sync_status.toStoredSyncStatus()
 
@@ -414,8 +451,8 @@ private fun app.cash.sqldelight.db.QueryResult<Long>.requireSingleUpdate(operati
     }
 }
 
-private fun String.toDatabaseLocalId(): Long = toLongOrNull()
-    ?: persistenceFailure("Invalid numeric local ID: $this")
+private fun String.toDatabaseLocalId(): Long =
+    toLongOrNull()
+        ?: persistenceFailure("Invalid numeric local ID: $this")
 
-private fun persistenceFailure(reason: String): Nothing =
-    throw UserDataException(UserDataError.Persistence(reason))
+private fun persistenceFailure(reason: String): Nothing = throw UserDataException(UserDataError.Persistence(reason))

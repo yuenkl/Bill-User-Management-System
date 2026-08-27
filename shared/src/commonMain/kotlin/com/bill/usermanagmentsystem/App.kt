@@ -5,10 +5,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.bill.usermanagmentsystem.domain.model.Gender
 import com.bill.usermanagmentsystem.domain.model.UserStatus
 import com.bill.usermanagmentsystem.ui.theme.UserManagementTheme
-import com.bill.usermanagmentsystem.ui.users.UserFeedRoute
-import com.bill.usermanagmentsystem.ui.users.UserFeedScreen
 import com.bill.usermanagmentsystem.ui.users.UserFeedBanner
 import com.bill.usermanagmentsystem.ui.users.UserFeedEmptyState
+import com.bill.usermanagmentsystem.ui.users.UserFeedRoute
+import com.bill.usermanagmentsystem.ui.users.UserFeedScreen
 import com.bill.usermanagmentsystem.ui.users.UserFeedUiState
 import com.bill.usermanagmentsystem.ui.users.UserItemSynchronization
 import com.bill.usermanagmentsystem.ui.users.UserItemUiModel
@@ -33,20 +33,22 @@ fun UserFeedPreview() {
 @Composable
 private fun DarkSynchronizationPreview() {
     PreviewFeed(
-        state = previewFeedState().copy(
-            users = listOf(
-                previewUser(
-                    localId = "pending-user",
-                    name = "Grace Hopper",
-                    synchronization = UserItemSynchronization.Pending,
-                ),
-                previewUser(
-                    localId = "failed-user",
-                    name = "Katherine Johnson",
-                    synchronization = UserItemSynchronization.Failed("Email is already registered"),
-                ),
+        state =
+            previewFeedState().copy(
+                users =
+                    listOf(
+                        previewUser(
+                            localId = "pending-user",
+                            name = "Grace Hopper",
+                            synchronization = UserItemSynchronization.Pending,
+                        ),
+                        previewUser(
+                            localId = "failed-user",
+                            name = "Katherine Johnson",
+                            synchronization = UserItemSynchronization.Failed("Email is already registered"),
+                        ),
+                    ),
             ),
-        ),
         darkTheme = true,
     )
 }
@@ -110,10 +112,11 @@ private fun PreviewFeed(
     }
 }
 
-private fun previewFeedState() = UserFeedUiState(
-    users = listOf(previewUser()),
-    initialLoading = false,
-)
+private fun previewFeedState() =
+    UserFeedUiState(
+        users = listOf(previewUser()),
+        initialLoading = false,
+    )
 
 private fun previewUser(
     localId: String = "preview-user",

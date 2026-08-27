@@ -31,8 +31,7 @@ data class AddUserFormUiState(
 
     fun errorMessage(field: AddUserField): String? = details.firstOrNull { it.type == field }?.error
 
-    fun gender(): Gender? =
-        Gender.entries.firstOrNull { it.apiValue == valueFor(AddUserField.Gender) }
+    fun gender(): Gender? = Gender.entries.firstOrNull { it.apiValue == valueFor(AddUserField.Gender) }
 
     fun status(): UserStatus =
         UserStatus.entries.firstOrNull { it.apiValue == valueFor(AddUserField.Status) }
@@ -51,8 +50,7 @@ enum class AddUserField {
     ;
 
     companion object {
-        fun fromApiName(value: String): AddUserField? =
-            entries.firstOrNull { it.name.equals(value, ignoreCase = true) && it != Form }
+        fun fromApiName(value: String): AddUserField? = entries.firstOrNull { it.name.equals(value, ignoreCase = true) && it != Form }
     }
 }
 
@@ -62,12 +60,13 @@ data class UserDetail(
     val error: String? = null,
 )
 
-private fun defaultAddUserDetails(): List<UserDetail> = listOf(
-    UserDetail(AddUserField.Name),
-    UserDetail(AddUserField.Email),
-    UserDetail(AddUserField.Gender),
-    UserDetail(AddUserField.Status, value = UserStatus.Active.apiValue),
-)
+private fun defaultAddUserDetails(): List<UserDetail> =
+    listOf(
+        UserDetail(AddUserField.Name),
+        UserDetail(AddUserField.Email),
+        UserDetail(AddUserField.Gender),
+        UserDetail(AddUserField.Status, value = UserStatus.Active.apiValue),
+    )
 
 data class AddUserValidationAlert(
     val errors: List<AddUserApiFieldError>,
@@ -90,7 +89,9 @@ data class UserItemUiModel(
 
 sealed interface UserItemSynchronization {
     data object Synced : UserItemSynchronization
+
     data object Pending : UserItemSynchronization
+
     data class Failed(
         val reason: String,
         val retrying: Boolean = false,
@@ -99,15 +100,24 @@ sealed interface UserItemSynchronization {
 
 sealed interface UserFeedEmptyState {
     data object Empty : UserFeedEmptyState
+
     data object Offline : UserFeedEmptyState
+
     data object AuthenticationRequired : UserFeedEmptyState
-    data class Error(val message: String) : UserFeedEmptyState
+
+    data class Error(
+        val message: String,
+    ) : UserFeedEmptyState
 }
 
 sealed interface UserFeedBanner {
     data object Offline : UserFeedBanner
+
     data object AuthenticationRequired : UserFeedBanner
-    data class RefreshFailed(val message: String) : UserFeedBanner
+
+    data class RefreshFailed(
+        val message: String,
+    ) : UserFeedBanner
 }
 
 data class UserFeedMessage(

@@ -9,15 +9,14 @@ import com.bill.usermanagmentsystem.data.local.StoredMutation
 import com.bill.usermanagmentsystem.data.local.StoredUser
 import com.bill.usermanagmentsystem.data.local.UserLocalDataSource
 import com.bill.usermanagmentsystem.data.remote.CreateUserRequest
-import com.bill.usermanagmentsystem.data.remote.RemoteResult
 import com.bill.usermanagmentsystem.data.remote.RemotePage
+import com.bill.usermanagmentsystem.data.remote.RemoteResult
 import com.bill.usermanagmentsystem.data.remote.RemoteUser
 import com.bill.usermanagmentsystem.data.remote.UserRemoteDataSource
 import com.bill.usermanagmentsystem.data.sync.SyncCoordinator
-import com.bill.usermanagmentsystem.domain.model.AddUserInput
 import com.bill.usermanagmentsystem.domain.model.SyncState
-import com.bill.usermanagmentsystem.domain.model.UserRecord
 import com.bill.usermanagmentsystem.domain.model.UndoableDeletion
+import com.bill.usermanagmentsystem.domain.model.UserRecord
 import com.bill.usermanagmentsystem.domain.repository.PageLoadResult
 import com.bill.usermanagmentsystem.platform.ConnectivityObserver
 import com.bill.usermanagmentsystem.platform.ConnectivityStatus
@@ -60,11 +59,17 @@ internal class FakeUserLocalDataSource : UserLocalDataSource {
 
     override suspend fun getAllMutations(): List<StoredMutation> = storedMutations.toList()
 
-    override suspend fun requestDelete(localId: String, undoDeadline: Instant) {
+    override suspend fun requestDelete(
+        localId: String,
+        undoDeadline: Instant,
+    ) {
         deleteRequests += localId to undoDeadline
     }
 
-    override suspend fun undoDelete(localId: String, now: Instant) {
+    override suspend fun undoDelete(
+        localId: String,
+        now: Instant,
+    ) {
         undoRequests += localId to now
     }
 
@@ -83,15 +88,26 @@ internal class FakeUserLocalDataSource : UserLocalDataSource {
         completedCreates += mutationId to localId
     }
 
-    override suspend fun markCreateFailed(mutationId: String, localId: String, reason: String) {
+    override suspend fun markCreateFailed(
+        mutationId: String,
+        localId: String,
+        reason: String,
+    ) {
         failedCreates += Triple(mutationId, localId, reason)
     }
 
-    override suspend fun retryFailedCreate(localId: String, mutationId: String, createdAt: Instant) {
+    override suspend fun retryFailedCreate(
+        localId: String,
+        mutationId: String,
+        createdAt: Instant,
+    ) {
         storedMutations += storedMutation(mutationId, localId, MutationKind.Create, createdAt)
     }
 
-    override suspend fun completeDelete(mutationId: String, localId: String) {
+    override suspend fun completeDelete(
+        mutationId: String,
+        localId: String,
+    ) {
         completedDeletes += mutationId to localId
     }
 
@@ -111,7 +127,10 @@ internal class FakeUserLocalDataSource : UserLocalDataSource {
         retrySchedules += RetrySchedule(mutationId, retryAt, reason)
     }
 
-    override suspend fun markMutationBlocked(mutationId: String, reason: String) {
+    override suspend fun markMutationBlocked(
+        mutationId: String,
+        reason: String,
+    ) {
         blockedMutations += mutationId to reason
     }
 
@@ -123,11 +142,17 @@ internal class FakeUserLocalDataSource : UserLocalDataSource {
         retriedAuthenticationBlockedMutations += 1
     }
 
-    override suspend fun mergeSnapshot(users: List<SnapshotUser>, observedAt: Instant) {
+    override suspend fun mergeSnapshot(
+        users: List<SnapshotUser>,
+        observedAt: Instant,
+    ) {
         mergedSnapshots += users
     }
 
-    override suspend fun mergePage(users: List<SnapshotUser>, observedAt: Instant) {
+    override suspend fun mergePage(
+        users: List<SnapshotUser>,
+        observedAt: Instant,
+    ) {
         mergePageFailure?.let { throw it }
         mergedPages += users
     }
@@ -156,23 +181,26 @@ internal class FakeUserRemoteDataSource : UserRemoteDataSource {
     override suspend fun fetchInitialPage(): RemoteResult<RemotePage> {
         fetchCalls += 1
         requestOrder += "FETCH"
-        val response: RemoteResult<RemotePage> = when (val result = fetchHandler()) {
-            is RemoteResult.Success -> RemoteResult.Success(
-                RemotePage(
-                    users = result.value,
-                    page = 1,
-                    nextPage = 2L.takeIf { it <= totalPages },
-                ),
-            )
-            is RemoteResult.RetryableFailure -> RemoteResult.RetryableFailure(
-                result.reason,
-                result.serverRetryAt,
-            )
-            RemoteResult.AuthenticationFailure -> RemoteResult.AuthenticationFailure
-            is RemoteResult.ValidationFailure -> RemoteResult.ValidationFailure(result.reason)
-            RemoteResult.NotFound -> RemoteResult.NotFound
-            is RemoteResult.PermanentFailure -> RemoteResult.PermanentFailure(result.reason)
-        }
+        val response: RemoteResult<RemotePage> =
+            when (val result = fetchHandler()) {
+                is RemoteResult.Success ->
+                    RemoteResult.Success(
+                        RemotePage(
+                            users = result.value,
+                            page = 1,
+                            nextPage = 2L.takeIf { it <= totalPages },
+                        ),
+                    )
+                is RemoteResult.RetryableFailure ->
+                    RemoteResult.RetryableFailure(
+                        result.reason,
+                        result.serverRetryAt,
+                    )
+                RemoteResult.AuthenticationFailure -> RemoteResult.AuthenticationFailure
+                is RemoteResult.ValidationFailure -> RemoteResult.ValidationFailure(result.reason)
+                RemoteResult.NotFound -> RemoteResult.NotFound
+                is RemoteResult.PermanentFailure -> RemoteResult.PermanentFailure(result.reason)
+            }
         return response
     }
 
@@ -180,17 +208,19 @@ internal class FakeUserRemoteDataSource : UserRemoteDataSource {
         pageRequests += page
         requestOrder += "FETCH:$page"
         return when (val result = pageHandler(page)) {
-            is RemoteResult.Success -> RemoteResult.Success(
-                RemotePage(
-                    users = result.value,
-                    page = page,
-                    nextPage = (page + 1).takeIf { it <= totalPages },
-                ),
-            )
-            is RemoteResult.RetryableFailure -> RemoteResult.RetryableFailure(
-                result.reason,
-                result.serverRetryAt,
-            )
+            is RemoteResult.Success ->
+                RemoteResult.Success(
+                    RemotePage(
+                        users = result.value,
+                        page = page,
+                        nextPage = (page + 1).takeIf { it <= totalPages },
+                    ),
+                )
+            is RemoteResult.RetryableFailure ->
+                RemoteResult.RetryableFailure(
+                    result.reason,
+                    result.serverRetryAt,
+                )
             RemoteResult.AuthenticationFailure -> RemoteResult.AuthenticationFailure
             is RemoteResult.ValidationFailure -> RemoteResult.ValidationFailure(result.reason)
             RemoteResult.NotFound -> RemoteResult.NotFound
@@ -238,9 +268,10 @@ internal class FakeSyncCoordinator(
     private val mutableState = MutableStateFlow<SyncState>(SyncState.Idle)
     override val state: StateFlow<SyncState> = mutableState
     var syncCalls = 0
-    var pageResult: Result<PageLoadResult> = Result.success(
-        PageLoadResult(loadedCount = 0, hasMore = false),
-    )
+    var pageResult: Result<PageLoadResult> =
+        Result.success(
+            PageLoadResult(loadedCount = 0, hasMore = false),
+        )
     var pageCalls = 0
 
     override suspend fun sync(): Result<Unit> {
@@ -264,38 +295,42 @@ internal fun dueCreate(
     mutationId: String = "create-mutation",
     localId: String = "local-user",
     attemptCount: Long = 0,
-): DueMutation = DueMutation(
-    mutation = storedMutation(
-        mutationId = mutationId,
-        localId = localId,
-        kind = MutationKind.Create,
-        createdAt = Instant.fromEpochMilliseconds(1_000),
-        attemptCount = attemptCount,
-    ),
-    remoteId = null,
-    name = "Local user",
-    email = "local@example.com",
-    gender = com.bill.usermanagmentsystem.domain.model.Gender.Female,
-    status = com.bill.usermanagmentsystem.domain.model.UserStatus.Active,
-)
+): DueMutation =
+    DueMutation(
+        mutation =
+            storedMutation(
+                mutationId = mutationId,
+                localId = localId,
+                kind = MutationKind.Create,
+                createdAt = Instant.fromEpochMilliseconds(1_000),
+                attemptCount = attemptCount,
+            ),
+        remoteId = null,
+        name = "Local user",
+        email = "local@example.com",
+        gender = com.bill.usermanagmentsystem.domain.model.Gender.Female,
+        status = com.bill.usermanagmentsystem.domain.model.UserStatus.Active,
+    )
 
 internal fun dueDelete(
     mutationId: String = "delete-mutation",
     localId: String = "local-user",
     remoteId: Long? = 99,
-): DueMutation = DueMutation(
-    mutation = storedMutation(
-        mutationId = mutationId,
-        localId = localId,
-        kind = MutationKind.Delete,
-        createdAt = Instant.fromEpochMilliseconds(1_000),
-    ),
-    remoteId = remoteId,
-    name = "Remote user",
-    email = "remote@example.com",
-    gender = com.bill.usermanagmentsystem.domain.model.Gender.Male,
-    status = com.bill.usermanagmentsystem.domain.model.UserStatus.Active,
-)
+): DueMutation =
+    DueMutation(
+        mutation =
+            storedMutation(
+                mutationId = mutationId,
+                localId = localId,
+                kind = MutationKind.Delete,
+                createdAt = Instant.fromEpochMilliseconds(1_000),
+            ),
+        remoteId = remoteId,
+        name = "Remote user",
+        email = "remote@example.com",
+        gender = com.bill.usermanagmentsystem.domain.model.Gender.Male,
+        status = com.bill.usermanagmentsystem.domain.model.UserStatus.Active,
+    )
 
 private fun storedMutation(
     mutationId: String,
@@ -303,13 +338,14 @@ private fun storedMutation(
     kind: MutationKind,
     createdAt: Instant,
     attemptCount: Long = 0,
-): StoredMutation = StoredMutation(
-    mutationId = mutationId,
-    userLocalId = localId,
-    kind = kind,
-    createdAt = createdAt,
-    attemptCount = attemptCount,
-    state = MutationState.Pending,
-    retryAt = null,
-    lastError = null,
-)
+): StoredMutation =
+    StoredMutation(
+        mutationId = mutationId,
+        userLocalId = localId,
+        kind = kind,
+        createdAt = createdAt,
+        attemptCount = attemptCount,
+        state = MutationState.Pending,
+        retryAt = null,
+        lastError = null,
+    )

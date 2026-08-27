@@ -14,22 +14,23 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.koin.dsl.onClose
 
-fun commonModule(appConfig: AppConfig): Module = module {
-    single { appConfig }
-    single<ConfigurationState> { appConfig.configurationState }
-    single<TimeProvider> { SystemTimeProvider() }
-    single<HttpClient> {
-        createGoRestHttpClient(
-            engineFactory = get<NetworkEngineFactory>(),
-            enableApiLogging = appConfig.enableApiLogging,
-        )
-    } onClose { client -> client?.close() }
-    single<UserRemoteDataSource> {
-        GoRestUserRemoteDataSource(
-            httpClient = get(),
-            appConfig = get(),
-            timeProvider = get(),
-        )
+fun commonModule(appConfig: AppConfig): Module =
+    module {
+        single { appConfig }
+        single<ConfigurationState> { appConfig.configurationState }
+        single<TimeProvider> { SystemTimeProvider() }
+        single<HttpClient> {
+            createGoRestHttpClient(
+                engineFactory = get<NetworkEngineFactory>(),
+                enableApiLogging = appConfig.enableApiLogging,
+            )
+        } onClose { client -> client?.close() }
+        single<UserRemoteDataSource> {
+            GoRestUserRemoteDataSource(
+                httpClient = get(),
+                appConfig = get(),
+                timeProvider = get(),
+            )
+        }
+        single { RelativeTimeFormatter() }
     }
-    single { RelativeTimeFormatter() }
-}

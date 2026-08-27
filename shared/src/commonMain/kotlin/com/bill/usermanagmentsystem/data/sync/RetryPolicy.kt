@@ -22,11 +22,12 @@ internal class RetryPolicy(
     ): Instant {
         val exponent = previousAttemptCount.coerceIn(0, MAX_SAFE_EXPONENT.toLong()).toInt()
         val multiplier = 1L shl exponent
-        val localDelay = if (initialDelayMilliseconds > maximumDelayMilliseconds / multiplier) {
-            maximumDelayMilliseconds
-        } else {
-            min(initialDelayMilliseconds * multiplier, maximumDelayMilliseconds)
-        }
+        val localDelay =
+            if (initialDelayMilliseconds > maximumDelayMilliseconds / multiplier) {
+                maximumDelayMilliseconds
+            } else {
+                min(initialDelayMilliseconds * multiplier, maximumDelayMilliseconds)
+            }
         val localRetryAt = now + localDelay.milliseconds
         return if (serverRetryAt != null && serverRetryAt > localRetryAt) {
             serverRetryAt

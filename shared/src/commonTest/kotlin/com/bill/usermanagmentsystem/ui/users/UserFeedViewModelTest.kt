@@ -12,6 +12,7 @@ import com.bill.usermanagmentsystem.domain.model.UserDataException
 import com.bill.usermanagmentsystem.domain.model.UserRecord
 import com.bill.usermanagmentsystem.domain.model.UserStatus
 import com.bill.usermanagmentsystem.domain.model.UserSynchronization
+import com.bill.usermanagmentsystem.domain.repository.PageLoadResult
 import com.bill.usermanagmentsystem.domain.usecase.AddUser
 import com.bill.usermanagmentsystem.domain.usecase.AddUserValidator
 import com.bill.usermanagmentsystem.domain.usecase.DeleteUserWithUndo
@@ -24,7 +25,6 @@ import com.bill.usermanagmentsystem.domain.usecase.RefreshUsers
 import com.bill.usermanagmentsystem.domain.usecase.RelativeTimeFormatter
 import com.bill.usermanagmentsystem.domain.usecase.RetryUserCreation
 import com.bill.usermanagmentsystem.domain.usecase.UndoUserDeletion
-import com.bill.usermanagmentsystem.domain.repository.PageLoadResult
 import com.bill.usermanagmentsystem.platform.AppLifecycleObserver
 import com.bill.usermanagmentsystem.platform.AppLifecycleState
 import com.bill.usermanagmentsystem.platform.ConnectivityObserver
@@ -56,410 +56,486 @@ import kotlin.time.Instant
 @OptIn(ExperimentalCoroutinesApi::class)
 class UserFeedViewModelTest {
     @Test
-    fun coldStartSynchronizesOnceAndPublishesDatabaseUsers() = runTest {
-        withFixture {
-            users.value = listOf(userRecord())
-            runCurrent()
+    fun coldStartSynchronizesOnceAndPublishesDatabaseUsers() =
+        runTest {
+            withFixture {
+                users.value = listOf(userRecord())
+                runCurrent()
 
-            assertEquals(1, refreshCalls)
-            assertEquals("Ada Lovelace", viewModel.uiState.value.users.single().name)
-            assertNull(viewModel.uiState.value.emptyState)
-        }
-    }
-
-    @Test
-    fun failedCachedRefreshKeepsUsersAndExposesConsumableMessage() = runTest {
-        withFixture {
-            users.value = listOf(userRecord())
-            runCurrent()
-            refreshHandler = {
-                syncState.value = SyncState.Failed(UserDataError.RemoteContract("bad payload"))
-                Result.failure(UserDataException(UserDataError.RemoteContract("bad payload")))
+                assertEquals(1, refreshCalls)
+                assertEquals(
+                    "Ada Lovelace",
+                    viewModel.uiState.value.users
+                        .single()
+                        .name,
+                )
+                assertNull(viewModel.uiState.value.emptyState)
             }
-
-            viewModel.refresh()
-            runCurrent()
-
-            assertEquals(1, viewModel.uiState.value.users.size)
-            assertIs<UserFeedBanner.RefreshFailed>(viewModel.uiState.value.banner)
-            val message = assertNotNull(viewModel.uiState.value.message)
-            viewModel.consumeMessage(message.id)
-            runCurrent()
-            assertNull(viewModel.uiState.value.message)
         }
-    }
 
     @Test
-    fun noCacheOfflineShowsDedicatedOfflineState() = runTest {
-        withFixture(connectivityStatus = ConnectivityStatus.Unavailable) {
-            syncState.value = SyncState.Failed(UserDataError.Offline)
-            runCurrent()
+    fun failedCachedRefreshKeepsUsersAndExposesConsumableMessage() =
+        runTest {
+            withFixture {
+                users.value = listOf(userRecord())
+                runCurrent()
+                refreshHandler = {
+                    syncState.value = SyncState.Failed(UserDataError.RemoteContract("bad payload"))
+                    Result.failure(UserDataException(UserDataError.RemoteContract("bad payload")))
+                }
 
-            assertEquals(UserFeedEmptyState.Offline, viewModel.uiState.value.emptyState)
-            assertTrue(viewModel.uiState.value.users.isEmpty())
+                viewModel.refresh()
+                runCurrent()
+
+                assertEquals(1, viewModel.uiState.value.users.size)
+                assertIs<UserFeedBanner.RefreshFailed>(viewModel.uiState.value.banner)
+                val message = assertNotNull(viewModel.uiState.value.message)
+                viewModel.consumeMessage(message.id)
+                runCurrent()
+                assertNull(viewModel.uiState.value.message)
+            }
         }
-    }
 
     @Test
-    fun cachedOfflineShowsNonBlockingBanner() = runTest {
-        withFixture(connectivityStatus = ConnectivityStatus.Unavailable) {
-            users.value = listOf(userRecord())
-            syncState.value = SyncState.Failed(UserDataError.Offline)
-            runCurrent()
+    fun noCacheOfflineShowsDedicatedOfflineState() =
+        runTest {
+            withFixture(connectivityStatus = ConnectivityStatus.Unavailable) {
+                syncState.value = SyncState.Failed(UserDataError.Offline)
+                runCurrent()
 
-            assertEquals(UserFeedBanner.Offline, viewModel.uiState.value.banner)
-            assertEquals(1, viewModel.uiState.value.users.size)
-        }
-    }
-
-    @Test
-    fun authenticationFailureHasDedicatedEmptyStateAndRetryRunsAgain() = runTest {
-        withFixture {
-            syncState.value = SyncState.Failed(UserDataError.AuthenticationRequired)
-            runCurrent()
-            assertEquals(UserFeedEmptyState.AuthenticationRequired, viewModel.uiState.value.emptyState)
-
-            viewModel.retry()
-            runCurrent()
-            assertEquals(2, refreshCalls)
-        }
-    }
-
-    @Test
-    fun overlappingRefreshesAreDeduplicated() = runTest {
-        val gate = CompletableDeferred<Result<Unit>>()
-        withFixture(initialRefreshHandler = { gate.await() }) {
-            runCurrent()
-            viewModel.refresh()
-            viewModel.refresh()
-            runCurrent()
-
-            assertEquals(1, refreshCalls)
-            gate.complete(Result.success(Unit))
-            runCurrent()
-        }
-    }
-
-    @Test
-    fun startupConnectivityForegroundAndManualTriggersShareOneActiveSynchronization() = runTest {
-        val gate = CompletableDeferred<Result<Unit>>()
-        withFixture(initialRefreshHandler = { gate.await() }) {
-            runCurrent()
-
-            connectivity.status.value = ConnectivityStatus.Unavailable
-            runCurrent()
-            connectivity.status.value = ConnectivityStatus.Available
-            lifecycle.mutableState.value = AppLifecycleState.Foreground
-            viewModel.refresh()
-            runCurrent()
-
-            assertEquals(1, refreshCalls)
-            gate.complete(Result.success(Unit))
-            runCurrent()
-        }
-    }
-
-    @Test
-    fun connectivityAndForegroundTriggersSynchronizeWhenTheCoordinatorIsIdle() = runTest {
-        withFixture(connectivityStatus = ConnectivityStatus.Unavailable) {
-            runCurrent()
-            assertEquals(1, refreshCalls)
-
-            connectivity.status.value = ConnectivityStatus.Available
-            runCurrent()
-            assertEquals(2, refreshCalls)
-
-            lifecycle.mutableState.value = AppLifecycleState.Foreground
-            runCurrent()
-            assertEquals(3, refreshCalls)
-        }
-    }
-
-    @Test
-    fun nextPageRequestsAreDeduplicatedAndExposeRemainingAvailability() = runTest {
-        val gate = CompletableDeferred<Result<PageLoadResult>>()
-        withFixture {
-            pageHandler = { gate.await() }
-            runCurrent()
-
-            viewModel.loadNextPage()
-            viewModel.loadNextPage()
-            runCurrent()
-
-            assertEquals(1, pageCalls)
-            assertTrue(viewModel.uiState.value.loadingMore)
-
-            gate.complete(Result.success(PageLoadResult(loadedCount = 20, hasMore = true)))
-            runCurrent()
-
-            assertTrue(!viewModel.uiState.value.loadingMore)
-            assertTrue(viewModel.uiState.value.canLoadMore)
-        }
-    }
-
-    @Test
-    fun nextPageFailureRequiresExplicitRetryAndCanReachTheEnd() = runTest {
-        withFixture {
-            pageHandler = { Result.failure(UserDataException(UserDataError.Offline)) }
-            runCurrent()
-
-            viewModel.loadNextPage()
-            runCurrent()
-            assertEquals(1, pageCalls)
-            assertNotNull(viewModel.uiState.value.loadMoreError)
-
-            viewModel.loadNextPage()
-            runCurrent()
-            assertEquals(1, pageCalls)
-
-            pageHandler = { Result.success(PageLoadResult(loadedCount = 5, hasMore = false)) }
-            viewModel.retryNextPage()
-            runCurrent()
-
-            assertEquals(2, pageCalls)
-            assertNull(viewModel.uiState.value.loadMoreError)
-            assertTrue(!viewModel.uiState.value.canLoadMore)
-        }
-    }
-
-    @Test
-    fun minuteTickRefreshesRelativeLabelsWithoutChangingDatabase() = runTest {
-        withFixture {
-            users.value = listOf(userRecord(observedAt = clock.current))
-            runCurrent()
-            assertEquals("Just now", viewModel.uiState.value.users.single().relativeTime)
-
-            clock.current += 2.minutes
-            advanceTimeBy(1.minutes.inWholeMilliseconds)
-            runCurrent()
-
-            assertEquals("2 minutes ago", viewModel.uiState.value.users.single().relativeTime)
-            assertEquals(1, users.value.size)
-        }
-    }
-
-    @Test
-    fun formErrorsAppearAfterInteractionAndClearWhenCorrected() = runTest {
-        withFixture {
-            viewModel.openAddUserForm()
-            runCurrent()
-            assertNull(viewModel.uiState.value.addUserForm?.errorMessage(AddUserField.Name))
-
-            viewModel.updateAddUserName(" ")
-            runCurrent()
-            assertEquals("Enter a name.", viewModel.uiState.value.addUserForm?.errorMessage(AddUserField.Name))
-
-            viewModel.updateAddUserName("Ada Lovelace")
-            runCurrent()
-            assertNull(viewModel.uiState.value.addUserForm?.errorMessage(AddUserField.Name))
-        }
-    }
-
-    @Test
-    fun submitRequiresEveryFieldNormalizesInputAndRejectsDuplicateTaps() = runTest {
-        val gate = CompletableDeferred<Result<String>>()
-        withFixture {
-            addHandler = { gate.await() }
-            viewModel.openAddUserForm()
-            viewModel.updateAddUserName("  Ada Lovelace  ")
-            viewModel.updateAddUserEmail(" ada@example.com ")
-            runCurrent()
-            assertEquals(false, viewModel.uiState.value.addUserForm?.canSubmit)
-
-            viewModel.selectAddUserGender(Gender.Female)
-            runCurrent()
-            assertTrue(viewModel.uiState.value.addUserForm?.canSubmit == true)
-
-            viewModel.submitAddUser()
-            viewModel.submitAddUser()
-            runCurrent()
-
-            assertEquals(1, addInputs.size)
-            assertEquals("Ada Lovelace", addInputs.single().name)
-            assertEquals("ada@example.com", addInputs.single().email)
-            assertTrue(viewModel.uiState.value.addUserForm?.submitting == true)
-
-            gate.complete(Result.success("local-created"))
-            runCurrent()
-            assertNull(viewModel.uiState.value.addUserForm)
-        }
-    }
-
-    @Test
-    fun serverFieldFailureStaysSeparateUntilFieldChanges() = runTest {
-        withFixture {
-            addHandler = {
-                Result.failure(
-                    UserDataException(UserDataError.ValidationRejected("email: has already been taken")),
+                assertEquals(UserFeedEmptyState.Offline, viewModel.uiState.value.emptyState)
+                assertTrue(
+                    viewModel.uiState.value.users
+                        .isEmpty(),
                 )
             }
-            viewModel.openAddUserForm()
-            viewModel.updateAddUserName("Ada Lovelace")
-            viewModel.updateAddUserEmail("ada@example.com")
-            viewModel.selectAddUserGender(Gender.Female)
-            viewModel.submitAddUser()
-            runCurrent()
-
-            val failed = assertNotNull(viewModel.uiState.value.addUserForm)
-            assertEquals("has already been taken", failed.errorMessage(AddUserField.Email))
-            assertEquals(
-                UserDetail(
-                    type = AddUserField.Email,
-                    value = "ada@example.com",
-                    error = "has already been taken",
-                ),
-                failed.details.single { it.type == AddUserField.Email },
-            )
-            assertEquals(false, failed.canSubmit)
-            assertEquals(
-                AddUserApiFieldError(field = "email", message = "has already been taken"),
-                viewModel.uiState.value.addUserValidationAlert?.errors?.single(),
-            )
-
-            viewModel.dismissAddUserValidationAlert()
-            runCurrent()
-            assertNull(viewModel.uiState.value.addUserValidationAlert)
-
-            viewModel.updateAddUserEmail("ada2@example.com")
-            runCurrent()
-            assertNull(viewModel.uiState.value.addUserForm?.errorMessage(AddUserField.Email))
-            assertTrue(viewModel.uiState.value.addUserForm?.canSubmit == true)
         }
-    }
 
     @Test
-    fun genericDetailsKeepOtherServerErrorsUntilTheirValueChanges() = runTest {
-        withFixture {
-            addHandler = {
-                Result.failure(
-                    UserDataException(
-                        UserDataError.ValidationRejected("gender: is invalid; status: is invalid"),
+    fun cachedOfflineShowsNonBlockingBanner() =
+        runTest {
+            withFixture(connectivityStatus = ConnectivityStatus.Unavailable) {
+                users.value = listOf(userRecord())
+                syncState.value = SyncState.Failed(UserDataError.Offline)
+                runCurrent()
+
+                assertEquals(UserFeedBanner.Offline, viewModel.uiState.value.banner)
+                assertEquals(1, viewModel.uiState.value.users.size)
+            }
+        }
+
+    @Test
+    fun authenticationFailureHasDedicatedEmptyStateAndRetryRunsAgain() =
+        runTest {
+            withFixture {
+                syncState.value = SyncState.Failed(UserDataError.AuthenticationRequired)
+                runCurrent()
+                assertEquals(UserFeedEmptyState.AuthenticationRequired, viewModel.uiState.value.emptyState)
+
+                viewModel.retry()
+                runCurrent()
+                assertEquals(2, refreshCalls)
+            }
+        }
+
+    @Test
+    fun overlappingRefreshesAreDeduplicated() =
+        runTest {
+            val gate = CompletableDeferred<Result<Unit>>()
+            withFixture(initialRefreshHandler = { gate.await() }) {
+                runCurrent()
+                viewModel.refresh()
+                viewModel.refresh()
+                runCurrent()
+
+                assertEquals(1, refreshCalls)
+                gate.complete(Result.success(Unit))
+                runCurrent()
+            }
+        }
+
+    @Test
+    fun startupConnectivityForegroundAndManualTriggersShareOneActiveSynchronization() =
+        runTest {
+            val gate = CompletableDeferred<Result<Unit>>()
+            withFixture(initialRefreshHandler = { gate.await() }) {
+                runCurrent()
+
+                connectivity.status.value = ConnectivityStatus.Unavailable
+                runCurrent()
+                connectivity.status.value = ConnectivityStatus.Available
+                lifecycle.mutableState.value = AppLifecycleState.Foreground
+                viewModel.refresh()
+                runCurrent()
+
+                assertEquals(1, refreshCalls)
+                gate.complete(Result.success(Unit))
+                runCurrent()
+            }
+        }
+
+    @Test
+    fun connectivityAndForegroundTriggersSynchronizeWhenTheCoordinatorIsIdle() =
+        runTest {
+            withFixture(connectivityStatus = ConnectivityStatus.Unavailable) {
+                runCurrent()
+                assertEquals(1, refreshCalls)
+
+                connectivity.status.value = ConnectivityStatus.Available
+                runCurrent()
+                assertEquals(2, refreshCalls)
+
+                lifecycle.mutableState.value = AppLifecycleState.Foreground
+                runCurrent()
+                assertEquals(3, refreshCalls)
+            }
+        }
+
+    @Test
+    fun nextPageRequestsAreDeduplicatedAndExposeRemainingAvailability() =
+        runTest {
+            val gate = CompletableDeferred<Result<PageLoadResult>>()
+            withFixture {
+                pageHandler = { gate.await() }
+                runCurrent()
+
+                viewModel.loadNextPage()
+                viewModel.loadNextPage()
+                runCurrent()
+
+                assertEquals(1, pageCalls)
+                assertTrue(viewModel.uiState.value.loadingMore)
+
+                gate.complete(Result.success(PageLoadResult(loadedCount = 20, hasMore = true)))
+                runCurrent()
+
+                assertTrue(!viewModel.uiState.value.loadingMore)
+                assertTrue(viewModel.uiState.value.canLoadMore)
+            }
+        }
+
+    @Test
+    fun nextPageFailureRequiresExplicitRetryAndCanReachTheEnd() =
+        runTest {
+            withFixture {
+                pageHandler = { Result.failure(UserDataException(UserDataError.Offline)) }
+                runCurrent()
+
+                viewModel.loadNextPage()
+                runCurrent()
+                assertEquals(1, pageCalls)
+                assertNotNull(viewModel.uiState.value.loadMoreError)
+
+                viewModel.loadNextPage()
+                runCurrent()
+                assertEquals(1, pageCalls)
+
+                pageHandler = { Result.success(PageLoadResult(loadedCount = 5, hasMore = false)) }
+                viewModel.retryNextPage()
+                runCurrent()
+
+                assertEquals(2, pageCalls)
+                assertNull(viewModel.uiState.value.loadMoreError)
+                assertTrue(!viewModel.uiState.value.canLoadMore)
+            }
+        }
+
+    @Test
+    fun minuteTickRefreshesRelativeLabelsWithoutChangingDatabase() =
+        runTest {
+            withFixture {
+                users.value = listOf(userRecord(observedAt = clock.current))
+                runCurrent()
+                assertEquals(
+                    "Just now",
+                    viewModel.uiState.value.users
+                        .single()
+                        .relativeTime,
+                )
+
+                clock.current += 2.minutes
+                advanceTimeBy(1.minutes.inWholeMilliseconds)
+                runCurrent()
+
+                assertEquals(
+                    "2 minutes ago",
+                    viewModel.uiState.value.users
+                        .single()
+                        .relativeTime,
+                )
+                assertEquals(1, users.value.size)
+            }
+        }
+
+    @Test
+    fun formErrorsAppearAfterInteractionAndClearWhenCorrected() =
+        runTest {
+            withFixture {
+                viewModel.openAddUserForm()
+                runCurrent()
+                assertNull(
+                    viewModel.uiState.value.addUserForm
+                        ?.errorMessage(AddUserField.Name),
+                )
+
+                viewModel.updateAddUserName(" ")
+                runCurrent()
+                assertEquals(
+                    "Enter a name.",
+                    viewModel.uiState.value.addUserForm
+                        ?.errorMessage(AddUserField.Name),
+                )
+
+                viewModel.updateAddUserName("Ada Lovelace")
+                runCurrent()
+                assertNull(
+                    viewModel.uiState.value.addUserForm
+                        ?.errorMessage(AddUserField.Name),
+                )
+            }
+        }
+
+    @Test
+    fun submitRequiresEveryFieldNormalizesInputAndRejectsDuplicateTaps() =
+        runTest {
+            val gate = CompletableDeferred<Result<String>>()
+            withFixture {
+                addHandler = { gate.await() }
+                viewModel.openAddUserForm()
+                viewModel.updateAddUserName("  Ada Lovelace  ")
+                viewModel.updateAddUserEmail(" ada@example.com ")
+                runCurrent()
+                assertEquals(
+                    false,
+                    viewModel.uiState.value.addUserForm
+                        ?.canSubmit,
+                )
+
+                viewModel.selectAddUserGender(Gender.Female)
+                runCurrent()
+                assertTrue(
+                    viewModel.uiState.value.addUserForm
+                        ?.canSubmit == true,
+                )
+
+                viewModel.submitAddUser()
+                viewModel.submitAddUser()
+                runCurrent()
+
+                assertEquals(1, addInputs.size)
+                assertEquals("Ada Lovelace", addInputs.single().name)
+                assertEquals("ada@example.com", addInputs.single().email)
+                assertTrue(
+                    viewModel.uiState.value.addUserForm
+                        ?.submitting == true,
+                )
+
+                gate.complete(Result.success("local-created"))
+                runCurrent()
+                assertNull(viewModel.uiState.value.addUserForm)
+            }
+        }
+
+    @Test
+    fun serverFieldFailureStaysSeparateUntilFieldChanges() =
+        runTest {
+            withFixture {
+                addHandler = {
+                    Result.failure(
+                        UserDataException(UserDataError.ValidationRejected("email: has already been taken")),
+                    )
+                }
+                viewModel.openAddUserForm()
+                viewModel.updateAddUserName("Ada Lovelace")
+                viewModel.updateAddUserEmail("ada@example.com")
+                viewModel.selectAddUserGender(Gender.Female)
+                viewModel.submitAddUser()
+                runCurrent()
+
+                val failed = assertNotNull(viewModel.uiState.value.addUserForm)
+                assertEquals("has already been taken", failed.errorMessage(AddUserField.Email))
+                assertEquals(
+                    UserDetail(
+                        type = AddUserField.Email,
+                        value = "ada@example.com",
+                        error = "has already been taken",
                     ),
+                    failed.details.single { it.type == AddUserField.Email },
+                )
+                assertEquals(false, failed.canSubmit)
+                assertEquals(
+                    AddUserApiFieldError(field = "email", message = "has already been taken"),
+                    viewModel.uiState.value.addUserValidationAlert
+                        ?.errors
+                        ?.single(),
+                )
+
+                viewModel.dismissAddUserValidationAlert()
+                runCurrent()
+                assertNull(viewModel.uiState.value.addUserValidationAlert)
+
+                viewModel.updateAddUserEmail("ada2@example.com")
+                runCurrent()
+                assertNull(
+                    viewModel.uiState.value.addUserForm
+                        ?.errorMessage(AddUserField.Email),
+                )
+                assertTrue(
+                    viewModel.uiState.value.addUserForm
+                        ?.canSubmit == true,
                 )
             }
-            viewModel.openAddUserForm()
-            viewModel.updateAddUserName("Ada Lovelace")
-            viewModel.updateAddUserEmail("ada@example.com")
-            viewModel.selectAddUserGender(Gender.Female)
-            viewModel.submitAddUser()
-            runCurrent()
-
-            val rejected = assertNotNull(viewModel.uiState.value.addUserForm)
-            assertEquals("female", rejected.valueFor(AddUserField.Gender))
-            assertEquals("active", rejected.valueFor(AddUserField.Status))
-            assertEquals("is invalid", rejected.errorMessage(AddUserField.Gender))
-            assertEquals("is invalid", rejected.errorMessage(AddUserField.Status))
-
-            viewModel.selectAddUserGender(Gender.Male)
-            runCurrent()
-
-            val changedGender = assertNotNull(viewModel.uiState.value.addUserForm)
-            assertEquals("male", changedGender.valueFor(AddUserField.Gender))
-            assertNull(changedGender.errorMessage(AddUserField.Gender))
-            assertEquals("is invalid", changedGender.errorMessage(AddUserField.Status))
-            assertTrue(!changedGender.canSubmit)
-
-            viewModel.selectAddUserStatus(UserStatus.Inactive)
-            runCurrent()
-
-            val changedStatus = assertNotNull(viewModel.uiState.value.addUserForm)
-            assertEquals("inactive", changedStatus.valueFor(AddUserField.Status))
-            assertNull(changedStatus.errorMessage(AddUserField.Status))
-            assertTrue(changedStatus.canSubmit)
         }
-    }
 
     @Test
-    fun retryCreateRejectsOverlappingTaps() = runTest {
-        val gate = CompletableDeferred<Result<Unit>>()
-        withFixture {
-            retryHandler = { gate.await() }
-            users.value = listOf(
-                userRecord().copy(
-                    synchronization = UserSynchronization.CreateFailed("email: already exists"),
-                ),
-            )
-            runCurrent()
+    fun genericDetailsKeepOtherServerErrorsUntilTheirValueChanges() =
+        runTest {
+            withFixture {
+                addHandler = {
+                    Result.failure(
+                        UserDataException(
+                            UserDataError.ValidationRejected("gender: is invalid; status: is invalid"),
+                        ),
+                    )
+                }
+                viewModel.openAddUserForm()
+                viewModel.updateAddUserName("Ada Lovelace")
+                viewModel.updateAddUserEmail("ada@example.com")
+                viewModel.selectAddUserGender(Gender.Female)
+                viewModel.submitAddUser()
+                runCurrent()
 
-            viewModel.retryUserCreation("local-1")
-            viewModel.retryUserCreation("local-1")
-            runCurrent()
-            assertEquals(listOf("local-1"), retryIds)
-            assertTrue(
-                (viewModel.uiState.value.users.single().synchronization as UserItemSynchronization.Failed)
-                    .retrying,
-            )
+                val rejected = assertNotNull(viewModel.uiState.value.addUserForm)
+                assertEquals("female", rejected.valueFor(AddUserField.Gender))
+                assertEquals("active", rejected.valueFor(AddUserField.Status))
+                assertEquals("is invalid", rejected.errorMessage(AddUserField.Gender))
+                assertEquals("is invalid", rejected.errorMessage(AddUserField.Status))
 
-            gate.complete(Result.success(Unit))
-            runCurrent()
+                viewModel.selectAddUserGender(Gender.Male)
+                runCurrent()
+
+                val changedGender = assertNotNull(viewModel.uiState.value.addUserForm)
+                assertEquals("male", changedGender.valueFor(AddUserField.Gender))
+                assertNull(changedGender.errorMessage(AddUserField.Gender))
+                assertEquals("is invalid", changedGender.errorMessage(AddUserField.Status))
+                assertTrue(!changedGender.canSubmit)
+
+                viewModel.selectAddUserStatus(UserStatus.Inactive)
+                runCurrent()
+
+                val changedStatus = assertNotNull(viewModel.uiState.value.addUserForm)
+                assertEquals("inactive", changedStatus.valueFor(AddUserField.Status))
+                assertNull(changedStatus.errorMessage(AddUserField.Status))
+                assertTrue(changedStatus.canSubmit)
+            }
         }
-    }
 
     @Test
-    fun selectionResolvesLatestUserAndCancelDoesNotDelete() = runTest {
-        withFixture {
-            users.value = listOf(
-                userRecord(),
-                userRecord(localId = "local-2", name = "Grace Hopper"),
-            )
-            runCurrent()
+    fun retryCreateRejectsOverlappingTaps() =
+        runTest {
+            val gate = CompletableDeferred<Result<Unit>>()
+            withFixture {
+                retryHandler = { gate.await() }
+                users.value =
+                    listOf(
+                        userRecord().copy(
+                            synchronization = UserSynchronization.CreateFailed("email: already exists"),
+                        ),
+                    )
+                runCurrent()
 
-            viewModel.selectUserForDeletion("local-2")
-            runCurrent()
-            assertEquals("Grace Hopper", viewModel.uiState.value.deleteConfirmation?.name)
+                viewModel.retryUserCreation("local-1")
+                viewModel.retryUserCreation("local-1")
+                runCurrent()
+                assertEquals(listOf("local-1"), retryIds)
+                assertTrue(
+                    (
+                        viewModel.uiState.value.users
+                            .single()
+                            .synchronization as UserItemSynchronization.Failed
+                    ).retrying,
+                )
 
-            users.value = listOf(userRecord())
-            runCurrent()
-            assertNull(viewModel.uiState.value.deleteConfirmation)
-
-            viewModel.cancelDelete()
-            runCurrent()
-            assertTrue(deleteRequests.isEmpty())
+                gate.complete(Result.success(Unit))
+                runCurrent()
+            }
         }
-    }
 
     @Test
-    fun confirmUsesSelectedLocalIdAndDeduplicatesRepeatedTaps() = runTest {
-        val gate = CompletableDeferred<Result<DeletedUserUndo>>()
-        withFixture {
-            users.value = listOf(userRecord())
-            deleteHandler = { gate.await() }
-            runCurrent()
+    fun selectionResolvesLatestUserAndCancelDoesNotDelete() =
+        runTest {
+            withFixture {
+                users.value =
+                    listOf(
+                        userRecord(),
+                        userRecord(localId = "local-2", name = "Grace Hopper"),
+                    )
+                runCurrent()
 
-            viewModel.selectUserForDeletion("local-1")
-            viewModel.confirmDelete()
-            viewModel.confirmDelete()
-            runCurrent()
+                viewModel.selectUserForDeletion("local-2")
+                runCurrent()
+                assertEquals(
+                    "Grace Hopper",
+                    viewModel.uiState.value.deleteConfirmation
+                        ?.name,
+                )
 
-            assertEquals(listOf("local-1"), deleteRequests)
-            assertTrue(viewModel.uiState.value.deleteInProgress)
+                users.value = listOf(userRecord())
+                runCurrent()
+                assertNull(viewModel.uiState.value.deleteConfirmation)
 
-            gate.complete(Result.success(deletedUserUndo()))
-            runCurrent()
-            assertNull(viewModel.uiState.value.deleteConfirmation)
-            assertTrue(!viewModel.uiState.value.deleteInProgress)
+                viewModel.cancelDelete()
+                runCurrent()
+                assertTrue(deleteRequests.isEmpty())
+            }
         }
-    }
 
     @Test
-    fun undoForCurrentSnackbarCallsRepositoryOnce() = runTest {
-        withFixture {
-            users.value = listOf(userRecord())
-            deleteHandler = { Result.success(deletedUserUndo()) }
-            runCurrent()
+    fun confirmUsesSelectedLocalIdAndDeduplicatesRepeatedTaps() =
+        runTest {
+            val gate = CompletableDeferred<Result<DeletedUserUndo>>()
+            withFixture {
+                users.value = listOf(userRecord())
+                deleteHandler = { gate.await() }
+                runCurrent()
 
-            viewModel.selectUserForDeletion("local-1")
-            viewModel.confirmDelete()
-            runCurrent()
-            val input = viewModel.uiState.value.undoSnackbar!!.input
-            viewModel.undoDelete(input)
-            viewModel.undoDelete(input)
-            runCurrent()
+                viewModel.selectUserForDeletion("local-1")
+                viewModel.confirmDelete()
+                viewModel.confirmDelete()
+                runCurrent()
 
-            assertEquals(listOf(input), undoRequests)
-            assertNull(viewModel.uiState.value.undoSnackbar)
+                assertEquals(listOf("local-1"), deleteRequests)
+                assertTrue(viewModel.uiState.value.deleteInProgress)
+
+                gate.complete(Result.success(deletedUserUndo()))
+                runCurrent()
+                assertNull(viewModel.uiState.value.deleteConfirmation)
+                assertTrue(!viewModel.uiState.value.deleteInProgress)
+            }
         }
-    }
+
+    @Test
+    fun undoForCurrentSnackbarCallsRepositoryOnce() =
+        runTest {
+            withFixture {
+                users.value = listOf(userRecord())
+                deleteHandler = { Result.success(deletedUserUndo()) }
+                runCurrent()
+
+                viewModel.selectUserForDeletion("local-1")
+                viewModel.confirmDelete()
+                runCurrent()
+                val input =
+                    viewModel.uiState.value.undoSnackbar!!
+                        .input
+                viewModel.undoDelete(input)
+                viewModel.undoDelete(input)
+                runCurrent()
+
+                assertEquals(listOf(input), undoRequests)
+                assertNull(viewModel.uiState.value.undoSnackbar)
+            }
+        }
 
     private suspend fun kotlinx.coroutines.test.TestScope.withFixture(
         connectivityStatus: ConnectivityStatus = ConnectivityStatus.Available,
@@ -492,15 +568,19 @@ class UserFeedViewModelTest {
         var finalizeCalls = 0
         val deleteRequests = mutableListOf<String>()
         val undoRequests = mutableListOf<AddUserInput>()
-        fun deletedUserUndo() = DeletedUserUndo(
-            userName = "Ada Lovelace",
-            input = AddUserInput(
-                name = "Ada Lovelace",
-                email = "ada@example.com",
-                gender = Gender.Female,
-                status = UserStatus.Active,
-            ),
-        )
+
+        fun deletedUserUndo() =
+            DeletedUserUndo(
+                userName = "Ada Lovelace",
+                input =
+                    AddUserInput(
+                        name = "Ada Lovelace",
+                        email = "ada@example.com",
+                        gender = Gender.Female,
+                        status = UserStatus.Active,
+                    ),
+            )
+
         var refreshHandler: suspend () -> Result<Unit> = initialRefreshHandler
         var pageCalls = 0
         var pageHandler: suspend () -> Result<PageLoadResult> = {
@@ -515,48 +595,58 @@ class UserFeedViewModelTest {
         }
         var undoHandler: suspend (AddUserInput) -> Result<String> = { Result.success("restored") }
         var finalizeHandler: suspend () -> Result<Int> = { Result.success(0) }
-        val viewModel = UserFeedViewModel(
-            observeUsers = ObserveUsers { users },
-            observeSyncState = ObserveSyncState { syncState },
-            observeUndoableDeletions = ObserveUndoableDeletions { undoableDeletions },
-            refreshUsers = RefreshUsers {
-                refreshCalls += 1
-                refreshHandler()
-            },
-            loadNextUsersPage = LoadNextUsersPage {
-                pageCalls += 1
-                pageHandler()
-            },
-            addUser = AddUser { input ->
-                addInputs += input
-                addHandler(input)
-            },
-            retryUserCreationUseCase = RetryUserCreation { localId ->
-                retryIds += localId
-                retryHandler(localId)
-            },
-            addUserValidator = AddUserValidator(),
-            deleteUserWithUndo = DeleteUserWithUndo { localId ->
-                deleteRequests += localId
-                deleteHandler(localId)
-            },
-            undoUserDeletion = UndoUserDeletion { input ->
-                undoRequests += input
-                undoHandler(input)
-            },
-            finalizeExpiredDeletions = FinalizeExpiredDeletions {
-                finalizeCalls += 1
-                finalizeHandler()
-            },
-            connectivityObserver = connectivity,
-            lifecycleObserver = lifecycle,
-            timeProvider = clock,
-            relativeTimeFormatter = RelativeTimeFormatter(),
-            dispatcher = dispatcher,
-        )
+        val viewModel =
+            UserFeedViewModel(
+                observeUsers = ObserveUsers { users },
+                observeSyncState = ObserveSyncState { syncState },
+                observeUndoableDeletions = ObserveUndoableDeletions { undoableDeletions },
+                refreshUsers =
+                    RefreshUsers {
+                        refreshCalls += 1
+                        refreshHandler()
+                    },
+                loadNextUsersPage =
+                    LoadNextUsersPage {
+                        pageCalls += 1
+                        pageHandler()
+                    },
+                addUser =
+                    AddUser { input ->
+                        addInputs += input
+                        addHandler(input)
+                    },
+                retryUserCreationUseCase =
+                    RetryUserCreation { localId ->
+                        retryIds += localId
+                        retryHandler(localId)
+                    },
+                addUserValidator = AddUserValidator(),
+                deleteUserWithUndo =
+                    DeleteUserWithUndo { localId ->
+                        deleteRequests += localId
+                        deleteHandler(localId)
+                    },
+                undoUserDeletion =
+                    UndoUserDeletion { input ->
+                        undoRequests += input
+                        undoHandler(input)
+                    },
+                finalizeExpiredDeletions =
+                    FinalizeExpiredDeletions {
+                        finalizeCalls += 1
+                        finalizeHandler()
+                    },
+                connectivityObserver = connectivity,
+                lifecycleObserver = lifecycle,
+                timeProvider = clock,
+                relativeTimeFormatter = RelativeTimeFormatter(),
+                dispatcher = dispatcher,
+            )
     }
 
-    private class FakeConnectivityObserver(initial: ConnectivityStatus) : ConnectivityObserver {
+    private class FakeConnectivityObserver(
+        initial: ConnectivityStatus,
+    ) : ConnectivityObserver {
         override val status = MutableStateFlow(initial)
     }
 
@@ -565,7 +655,9 @@ class UserFeedViewModelTest {
         override val state: StateFlow<AppLifecycleState> = mutableState
     }
 
-    private class FakeTimeProvider(var current: Instant) : TimeProvider {
+    private class FakeTimeProvider(
+        var current: Instant,
+    ) : TimeProvider {
         override fun now(): Instant = current
     }
 
@@ -573,26 +665,28 @@ class UserFeedViewModelTest {
         observedAt: Instant = Instant.parse("2026-08-26T12:00:00Z"),
         localId: String = "local-1",
         name: String = "Ada Lovelace",
-    ): UserRecord = UserRecord(
-        user = User(
-            localId = localId,
-            remoteId = 42,
-            name = name,
-            email = "ada@example.com",
-            gender = Gender.Female,
-            status = UserStatus.Active,
-            observedAt = observedAt,
-        ),
-        synchronization = UserSynchronization.Synced,
-    )
+    ): UserRecord =
+        UserRecord(
+            user =
+                User(
+                    localId = localId,
+                    remoteId = 42,
+                    name = name,
+                    email = "ada@example.com",
+                    gender = Gender.Female,
+                    status = UserStatus.Active,
+                    observedAt = observedAt,
+                ),
+            synchronization = UserSynchronization.Synced,
+        )
 
     private fun Fixture.undoableDeletion(
         localId: String = "local-1",
         name: String = "Ada Lovelace",
         secondsFromNow: Int = 5,
-    ): UndoableDeletion = UndoableDeletion(
-        user = userRecord(localId = localId, name = name).user,
-        deadline = clock.current + secondsFromNow.seconds,
-    )
-
+    ): UndoableDeletion =
+        UndoableDeletion(
+            user = userRecord(localId = localId, name = name).user,
+            deadline = clock.current + secondsFromNow.seconds,
+        )
 }

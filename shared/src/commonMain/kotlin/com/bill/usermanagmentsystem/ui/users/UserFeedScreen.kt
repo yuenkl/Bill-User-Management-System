@@ -9,19 +9,19 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -29,27 +29,27 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -134,11 +134,12 @@ fun UserFeedScreen(
     LaunchedEffect(undoSnackbar?.input) {
         if (undoSnackbar != null) {
             snackbarHostState.currentSnackbarData?.dismiss()
-            val result = snackbarHostState.showSnackbar(
-                message = "${undoSnackbar.userName} deleted",
-                actionLabel = "Undo",
-                duration = SnackbarDuration.Indefinite,
-            )
+            val result =
+                snackbarHostState.showSnackbar(
+                    message = "${undoSnackbar.userName} deleted",
+                    actionLabel = "Undo",
+                    duration = SnackbarDuration.Indefinite,
+                )
             if (result == SnackbarResult.ActionPerformed) {
                 onUndoDelete(undoSnackbar.input)
             } else {
@@ -168,17 +169,19 @@ fun UserFeedScreen(
             snackbarHost = {
                 SnackbarHost(
                     hostState = snackbarHostState,
-                    modifier = Modifier
-                        .navigationBarsPadding()
-                        .padding(horizontal = 16.dp),
+                    modifier =
+                        Modifier
+                            .navigationBarsPadding()
+                            .padding(horizontal = 16.dp),
                 )
             },
             floatingActionButton = {
                 FloatingActionButton(
                     onClick = onAddUser,
-                    modifier = Modifier
-                        .navigationBarsPadding()
-                        .semantics { contentDescription = "Add user" },
+                    modifier =
+                        Modifier
+                            .navigationBarsPadding()
+                            .semantics { contentDescription = "Add user" },
                 ) {
                     Text("+", style = MaterialTheme.typography.headlineMedium)
                 }
@@ -187,32 +190,34 @@ fun UserFeedScreen(
             PullToRefreshBox(
                 isRefreshing = state.refreshing,
                 onRefresh = onRefresh,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(contentPadding)
-                    .semantics {
-                        contentDescription = "User feed. Pull to refresh."
-                        onClick(label = "Refresh") {
-                            onRefresh()
-                            true
-                        }
-                    },
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(contentPadding)
+                        .semantics {
+                            contentDescription = "User feed. Pull to refresh."
+                            onClick(label = "Refresh") {
+                                onRefresh()
+                                true
+                            }
+                        },
             ) {
                 when {
                     state.initialLoading -> LoadingFeed(layoutMode)
                     state.emptyState != null && !state.canLoadMore -> EmptyFeed(state.emptyState, onRetry)
-                    else -> UserList(
-                        users = state.users,
-                        banner = state.banner,
-                        layoutMode = layoutMode,
-                        loadingMore = state.loadingMore,
-                        canLoadMore = state.canLoadMore,
-                        loadMoreError = state.loadMoreError,
-                        onRetryUserCreation = onRetryUserCreation,
-                        onUserLongClick = onUserLongClick,
-                        onLoadNextPage = onLoadNextPage,
-                        onRetryNextPage = onRetryNextPage,
-                    )
+                    else ->
+                        UserList(
+                            users = state.users,
+                            banner = state.banner,
+                            layoutMode = layoutMode,
+                            loadingMore = state.loadingMore,
+                            canLoadMore = state.canLoadMore,
+                            loadMoreError = state.loadMoreError,
+                            onRetryUserCreation = onRetryUserCreation,
+                            onUserLongClick = onUserLongClick,
+                            onLoadNextPage = onLoadNextPage,
+                            onRetryNextPage = onRetryNextPage,
+                        )
                 }
             }
         }
@@ -221,10 +226,11 @@ fun UserFeedScreen(
             if (layoutMode == AdaptiveLayoutMode.Wide) {
                 Dialog(onDismissRequest = onAddUserDismissed) {
                     Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .imePadding()
-                            .semantics { contentDescription = "Add user dialog" },
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .imePadding()
+                                .semantics { contentDescription = "Add user dialog" },
                         shape = MaterialTheme.shapes.extraLarge,
                         tonalElevation = 6.dp,
                     ) {
@@ -240,9 +246,10 @@ fun UserFeedScreen(
                     }
                 }
             } else {
-                val addUserSheetState = rememberModalBottomSheetState(
-                    skipPartiallyExpanded = true,
-                )
+                val addUserSheetState =
+                    rememberModalBottomSheetState(
+                        skipPartiallyExpanded = true,
+                    )
                 ModalBottomSheet(
                     onDismissRequest = onAddUserDismissed,
                     sheetState = addUserSheetState,
@@ -256,9 +263,10 @@ fun UserFeedScreen(
                         onStatusSelected = onAddUserStatusSelected,
                         onCancel = onAddUserDismissed,
                         onSubmit = onAddUserSubmitted,
-                        modifier = Modifier
-                            .heightIn(max = compactFormMaxHeight)
-                            .imePadding(),
+                        modifier =
+                            Modifier
+                                .heightIn(max = compactFormMaxHeight)
+                                .imePadding(),
                     )
                 }
             }
@@ -296,7 +304,9 @@ fun UserFeedScreen(
     }
 }
 
-internal enum class AdaptiveLayoutMode(val columns: Int) {
+internal enum class AdaptiveLayoutMode(
+    val columns: Int,
+) {
     Compact(columns = 1),
     Wide(columns = 2),
 }
@@ -305,8 +315,10 @@ internal enum class AdaptiveLayoutMode(val columns: Int) {
  * Uses the available window shape rather than a device-width threshold. This keeps portrait
  * screens as a single feed and makes every landscape window a two-column grid.
  */
-internal fun adaptiveLayoutMode(width: Dp, height: Dp): AdaptiveLayoutMode =
-    if (width > height) AdaptiveLayoutMode.Wide else AdaptiveLayoutMode.Compact
+internal fun adaptiveLayoutMode(
+    width: Dp,
+    height: Dp,
+): AdaptiveLayoutMode = if (width > height) AdaptiveLayoutMode.Wide else AdaptiveLayoutMode.Compact
 
 @Composable
 private fun UserFormContent(
@@ -338,23 +350,25 @@ private fun LoadingFeed(layoutMode: AdaptiveLayoutMode) {
         contentAlignment = Alignment.TopCenter,
     ) {
         when (layoutMode) {
-            AdaptiveLayoutMode.Compact -> LazyColumn(
-                modifier = Modifier.widthIn(max = MAX_FEED_WIDTH).fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                items(5) { UserCardShimmer() }
-            }
+            AdaptiveLayoutMode.Compact ->
+                LazyColumn(
+                    modifier = Modifier.widthIn(max = MAX_FEED_WIDTH).fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    items(5) { UserCardShimmer() }
+                }
 
-            AdaptiveLayoutMode.Wide -> LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                modifier = Modifier.widthIn(max = MAX_FEED_WIDTH).fillMaxSize(),
-                contentPadding = PaddingValues(20.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                items(6) { UserCardShimmer() }
-            }
+            AdaptiveLayoutMode.Wide ->
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier.widthIn(max = MAX_FEED_WIDTH).fillMaxSize(),
+                    contentPadding = PaddingValues(20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    items(6) { UserCardShimmer() }
+                }
         }
     }
 }
@@ -379,77 +393,81 @@ private fun UserList(
         contentAlignment = Alignment.TopCenter,
     ) {
         when (layoutMode) {
-            AdaptiveLayoutMode.Compact -> LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .widthIn(max = MAX_FEED_WIDTH)
-                    .fillMaxSize()
-                    .semantics { contentDescription = "Users" },
-                contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 96.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                if (banner != null) {
-                    item(key = "feed-banner") { FeedBanner(banner) }
-                }
-                items(users, key = UserItemUiModel::localId) { user ->
-                    FeedUserCard(
-                        user = user,
-                        onRetryUserCreation = onRetryUserCreation,
-                        onUserLongClick = onUserLongClick,
-                        modifier = Modifier.animateItem(),
-                    )
-                }
-                if (canLoadMore || loadMoreError != null) {
-                    item(key = "pagination-${users.size}-${loadMoreError != null}") {
-                        PaginationFooter(
-                            loading = loadingMore,
-                            error = loadMoreError,
-                            onLoad = onLoadNextPage,
-                            onRetry = onRetryNextPage,
+            AdaptiveLayoutMode.Compact ->
+                LazyColumn(
+                    state = listState,
+                    modifier =
+                        Modifier
+                            .widthIn(max = MAX_FEED_WIDTH)
+                            .fillMaxSize()
+                            .semantics { contentDescription = "Users" },
+                    contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 96.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    if (banner != null) {
+                        item(key = "feed-banner") { FeedBanner(banner) }
+                    }
+                    items(users, key = UserItemUiModel::localId) { user ->
+                        FeedUserCard(
+                            user = user,
+                            onRetryUserCreation = onRetryUserCreation,
+                            onUserLongClick = onUserLongClick,
+                            modifier = Modifier.animateItem(),
                         )
                     }
+                    if (canLoadMore || loadMoreError != null) {
+                        item(key = "pagination-${users.size}-${loadMoreError != null}") {
+                            PaginationFooter(
+                                loading = loadingMore,
+                                error = loadMoreError,
+                                onLoad = onLoadNextPage,
+                                onRetry = onRetryNextPage,
+                            )
+                        }
+                    }
                 }
-            }
 
-            AdaptiveLayoutMode.Wide -> LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                state = gridState,
-                modifier = Modifier
-                    .widthIn(max = MAX_FEED_WIDTH)
-                    .fillMaxSize()
-                    .semantics { contentDescription = "Users" },
-                contentPadding = PaddingValues(start = 20.dp, top = 16.dp, end = 20.dp, bottom = 104.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                if (banner != null) {
-                    item(
-                        key = "feed-banner",
-                        span = { GridItemSpan(maxLineSpan) },
-                    ) { FeedBanner(banner) }
-                }
-                items(users, key = UserItemUiModel::localId) { user ->
-                    FeedUserCard(
-                        user = user,
-                        onRetryUserCreation = onRetryUserCreation,
-                        onUserLongClick = onUserLongClick,
-                        modifier = Modifier.animateItem(),
-                    )
-                }
-                if (canLoadMore || loadMoreError != null) {
-                    item(
-                        key = "pagination-${users.size}-${loadMoreError != null}",
-                        span = { GridItemSpan(maxLineSpan) },
-                    ) {
-                        PaginationFooter(
-                            loading = loadingMore,
-                            error = loadMoreError,
-                            onLoad = onLoadNextPage,
-                            onRetry = onRetryNextPage,
+            AdaptiveLayoutMode.Wide ->
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    state = gridState,
+                    modifier =
+                        Modifier
+                            .widthIn(max = MAX_FEED_WIDTH)
+                            .fillMaxSize()
+                            .semantics { contentDescription = "Users" },
+                    contentPadding = PaddingValues(start = 20.dp, top = 16.dp, end = 20.dp, bottom = 104.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    if (banner != null) {
+                        item(
+                            key = "feed-banner",
+                            span = { GridItemSpan(maxLineSpan) },
+                        ) { FeedBanner(banner) }
+                    }
+                    items(users, key = UserItemUiModel::localId) { user ->
+                        FeedUserCard(
+                            user = user,
+                            onRetryUserCreation = onRetryUserCreation,
+                            onUserLongClick = onUserLongClick,
+                            modifier = Modifier.animateItem(),
                         )
                     }
+                    if (canLoadMore || loadMoreError != null) {
+                        item(
+                            key = "pagination-${users.size}-${loadMoreError != null}",
+                            span = { GridItemSpan(maxLineSpan) },
+                        ) {
+                            PaginationFooter(
+                                loading = loadingMore,
+                                error = loadMoreError,
+                                onLoad = onLoadNextPage,
+                                onRetry = onRetryNextPage,
+                            )
+                        }
+                    }
                 }
-            }
         }
     }
 }
@@ -471,17 +489,19 @@ private fun PaginationFooter(
         ) {
             if (loading) {
                 CircularProgressIndicator(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .semantics { contentDescription = "Loading more users" },
+                    modifier =
+                        Modifier
+                            .size(32.dp)
+                            .semantics { contentDescription = "Loading more users" },
                 )
             }
         }
     } else {
         Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .semantics { liveRegion = LiveRegionMode.Polite },
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .semantics { liveRegion = LiveRegionMode.Polite },
             color = MaterialTheme.colorScheme.errorContainer,
             contentColor = MaterialTheme.colorScheme.onErrorContainer,
             shape = MaterialTheme.shapes.medium,
@@ -562,18 +582,20 @@ private fun DeleteConfirmationDialog(
 
 @Composable
 private fun FeedBanner(banner: UserFeedBanner) {
-    val text = when (banner) {
-        UserFeedBanner.Offline -> "Offline · showing saved users"
-        UserFeedBanner.AuthenticationRequired -> "Access token required · showing saved users"
-        is UserFeedBanner.RefreshFailed -> "Refresh failed · ${banner.message}"
-    }
+    val text =
+        when (banner) {
+            UserFeedBanner.Offline -> "Offline · showing saved users"
+            UserFeedBanner.AuthenticationRequired -> "Access token required · showing saved users"
+            is UserFeedBanner.RefreshFailed -> "Refresh failed · ${banner.message}"
+        }
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics {
-                contentDescription = text
-                liveRegion = LiveRegionMode.Polite
-            },
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .semantics {
+                    contentDescription = text
+                    liveRegion = LiveRegionMode.Polite
+                },
         color = MaterialTheme.colorScheme.secondaryContainer,
         shape = MaterialTheme.shapes.medium,
     ) {

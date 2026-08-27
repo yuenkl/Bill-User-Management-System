@@ -7,10 +7,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-class AndroidAppLifecycleObserver(application: Application) :
-    AppLifecycleObserver,
+class AndroidAppLifecycleObserver(
+    application: Application,
+) : AppLifecycleObserver,
     Application.ActivityLifecycleCallbacks {
-
     private val mutableState = MutableStateFlow(AppLifecycleState.Background)
     private var startedActivityCount = 0
 
@@ -34,9 +34,19 @@ class AndroidAppLifecycleObserver(application: Application) :
         }
     }
 
-    override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+    override fun onActivityCreated(
+        activity: Activity,
+        savedInstanceState: Bundle?,
+    ) = Unit
+
     override fun onActivityResumed(activity: Activity) = Unit
+
     override fun onActivityPaused(activity: Activity) = Unit
-    override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+
+    override fun onActivitySaveInstanceState(
+        activity: Activity,
+        outState: Bundle,
+    ) = Unit
+
     override fun onActivityDestroyed(activity: Activity) = Unit
 }

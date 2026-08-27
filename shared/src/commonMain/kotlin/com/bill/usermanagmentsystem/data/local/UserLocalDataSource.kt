@@ -1,7 +1,7 @@
 package com.bill.usermanagmentsystem.data.local
 
-import com.bill.usermanagmentsystem.domain.model.UserRecord
 import com.bill.usermanagmentsystem.domain.model.UndoableDeletion
+import com.bill.usermanagmentsystem.domain.model.UserRecord
 import kotlinx.coroutines.flow.Flow
 import kotlin.time.Instant
 

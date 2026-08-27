@@ -12,9 +12,10 @@ class AndroidSqlDriverFactory(
     override fun create(
         schema: SqlSchema<QueryResult.Value<Unit>>,
         name: String,
-    ): SqlDriver = AndroidSqliteDriver(
-        schema = schema,
-        context = context,
-        name = name,
-    )
+    ): SqlDriver =
+        AndroidSqliteDriver(
+            schema = schema,
+            context = context,
+            name = name,
+        )
 }

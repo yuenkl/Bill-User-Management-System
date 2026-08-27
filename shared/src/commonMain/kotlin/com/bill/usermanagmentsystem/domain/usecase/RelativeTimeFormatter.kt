@@ -25,6 +25,8 @@ class RelativeTimeFormatter {
         return observedAt.toString().take(10)
     }
 
-    private fun quantity(value: Long, unit: String): String =
-        "$value $unit${if (value == 1L) "" else "s"} ago"
+    private fun quantity(
+        value: Long,
+        unit: String,
+    ): String = "$value $unit${if (value == 1L) "" else "s"} ago"
 }

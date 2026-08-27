@@ -22,11 +22,12 @@ class IosConnectivityObserver : ConnectivityObserver {
 
     init {
         nw_path_monitor_set_update_handler(monitor) { path ->
-            mutableStatus.value = if (nw_path_get_status(path) == nw_path_status_satisfied) {
-                ConnectivityStatus.Available
-            } else {
-                ConnectivityStatus.Unavailable
-            }
+            mutableStatus.value =
+                if (nw_path_get_status(path) == nw_path_status_satisfied) {
+                    ConnectivityStatus.Available
+                } else {
+                    ConnectivityStatus.Unavailable
+                }
         }
         nw_path_monitor_set_queue(monitor, queue)
         nw_path_monitor_start(monitor)

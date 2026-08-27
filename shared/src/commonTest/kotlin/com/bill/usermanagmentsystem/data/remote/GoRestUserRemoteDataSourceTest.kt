@@ -20,337 +20,384 @@ import kotlin.time.Instant
 
 class GoRestUserRemoteDataSourceTest {
     @Test
-    fun onePageResponseUsesPageOneAndPreservesResponseOrder() = runRemoteTest { requests ->
-        val source = source(
-            engine = engine { request ->
-                requests += request.url.toString()
-                assertEquals(null, request.url.parameters["page"])
-                assertEquals(null, request.url.parameters["per_page"])
-                assertEquals("no-cache", request.headers[HttpHeaders.CacheControl])
-                assertEquals("Bearer secret", request.headers[HttpHeaders.Authorization])
-                jsonResponse(usersJson(9, 3))
-            },
-        )
-
-        val page = assertIs<RemoteResult.Success<RemotePage>>(source.fetchInitialPage()).value
-
-        assertEquals(listOf("https://example.test/public/v2/users"), requests)
-        assertEquals(1L, page.page)
-        assertEquals(null, page.nextPage)
-        assertEquals(listOf(9L, 3L), page.users.map(RemoteUser::remoteId))
-        assertEquals(listOf(0L, 1L), page.users.map(RemoteUser::serverPosition))
-    }
-
-    @Test
-    fun initialPageReadsTheNextPageLink() = runRemoteTest { requests ->
-        val source = source(
-            engine = engine { request ->
-                val page = request.url.parameters["page"].orEmpty()
-                requests += page
-                assertEquals("Bearer secret", request.headers[HttpHeaders.Authorization])
-                jsonResponse(
-                    usersJson(1),
-                    nextLink = "https://example.test/public/v2/users?page=2",
+    fun onePageResponseUsesPageOneAndPreservesResponseOrder() =
+        runRemoteTest { requests ->
+            val source =
+                source(
+                    engine =
+                        engine { request ->
+                            requests += request.url.toString()
+                            assertEquals(null, request.url.parameters["page"])
+                            assertEquals(null, request.url.parameters["per_page"])
+                            assertEquals("no-cache", request.headers[HttpHeaders.CacheControl])
+                            assertEquals("Bearer secret", request.headers[HttpHeaders.Authorization])
+                            jsonResponse(usersJson(9, 3))
+                        },
                 )
-            },
-        )
 
-        val page = assertIs<RemoteResult.Success<RemotePage>>(source.fetchInitialPage()).value
+            val page = assertIs<RemoteResult.Success<RemotePage>>(source.fetchInitialPage()).value
 
-        assertEquals(listOf(""), requests)
-        assertEquals(1L, page.page)
-        assertEquals(2L, page.nextPage)
-        assertEquals(listOf(1L), page.users.map(RemoteUser::remoteId))
-        assertEquals(listOf(0L), page.users.map(RemoteUser::serverPosition))
-    }
+            assertEquals(listOf("https://example.test/public/v2/users"), requests)
+            assertEquals(1L, page.page)
+            assertEquals(null, page.nextPage)
+            assertEquals(listOf(9L, 3L), page.users.map(RemoteUser::remoteId))
+            assertEquals(listOf(0L, 1L), page.users.map(RemoteUser::serverPosition))
+        }
 
     @Test
-    fun invalidNextPageLinksArePermanentFailures() = runRemoteTest { requests ->
-        listOf(
-            "not-a-link",
-            "https://example.test/public/v2/users?page=many",
-            "https://example.test/public/v2/users?page=0",
-            "https://example.test/public/v2/users?page=1",
-        ).forEach { value ->
-            val source = source(
-                engine = engine { request ->
-                    requests += request.url.parameters["page"].orEmpty()
-                    jsonResponse(usersJson(1), nextLink = value)
-                },
-            )
+    fun initialPageReadsTheNextPageLink() =
+        runRemoteTest { requests ->
+            val source =
+                source(
+                    engine =
+                        engine { request ->
+                            val page = request.url.parameters["page"].orEmpty()
+                            requests += page
+                            assertEquals("Bearer secret", request.headers[HttpHeaders.Authorization])
+                            jsonResponse(
+                                usersJson(1),
+                                nextLink = "https://example.test/public/v2/users?page=2",
+                            )
+                        },
+                )
+
+            val page = assertIs<RemoteResult.Success<RemotePage>>(source.fetchInitialPage()).value
+
+            assertEquals(listOf(""), requests)
+            assertEquals(1L, page.page)
+            assertEquals(2L, page.nextPage)
+            assertEquals(listOf(1L), page.users.map(RemoteUser::remoteId))
+            assertEquals(listOf(0L), page.users.map(RemoteUser::serverPosition))
+        }
+
+    @Test
+    fun invalidNextPageLinksArePermanentFailures() =
+        runRemoteTest { requests ->
+            listOf(
+                "not-a-link",
+                "https://example.test/public/v2/users?page=many",
+                "https://example.test/public/v2/users?page=0",
+                "https://example.test/public/v2/users?page=1",
+            ).forEach { value ->
+                val source =
+                    source(
+                        engine =
+                            engine { request ->
+                                requests += request.url.parameters["page"].orEmpty()
+                                jsonResponse(usersJson(1), nextLink = value)
+                            },
+                    )
+
+                assertIs<RemoteResult.PermanentFailure>(source.fetchInitialPage())
+            }
+        }
+
+    @Test
+    fun requestedPageUsesItsNumberAndDoesNotRequirePaginationHeader() =
+        runRemoteTest { requests ->
+            val source =
+                source(
+                    engine =
+                        engine { request ->
+                            val page = request.url.parameters["page"].orEmpty()
+                            requests += page
+                            jsonResponse(
+                                usersJson(40, 41),
+                                nextLink = "https://example.test/public/v2/users?page=4",
+                            )
+                        },
+                )
+
+            val result = assertIs<RemoteResult.Success<RemotePage>>(source.fetchPage(3)).value
+
+            assertEquals(listOf("3"), requests)
+            assertEquals(4L, result.nextPage)
+            assertEquals(listOf(40L, 41L), result.users.map(RemoteUser::remoteId))
+            assertEquals(listOf(20L, 21L), result.users.map(RemoteUser::serverPosition))
+        }
+
+    @Test
+    fun pageResponseCanBeEmptyAndEndPagination() =
+        runRemoteTest { requests ->
+            val source =
+                source(
+                    engine =
+                        engine { request ->
+                            val page = request.url.parameters["page"].orEmpty()
+                            requests += page
+                            jsonResponse("[]")
+                        },
+                )
+
+            val page = assertIs<RemoteResult.Success<RemotePage>>(source.fetchPage(3)).value
+
+            assertEquals(listOf("3"), requests)
+            assertEquals(3L, page.page)
+            assertTrue(page.users.isEmpty())
+            assertEquals(null, page.nextPage)
+        }
+
+    @Test
+    fun malformedRequiredFieldIsAControlledPermanentFailure() =
+        runRemoteTest { _ ->
+            val source =
+                source(
+                    engine =
+                        engine {
+                            jsonResponse(
+                                """[{"id":1,"name":"Ada","email":"ada@example.com","gender":"female"}]""",
+                            )
+                        },
+                )
 
             assertIs<RemoteResult.PermanentFailure>(source.fetchInitialPage())
         }
-    }
 
     @Test
-    fun requestedPageUsesItsNumberAndDoesNotRequirePaginationHeader() = runRemoteTest { requests ->
-        val source = source(
-            engine = engine { request ->
-                val page = request.url.parameters["page"].orEmpty()
-                requests += page
-                jsonResponse(
-                    usersJson(40, 41),
-                    nextLink = "https://example.test/public/v2/users?page=4",
+    fun statusCodesMapToTypedFailures() =
+        runRemoteTest { _ ->
+            val cases =
+                listOf(
+                    HttpStatusCode.Unauthorized to RemoteResult.AuthenticationFailure::class,
+                    HttpStatusCode.Forbidden to RemoteResult.AuthenticationFailure::class,
+                    HttpStatusCode.TooManyRequests to RemoteResult.RetryableFailure::class,
+                    HttpStatusCode.ServiceUnavailable to RemoteResult.RetryableFailure::class,
+                    HttpStatusCode.BadRequest to RemoteResult.PermanentFailure::class,
                 )
-            },
-        )
 
-        val result = assertIs<RemoteResult.Success<RemotePage>>(source.fetchPage(3)).value
-
-        assertEquals(listOf("3"), requests)
-        assertEquals(4L, result.nextPage)
-        assertEquals(listOf(40L, 41L), result.users.map(RemoteUser::remoteId))
-        assertEquals(listOf(20L, 21L), result.users.map(RemoteUser::serverPosition))
-    }
-
-    @Test
-    fun pageResponseCanBeEmptyAndEndPagination() = runRemoteTest { requests ->
-        val source = source(
-            engine = engine { request ->
-                val page = request.url.parameters["page"].orEmpty()
-                requests += page
-                jsonResponse("[]")
-            },
-        )
-
-        val page = assertIs<RemoteResult.Success<RemotePage>>(source.fetchPage(3)).value
-
-        assertEquals(listOf("3"), requests)
-        assertEquals(3L, page.page)
-        assertTrue(page.users.isEmpty())
-        assertEquals(null, page.nextPage)
-    }
-
-    @Test
-    fun malformedRequiredFieldIsAControlledPermanentFailure() = runRemoteTest { _ ->
-        val source = source(
-            engine = engine {
-                jsonResponse(
-                    """[{"id":1,"name":"Ada","email":"ada@example.com","gender":"female"}]""",
-                )
-            },
-        )
-
-        assertIs<RemoteResult.PermanentFailure>(source.fetchInitialPage())
-    }
-
-    @Test
-    fun statusCodesMapToTypedFailures() = runRemoteTest { _ ->
-        val cases = listOf(
-            HttpStatusCode.Unauthorized to RemoteResult.AuthenticationFailure::class,
-            HttpStatusCode.Forbidden to RemoteResult.AuthenticationFailure::class,
-            HttpStatusCode.TooManyRequests to RemoteResult.RetryableFailure::class,
-            HttpStatusCode.ServiceUnavailable to RemoteResult.RetryableFailure::class,
-            HttpStatusCode.BadRequest to RemoteResult.PermanentFailure::class,
-        )
-
-        cases.forEach { (status, expectedType) ->
-            val source = source(engine { respond("{}", status) })
-            assertTrue(expectedType.isInstance(source.fetchInitialPage()))
+            cases.forEach { (status, expectedType) ->
+                val source = source(engine { respond("{}", status) })
+                assertTrue(expectedType.isInstance(source.fetchInitialPage()))
+            }
         }
-    }
 
     @Test
-    fun rateLimitFailureHonorsServerRetryAfterTiming() = runRemoteTest { _ ->
-        val source = source(
-            engine = engine {
-                respond(
-                    content = "{}",
-                    status = HttpStatusCode.TooManyRequests,
-                    headers = Headers.build {
-                        append(HttpHeaders.RetryAfter, "7")
-                    },
+    fun rateLimitFailureHonorsServerRetryAfterTiming() =
+        runRemoteTest { _ ->
+            val source =
+                source(
+                    engine =
+                        engine {
+                            respond(
+                                content = "{}",
+                                status = HttpStatusCode.TooManyRequests,
+                                headers =
+                                    Headers.build {
+                                        append(HttpHeaders.RetryAfter, "7")
+                                    },
+                            )
+                        },
                 )
-            },
-        )
 
-        val result = assertIs<RemoteResult.RetryableFailure>(source.fetchInitialPage())
+            val result = assertIs<RemoteResult.RetryableFailure>(source.fetchInitialPage())
 
-        assertEquals(Instant.fromEpochSeconds(1_007), result.serverRetryAt)
-    }
+            assertEquals(Instant.fromEpochSeconds(1_007), result.serverRetryAt)
+        }
 
     @Test
-    fun validationPayloadIsRetainedForCreateFailure() = runRemoteTest { _ ->
-        val source = source(
-            engine = engine {
-                respond(
-                    content = """[{"field":"email","message":"has already been taken"}]""",
-                    status = HttpStatusCode.UnprocessableEntity,
-                    headers = jsonHeaders(),
+    fun validationPayloadIsRetainedForCreateFailure() =
+        runRemoteTest { _ ->
+            val source =
+                source(
+                    engine =
+                        engine {
+                            respond(
+                                content = """[{"field":"email","message":"has already been taken"}]""",
+                                status = HttpStatusCode.UnprocessableEntity,
+                                headers = jsonHeaders(),
+                            )
+                        },
                 )
-            },
-        )
 
-        val result = assertIs<RemoteResult.ValidationFailure>(
-            source.createUser(
-                CreateUserRequest(
-                    name = "Ada",
-                    email = "ada@example.com",
-                    gender = com.bill.usermanagmentsystem.domain.model.Gender.Female,
-                    status = com.bill.usermanagmentsystem.domain.model.UserStatus.Active,
-                ),
-            ),
-        )
-
-        assertEquals("email: has already been taken", result.reason)
-    }
-
-    @Test
-    fun createRequiresHttpCreatedBeforeReturningTheNewUser() = runRemoteTest { _ ->
-        val source = source(
-            engine = engine {
-                respond(
-                    content = userJson(7),
-                    status = HttpStatusCode.OK,
-                    headers = jsonHeaders(),
+            val result =
+                assertIs<RemoteResult.ValidationFailure>(
+                    source.createUser(
+                        CreateUserRequest(
+                            name = "Ada",
+                            email = "ada@example.com",
+                            gender = com.bill.usermanagmentsystem.domain.model.Gender.Female,
+                            status = com.bill.usermanagmentsystem.domain.model.UserStatus.Active,
+                        ),
+                    ),
                 )
-            },
-        )
 
-        assertIs<RemoteResult.PermanentFailure>(
-            source.createUser(
-                CreateUserRequest(
-                    name = "Ada",
-                    email = "ada@example.com",
-                    gender = com.bill.usermanagmentsystem.domain.model.Gender.Female,
-                    status = com.bill.usermanagmentsystem.domain.model.UserStatus.Active,
-                ),
-            ),
-        )
-    }
+            assertEquals("email: has already been taken", result.reason)
+        }
 
     @Test
-    fun createSendsTheExpectedJsonBodyAndBearerToken() = runRemoteTest { _ ->
-        var capturedRequest: io.ktor.client.request.HttpRequestData? = null
-        val source = source(
-            engine = engine { request ->
-                capturedRequest = request
-                respond(userJson(7), HttpStatusCode.Created, jsonHeaders())
-            },
-        )
-
-        assertIs<RemoteResult.Success<RemoteUser>>(
-            source.createUser(
-                CreateUserRequest(
-                    name = "Ada Lovelace",
-                    email = "ada@example.com",
-                    gender = com.bill.usermanagmentsystem.domain.model.Gender.Female,
-                    status = com.bill.usermanagmentsystem.domain.model.UserStatus.Active,
-                ),
-            ),
-        )
-
-        val request = checkNotNull(capturedRequest)
-        assertEquals(HttpMethod.Post, request.method)
-        assertEquals("https://example.test/public/v2/users", request.url.toString())
-        assertEquals("Bearer secret", request.headers[HttpHeaders.Authorization])
-        val body = Json.decodeFromString<GoRestCreateUserDto>((request.body as TextContent).text)
-        assertEquals("Ada Lovelace", body.name)
-        assertEquals("ada@example.com", body.email)
-        assertEquals("female", body.gender)
-        assertEquals("active", body.status)
-    }
-
-    @Test
-    fun deleteSendsBearerTokenAndAcceptsNoContent() = runRemoteTest { _ ->
-        val source = source(
-            engine = engine { request ->
-                assertEquals(HttpMethod.Delete, request.method)
-                assertEquals("https://example.test/public/v2/users/7", request.url.toString())
-                assertEquals("Bearer secret", request.headers[HttpHeaders.Authorization])
-                respond("", HttpStatusCode.NoContent)
-            },
-        )
-
-        assertEquals(RemoteResult.Success(Unit), source.deleteUser(7))
-    }
-
-    @Test
-    fun deleteMapsNotFoundToTheIdempotentNotFoundResult() = runRemoteTest { _ ->
-        val source = source(engine = engine { respond("", HttpStatusCode.NotFound) })
-
-        assertEquals(RemoteResult.NotFound, source.deleteUser(7))
-    }
-
-    @Test
-    fun publicFetchOmitsBlankTokenWhileWritesFailFastForAuthentication() = runRemoteTest { _ ->
-        var requestCount = 0
-        val source = source(
-            engine = engine { request ->
-                requestCount += 1
-                assertEquals(null, request.headers[HttpHeaders.Authorization])
-                jsonResponse(usersJson(1))
-            },
-            apiToken = "",
-        )
-
-        assertIs<RemoteResult.Success<RemotePage>>(source.fetchInitialPage())
-        assertEquals(
-            RemoteResult.AuthenticationFailure,
-            source.createUser(
-                CreateUserRequest(
-                    name = "Ada",
-                    email = "ada@example.com",
-                    gender = com.bill.usermanagmentsystem.domain.model.Gender.Female,
-                    status = com.bill.usermanagmentsystem.domain.model.UserStatus.Active,
-                ),
-            ),
-        )
-        assertEquals(1, requestCount)
-    }
-
-    @Test
-    fun apiLoggingRedactsAuthorizationAndExcludesRequestBodies() = runRemoteTest { _ ->
-        val logger = RecordingLogger()
-        val testToken = "test-api-token-not-for-logs"
-        val source = source(
-            engine = engine {
-                respond(
-                    content = userJson(7),
-                    status = HttpStatusCode.Created,
-                    headers = jsonHeaders(),
+    fun createRequiresHttpCreatedBeforeReturningTheNewUser() =
+        runRemoteTest { _ ->
+            val source =
+                source(
+                    engine =
+                        engine {
+                            respond(
+                                content = userJson(7),
+                                status = HttpStatusCode.OK,
+                                headers = jsonHeaders(),
+                            )
+                        },
                 )
-            },
-            apiToken = testToken,
-            enableApiLogging = true,
-            logger = logger,
-        )
 
-        assertIs<RemoteResult.Success<RemoteUser>>(
-            source.createUser(
-                CreateUserRequest(
-                    name = "Ada Lovelace",
-                    email = "ada@example.com",
-                    gender = com.bill.usermanagmentsystem.domain.model.Gender.Female,
-                    status = com.bill.usermanagmentsystem.domain.model.UserStatus.Active,
+            assertIs<RemoteResult.PermanentFailure>(
+                source.createUser(
+                    CreateUserRequest(
+                        name = "Ada",
+                        email = "ada@example.com",
+                        gender = com.bill.usermanagmentsystem.domain.model.Gender.Female,
+                        status = com.bill.usermanagmentsystem.domain.model.UserStatus.Active,
+                    ),
                 ),
-            ),
-        )
+            )
+        }
 
-        val messages = logger.messages.joinToString(separator = "\n")
-        assertTrue(messages.contains("POST"))
-        assertTrue(messages.contains("Authorization: ***"))
-        assertFalse(messages.contains(testToken))
-        assertFalse(messages.contains("Ada Lovelace"))
-    }
+    @Test
+    fun createSendsTheExpectedJsonBodyAndBearerToken() =
+        runRemoteTest { _ ->
+            var capturedRequest: io.ktor.client.request.HttpRequestData? = null
+            val source =
+                source(
+                    engine =
+                        engine { request ->
+                            capturedRequest = request
+                            respond(userJson(7), HttpStatusCode.Created, jsonHeaders())
+                        },
+                )
+
+            assertIs<RemoteResult.Success<RemoteUser>>(
+                source.createUser(
+                    CreateUserRequest(
+                        name = "Ada Lovelace",
+                        email = "ada@example.com",
+                        gender = com.bill.usermanagmentsystem.domain.model.Gender.Female,
+                        status = com.bill.usermanagmentsystem.domain.model.UserStatus.Active,
+                    ),
+                ),
+            )
+
+            val request = checkNotNull(capturedRequest)
+            assertEquals(HttpMethod.Post, request.method)
+            assertEquals("https://example.test/public/v2/users", request.url.toString())
+            assertEquals("Bearer secret", request.headers[HttpHeaders.Authorization])
+            val body = Json.decodeFromString<GoRestCreateUserDto>((request.body as TextContent).text)
+            assertEquals("Ada Lovelace", body.name)
+            assertEquals("ada@example.com", body.email)
+            assertEquals("female", body.gender)
+            assertEquals("active", body.status)
+        }
+
+    @Test
+    fun deleteSendsBearerTokenAndAcceptsNoContent() =
+        runRemoteTest { _ ->
+            val source =
+                source(
+                    engine =
+                        engine { request ->
+                            assertEquals(HttpMethod.Delete, request.method)
+                            assertEquals("https://example.test/public/v2/users/7", request.url.toString())
+                            assertEquals("Bearer secret", request.headers[HttpHeaders.Authorization])
+                            respond("", HttpStatusCode.NoContent)
+                        },
+                )
+
+            assertEquals(RemoteResult.Success(Unit), source.deleteUser(7))
+        }
+
+    @Test
+    fun deleteMapsNotFoundToTheIdempotentNotFoundResult() =
+        runRemoteTest { _ ->
+            val source = source(engine = engine { respond("", HttpStatusCode.NotFound) })
+
+            assertEquals(RemoteResult.NotFound, source.deleteUser(7))
+        }
+
+    @Test
+    fun publicFetchOmitsBlankTokenWhileWritesFailFastForAuthentication() =
+        runRemoteTest { _ ->
+            var requestCount = 0
+            val source =
+                source(
+                    engine =
+                        engine { request ->
+                            requestCount += 1
+                            assertEquals(null, request.headers[HttpHeaders.Authorization])
+                            jsonResponse(usersJson(1))
+                        },
+                    apiToken = "",
+                )
+
+            assertIs<RemoteResult.Success<RemotePage>>(source.fetchInitialPage())
+            assertEquals(
+                RemoteResult.AuthenticationFailure,
+                source.createUser(
+                    CreateUserRequest(
+                        name = "Ada",
+                        email = "ada@example.com",
+                        gender = com.bill.usermanagmentsystem.domain.model.Gender.Female,
+                        status = com.bill.usermanagmentsystem.domain.model.UserStatus.Active,
+                    ),
+                ),
+            )
+            assertEquals(1, requestCount)
+        }
+
+    @Test
+    fun apiLoggingRedactsAuthorizationAndExcludesRequestBodies() =
+        runRemoteTest { _ ->
+            val logger = RecordingLogger()
+            val testToken = "test-api-token-not-for-logs"
+            val source =
+                source(
+                    engine =
+                        engine {
+                            respond(
+                                content = userJson(7),
+                                status = HttpStatusCode.Created,
+                                headers = jsonHeaders(),
+                            )
+                        },
+                    apiToken = testToken,
+                    enableApiLogging = true,
+                    logger = logger,
+                )
+
+            assertIs<RemoteResult.Success<RemoteUser>>(
+                source.createUser(
+                    CreateUserRequest(
+                        name = "Ada Lovelace",
+                        email = "ada@example.com",
+                        gender = com.bill.usermanagmentsystem.domain.model.Gender.Female,
+                        status = com.bill.usermanagmentsystem.domain.model.UserStatus.Active,
+                    ),
+                ),
+            )
+
+            val messages = logger.messages.joinToString(separator = "\n")
+            assertTrue(messages.contains("POST"))
+            assertTrue(messages.contains("Authorization: ***"))
+            assertFalse(messages.contains(testToken))
+            assertFalse(messages.contains("Ada Lovelace"))
+        }
 
     private fun source(
         engine: MockEngine,
         apiToken: String = "secret",
         enableApiLogging: Boolean = false,
         logger: Logger = NoOpLogger,
-    ): GoRestUserRemoteDataSource = GoRestUserRemoteDataSource(
-        httpClient = createGoRestHttpClient(
-            engine = engine,
-            enableApiLogging = enableApiLogging,
-            logger = logger,
-        ),
-        appConfig = AppConfig(apiToken = apiToken, baseUrl = "https://example.test/public/v2/"),
-        timeProvider = object : TimeProvider {
-            override fun now() = kotlin.time.Instant.fromEpochSeconds(1_000)
-        },
-    )
+    ): GoRestUserRemoteDataSource =
+        GoRestUserRemoteDataSource(
+            httpClient =
+                createGoRestHttpClient(
+                    engine = engine,
+                    enableApiLogging = enableApiLogging,
+                    logger = logger,
+                ),
+            appConfig = AppConfig(apiToken = apiToken, baseUrl = "https://example.test/public/v2/"),
+            timeProvider =
+                object : TimeProvider {
+                    override fun now() = kotlin.time.Instant.fromEpochSeconds(1_000)
+                },
+        )
 
     private fun engine(
         handler: suspend io.ktor.client.engine.mock.MockRequestHandleScope.(
@@ -367,17 +414,19 @@ class GoRestUserRemoteDataSourceTest {
         headers = jsonHeaders(nextLink),
     )
 
-    private fun jsonHeaders(nextLink: String? = null): Headers = Headers.build {
-        append(HttpHeaders.ContentType, "application/json")
-        if (nextLink != null) append("X-Links-Next", nextLink)
-    }
+    private fun jsonHeaders(nextLink: String? = null): Headers =
+        Headers.build {
+            append(HttpHeaders.ContentType, "application/json")
+            if (nextLink != null) append("X-Links-Next", nextLink)
+        }
 
-    private fun usersJson(vararg ids: Long): String = ids.joinToString(
-        prefix = "[",
-        postfix = "]",
-    ) { id ->
-        userJson(id)
-    }
+    private fun usersJson(vararg ids: Long): String =
+        ids.joinToString(
+            prefix = "[",
+            postfix = "]",
+        ) { id ->
+            userJson(id)
+        }
 
     private fun userJson(id: Long): String =
         """{"id":$id,"name":"User $id","email":"user$id@example.com","gender":"female","status":"active"}"""
@@ -394,6 +443,5 @@ class GoRestUserRemoteDataSourceTest {
         override fun log(message: String) = Unit
     }
 
-    private fun runRemoteTest(block: suspend (MutableList<String>) -> Unit) =
-        kotlinx.coroutines.test.runTest { block(mutableListOf()) }
+    private fun runRemoteTest(block: suspend (MutableList<String>) -> Unit) = kotlinx.coroutines.test.runTest { block(mutableListOf()) }
 }
