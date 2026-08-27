@@ -358,7 +358,7 @@ class UserFeedViewModelTest {
                 lifecycleObserver = lifecycle,
                 timeProvider = clock,
                 relativeTimeFormatter = RelativeTimeFormatter(),
-                dispatcher = dispatcher,
+                defaultDispatcher = dispatcher,
             )
 
         private fun deletedUserUndo() =

@@ -28,6 +28,8 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.withContext
 import kotlinx.io.IOException
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -81,72 +83,81 @@ internal class GoRestUserRemoteDataSource(
     private val httpClient: HttpClient,
     private val appConfig: AppConfig,
     private val timeProvider: TimeProvider,
+    private val networkDispatcher: CoroutineDispatcher,
 ) : UserRemoteDataSource {
     private val usersUrl = "${appConfig.baseUrl.trimEnd('/')}/users"
 
     override suspend fun fetchInitialPage(): RemoteResult<RemotePage> =
-        remoteCall {
-            when (val initialPage = fetchPageResponse(page = null)) {
-                is PageResult.Failure -> initialPage.failure
-                is PageResult.Success ->
-                    RemoteResult.Success(
-                        RemotePage(
-                            users = initialPage.users.toRemoteUsers(page = 1),
-                            page = 1,
-                            nextPage = initialPage.nextPage.after(page = 1),
-                        ),
-                    )
+        withContext(networkDispatcher) {
+            remoteCall {
+                when (val initialPage = fetchPageResponse(page = null)) {
+                    is PageResult.Failure -> initialPage.failure
+                    is PageResult.Success ->
+                        RemoteResult.Success(
+                            RemotePage(
+                                users = initialPage.users.toRemoteUsers(page = 1),
+                                page = 1,
+                                nextPage = initialPage.nextPage.after(page = 1),
+                            ),
+                        )
+                }
             }
         }
 
     override suspend fun fetchPage(page: Long): RemoteResult<RemotePage> =
-        remoteCall {
-            require(page in 1..MAX_PAGE_NUMBER) { "Page number is outside the supported range." }
-            when (val result = fetchPageResponse(page = page)) {
-                is PageResult.Failure -> result.failure
-                is PageResult.Success ->
-                    RemoteResult.Success(
-                        RemotePage(
-                            users = result.users.toRemoteUsers(page),
-                            page = page,
-                            nextPage = result.nextPage.after(page),
-                        ),
-                    )
+        withContext(networkDispatcher) {
+            remoteCall {
+                require(page in 1..MAX_PAGE_NUMBER) { "Page number is outside the supported range." }
+                when (val result = fetchPageResponse(page = page)) {
+                    is PageResult.Failure -> result.failure
+                    is PageResult.Success ->
+                        RemoteResult.Success(
+                            RemotePage(
+                                users = result.users.toRemoteUsers(page),
+                                page = page,
+                                nextPage = result.nextPage.after(page),
+                            ),
+                        )
+                }
             }
         }
 
     override suspend fun createUser(request: CreateUserRequest): RemoteResult<RemoteUser> {
         if (appConfig.apiToken.isBlank()) return RemoteResult.AuthenticationFailure
-        return remoteCall {
-            val response =
-                httpClient.post(usersUrl) {
-                    bearerToken()
-                    contentType(ContentType.Application.Json)
-                    setBody(
-                        GoRestCreateUserDto(
-                            name = request.name,
-                            email = request.email,
-                            gender = request.gender.apiValue,
-                            status = request.status.apiValue,
-                        ),
-                    )
+        return withContext(networkDispatcher) {
+            remoteCall {
+                val response =
+                    httpClient.post(usersUrl) {
+                        bearerToken()
+                        contentType(ContentType.Application.Json)
+                        setBody(
+                            GoRestCreateUserDto(
+                                name = request.name,
+                                email = request.email,
+                                gender = request.gender.apiValue,
+                                status = request.status.apiValue,
+                            ),
+                        )
+                    }
+                if (response.status == HttpStatusCode.Created) {
+                    RemoteResult.Success(response.body<GoRestUserDto>().toRemoteUser(serverPosition = null))
+                } else {
+                    response.toFailure()
                 }
-            if (response.status == HttpStatusCode.Created) {
-                RemoteResult.Success(response.body<GoRestUserDto>().toRemoteUser(serverPosition = null))
-            } else {
-                response.toFailure()
             }
         }
     }
 
     override suspend fun deleteUser(remoteId: Long): RemoteResult<Unit> {
         if (appConfig.apiToken.isBlank()) return RemoteResult.AuthenticationFailure
-        return remoteCall {
-            val response = httpClient.delete("$usersUrl/$remoteId") { bearerToken() }
-            when {
-                response.status.value in 200..299 -> RemoteResult.Success(Unit)
-                response.status == HttpStatusCode.NotFound -> RemoteResult.NotFound
-                else -> response.toFailure()
+        return withContext(networkDispatcher) {
+            remoteCall {
+                val response = httpClient.delete("$usersUrl/$remoteId") { bearerToken() }
+                when {
+                    response.status.value in 200..299 -> RemoteResult.Success(Unit)
+                    response.status == HttpStatusCode.NotFound -> RemoteResult.NotFound
+                    else -> response.toFailure()
+                }
             }
         }
     }

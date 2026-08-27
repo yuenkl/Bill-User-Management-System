@@ -14,10 +14,9 @@ import com.bill.usermanagmentsystem.domain.usecase.LoadNextUsersPage
 import com.bill.usermanagmentsystem.domain.usecase.ObserveUsers
 import com.bill.usermanagmentsystem.domain.usecase.RefreshUsers
 import com.bill.usermanagmentsystem.domain.usecase.UndoUserDeletion
+import com.bill.usermanagmentsystem.platform.AppDispatchers
 import com.bill.usermanagmentsystem.platform.SqlDriverFactory
 import com.bill.usermanagmentsystem.ui.users.UserFeedViewModel
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
@@ -27,8 +26,6 @@ private const val USER_DATABASE_NAME = "user-management.db"
 
 internal fun userFeatureModule(databaseName: String = USER_DATABASE_NAME): Module =
     module {
-        single<CoroutineDispatcher> { Dispatchers.Default }
-
         single<SqlDriver> {
             get<SqlDriverFactory>().create(
                 schema = UserManagementDatabase.Schema,
@@ -40,7 +37,7 @@ internal fun userFeatureModule(databaseName: String = USER_DATABASE_NAME): Modul
         single<UserLocalDataSource> {
             SqlDelightUserLocalDataSource(
                 database = get(),
-                queryDispatcher = get(),
+                queryDispatcher = get<AppDispatchers>().io,
             )
         }
         single<UserRepository> {
@@ -88,7 +85,7 @@ internal fun userFeatureModule(databaseName: String = USER_DATABASE_NAME): Modul
                 lifecycleObserver = get(),
                 timeProvider = get(),
                 relativeTimeFormatter = get(),
-                dispatcher = get(),
+                defaultDispatcher = get<AppDispatchers>().default,
             )
         }
     }

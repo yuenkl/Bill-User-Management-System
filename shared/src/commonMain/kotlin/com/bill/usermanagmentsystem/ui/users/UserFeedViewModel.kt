@@ -53,7 +53,7 @@ class UserFeedViewModel(
     private val lifecycleObserver: AppLifecycleObserver,
     private val timeProvider: TimeProvider,
     private val relativeTimeFormatter: RelativeTimeFormatter,
-    private val dispatcher: CoroutineDispatcher,
+    private val defaultDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
     private val presentation = MutableStateFlow(UserFeedPresentationState())
     private val mutableEvents = MutableSharedFlow<UserFeedEvent>(extraBufferCapacity = 1)
@@ -85,7 +85,8 @@ class UserFeedViewModel(
                     presentation = presentationState,
                     relativeTimeFormatter = relativeTimeFormatter,
                 )
-            }.stateIn(
+            }.flowOn(defaultDispatcher)
+            .stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.Eagerly,
                 initialValue = UserFeedUiState(),
@@ -232,7 +233,7 @@ class UserFeedViewModel(
         presentation.update { state ->
             state.copy(addUserForm = submitting, addUserValidationAlert = null)
         }
-        viewModelScope.launch(dispatcher) {
+        viewModelScope.launch {
             val result =
                 addUser(
                     AddUserInput(
@@ -277,7 +278,7 @@ class UserFeedViewModel(
         }
 
         deletionJob =
-            viewModelScope.launch(dispatcher) {
+            viewModelScope.launch {
                 presentation.update { it.copy(deleteInProgress = true) }
                 val result = deleteUser(localId)
                 presentation.update {
@@ -307,7 +308,7 @@ class UserFeedViewModel(
         pendingUndoInput = null
 
         undoJob =
-            viewModelScope.launch(dispatcher) {
+            viewModelScope.launch {
                 val result = undoUserDeletion(input)
                 if (result.isSuccess) {
                     mutableEvents.emit(UserFeedEvent.ScrollToTop)
@@ -325,7 +326,7 @@ class UserFeedViewModel(
         if (synchronizationJob?.isActive == true) return
         pageLoadJob?.cancel()
         synchronizationJob =
-            viewModelScope.launch(dispatcher) {
+            viewModelScope.launch {
                 presentation.update { it.copy(refreshing = manual) }
                 val result = refreshUsers()
                 val failure = result.exceptionOrNull()
@@ -359,7 +360,7 @@ class UserFeedViewModel(
             )
         }
         pageLoadJob =
-            viewModelScope.launch(dispatcher) {
+            viewModelScope.launch {
                 val result = loadNextUsersPage()
                 presentation.update { active ->
                     result.fold(
@@ -382,13 +383,13 @@ class UserFeedViewModel(
     }
 
     private fun observeAutomaticTriggers() {
-        viewModelScope.launch(dispatcher) {
+        viewModelScope.launch {
             connectivityObserver.status
                 .drop(1)
                 .filter { it == ConnectivityStatus.Available }
                 .collect { requestSynchronization(manual = false) }
         }
-        viewModelScope.launch(dispatcher) {
+        viewModelScope.launch {
             lifecycleObserver.state
                 .drop(1)
                 .filter { it == AppLifecycleState.Foreground }
@@ -402,7 +403,7 @@ class UserFeedViewModel(
                 emit(timeProvider.now())
                 delay(1.minutes)
             }
-        }.flowOn(dispatcher)
+        }
 
     private suspend fun emitFailure(failure: Throwable?) {
         mutableEvents.emit(UserFeedEvent.ShowSnackbar(failure.toUserMessage()))

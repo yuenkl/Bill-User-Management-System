@@ -5,6 +5,7 @@ import com.bill.usermanagmentsystem.data.remote.UserRemoteDataSource
 import com.bill.usermanagmentsystem.data.remote.createGoRestHttpClient
 import com.bill.usermanagmentsystem.domain.usecase.RelativeTimeFormatter
 import com.bill.usermanagmentsystem.platform.AppConfig
+import com.bill.usermanagmentsystem.platform.AppDispatchers
 import com.bill.usermanagmentsystem.platform.ConfigurationState
 import com.bill.usermanagmentsystem.platform.NetworkEngineFactory
 import com.bill.usermanagmentsystem.platform.SystemTimeProvider
@@ -17,6 +18,7 @@ import org.koin.dsl.onClose
 fun commonModule(appConfig: AppConfig): Module =
     module {
         single { appConfig }
+        single { AppDispatchers() }
         single<ConfigurationState> { appConfig.configurationState }
         single<TimeProvider> { SystemTimeProvider() }
         single<HttpClient> {
@@ -30,6 +32,7 @@ fun commonModule(appConfig: AppConfig): Module =
                 httpClient = get(),
                 appConfig = get(),
                 timeProvider = get(),
+                networkDispatcher = get<AppDispatchers>().io,
             )
         }
         single { RelativeTimeFormatter() }

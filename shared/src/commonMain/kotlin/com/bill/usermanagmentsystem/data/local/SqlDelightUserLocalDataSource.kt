@@ -12,6 +12,7 @@ import com.bill.usermanagmentsystem.domain.model.UserRecord
 import com.bill.usermanagmentsystem.domain.model.UserStatus
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlin.time.Instant
@@ -28,6 +29,7 @@ internal class SqlDelightUserLocalDataSource(
             .asFlow()
             .mapToList(queryDispatcher)
             .map { rows -> rows.map(Users::toDomainRecord) }
+            .flowOn(queryDispatcher)
 
     override suspend fun getUser(localId: String): StoredUser? =
         withContext(queryDispatcher) {

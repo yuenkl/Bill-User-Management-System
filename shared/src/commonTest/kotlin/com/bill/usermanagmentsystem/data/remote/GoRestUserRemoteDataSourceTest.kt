@@ -10,6 +10,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.TextContent
+import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -397,6 +398,7 @@ class GoRestUserRemoteDataSourceTest {
                 object : TimeProvider {
                     override fun now() = kotlin.time.Instant.fromEpochSeconds(1_000)
                 },
+            networkDispatcher = Dispatchers.Unconfined,
         )
 
     private fun engine(
