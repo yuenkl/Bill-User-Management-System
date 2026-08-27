@@ -27,19 +27,22 @@ flowchart TD
     E --> G[Ktor GoRest data source]
     I[Startup / foreground / connectivity / pull-to-refresh] --> C
     F -->|database flows| E
-    E -->|immutable state| C
-    C --> B
+    E -->|user records| C
+    C -->|immutable StateFlow| B
+    C -->|one-time SharedFlow events| B
 ```
 
-The repository serializes each refresh, page load, create, restore, and delete operation. A refresh transaction replaces the stored remote snapshot only after the initial GoRest `/users` response succeeds. Reaching the feed end appends the page named by `X-Links-Next` (`page=2`, `page=3`, and so on). The detailed contract is in [`docs/state-transitions.md`](docs/state-transitions.md); architectural boundaries are in [`docs/architecture.md`](docs/architecture.md).
+The repository serializes each refresh, page load, create, restore, and delete operation. A successful initial GoRest `/users` response replaces the stored remote snapshot in one transaction; a failure leaves the current database and pagination cursor intact. Reaching the feed end appends the page named by `X-Links-Next` (`page=2`, `page=3`, and so on). New server-confirmed users have no server position until a refresh, so the query shows them first by local observation time and descending local ID. The detailed contract is in [`docs/state-transitions.md`](docs/state-transitions.md); architectural boundaries are in [`docs/architecture.md`](docs/architecture.md).
 
 ## Most important class
 
-[`UserFeedViewModel`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedViewModel.kt) is the central coordinator for the user experience. It combines the database-backed feed, connectivity, clock, and presentation state into one immutable UI state, and turns UI actions into explicit use-case calls for pull-to-refresh, pagination, form submission, delete, and undo. Synchronization is automatic at startup, foreground, and restored connectivity. Snackbar errors and delete/Undo prompts are emitted separately as one-time [`UserFeedEvent`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedEvent.kt) values, so they do not reappear after recomposition. The repository owns remote calls and SQLDelight updates; the ViewModel observes the database rather than holding another copy of the feed. Form-state logic lives in [`AddUserFormState.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/AddUserFormState.kt), while the [`presentation`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/presentation) package owns feed-state mapping and user-facing error messages.
+[`UserFeedViewModel`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedViewModel.kt) is the central coordinator for the user experience. It combines the database-backed feed, connectivity, clock, and durable presentation state into one immutable UI state, and turns UI actions into explicit use-case calls for pull-to-refresh, pagination, form submission, delete, and undo. Synchronization is automatic at startup, foreground, and restored connectivity.
+
+The ViewModel uses [`UserFeedEvent`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedEvent.kt) for one-time effects: opening or dismissing the add-user sheet, showing API validation errors, Snackbars, the delete/Undo prompt, and scrolling to the newest user. The add-user field values, client-side errors, and submitting state remain immutable state so input is not lost; delete confirmation remains state because it represents an unfinished user decision. The repository owns remote calls and SQLDelight updates; the ViewModel observes the database rather than holding another copy of the feed. Form-state logic lives in [`AddUserFormState.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/AddUserFormState.kt), while the [`presentation`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/presentation) package owns feed-state mapping and user-facing error messages.
 
 ### User feature structure
 
-- [`UserFeedScreen.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedScreen.kt) owns route wiring, top-level layout selection, pull-to-refresh, and transient overlays.
+- [`UserFeedScreen.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedScreen.kt) owns route wiring, top-level layout selection, pull-to-refresh, and consumption of one-time display events. Its saved local sheet-visibility flag prevents a rotation from hiding an open form.
 - [`UserFeedContent.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedContent.kt) renders feed loading, list/grid content, pagination, banners, and empty states.
 - [`UserFeedDialogs.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedDialogs.kt) contains the add-user sheet/dialog, API validation alert, and delete confirmation.
 - [`AddUserFormState.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/AddUserFormState.kt) contains pure add-user form updates, validation, and API-error parsing.
@@ -115,9 +118,10 @@ Coverage includes incremental pagination and Retry, the compact/wide breakpoint,
 ## Technology choices and tradeoffs
 
 - **Compose Multiplatform:** one adaptive feature UI and semantics model on Android and iOS. Native entry points remain intentionally thin.
-- **SQLDelight:** typed shared persistence and transactional snapshot/page updates. This makes the database the single source observed by the UI.
-- **Ktor:** one strict GoRest contract with OkHttp and Darwin engines. Debug header logging redacts authorization values.
+- **SQLDelight:** typed shared persistence and transactional snapshot/page updates. This makes the database the single source observed by the UI; it also provides deterministic latest-first ordering for locally confirmed creates.
+- **Ktor:** one strict GoRest contract with OkHttp and Darwin engines. Reads include the configured bearer token when present; writes require it. Debug header logging redacts authorization values.
 - **Koin:** constructor-injected shared modules with small platform composition roots and replaceable test doubles.
+- **Dispatchers:** the ViewModel confines orchestration and state changes to its main scope, while Ktor and SQLDelight work run on injected I/O dispatchers and feed-to-UI mapping runs on an injected default dispatcher.
 - **Observed local time:** GoRest has no user creation/update timestamp, so the relative label records when a row was first observed locally rather than claiming a server event time.
 - **Fixed two-column wide layout:** this follows the product contract and keeps behavior predictable; it intentionally does not grow to three or more columns on very large displays.
 
