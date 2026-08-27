@@ -35,6 +35,10 @@ flowchart TD
 
 The synchronization coordinator processes due delete mutations (and any legacy create mutations) in FIFO order, then transactionally merges the initial GoRest `/users` response. Reaching the feed end appends the page named by `X-Links-Next` (`page=2`, `page=3`, and so on) through the same serialized data path. Concurrent triggers join the active run instead of starting or queuing another full synchronization. The detailed contract is in [`docs/state-transitions.md`](docs/state-transitions.md); architectural boundaries are in [`docs/architecture.md`](docs/architecture.md).
 
+## Most important class
+
+[`UserFeedViewModel`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedViewModel.kt) is the central coordinator for the user experience. It combines the database-backed feed, synchronization state, connectivity, and clock into one immutable UI state, and turns UI actions into explicit use-case calls for refresh, pagination, form submission, delete, and undo. Keeping that orchestration here lets the shared Compose UI remain declarative while the repository and sync coordinator remain responsible for persistence and network correctness.
+
 ## Prerequisites
 
 - Android Studio with the Android SDK configured and a JDK compatible with the Gradle wrapper.
