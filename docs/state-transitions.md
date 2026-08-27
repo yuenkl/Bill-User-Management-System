@@ -6,14 +6,12 @@ This document is the normative business-state contract. Implementations may rena
 
 | Class | Examples | Persistence | Retry policy | User visibility |
 | --- | --- | --- | --- | --- |
-| Retryable | Offline, timeout, I/O, HTTP 5xx | Delete mutation remains durable with attempts and next retry time | Automatic when due; exponential backoff from 2 seconds to 5 minutes | Pending/offline status; non-blocking error when useful |
-| Rate limited | HTTP 429 | Mutation remains durable with server reset time and attempts | Automatic no earlier than server reset/backoff | Rate-limit message without losing local state |
-| Authentication blocked | HTTP 401/403 | Mutation marked `BLOCKED` | No automatic retry until token/configuration changes or explicit Retry | Clear configuration error |
+| Retryable | Offline, timeout, I/O, HTTP 5xx | Existing cache remains unchanged | Explicit retry | Non-blocking error when useful |
+| Rate limited | HTTP 429 | Existing cache remains unchanged | Explicit retry after the limit clears | Rate-limit message without losing local state |
+| Authentication | HTTP 401/403 | Existing cache remains unchanged | Correct token and retry | Clear configuration error |
 | Validation permanent | CREATE HTTP 422 | No local row is written | Correct and resubmit manually | Alert lists the API field and message |
-| Delete already absent | DELETE HTTP 404 | Row and mutation removed | No retry; treated as success | Normal completed deletion |
-| Permanent client/invariant | Malformed payload, impossible mapping, unsupported request | Operation stopped; cached state preserved; mutation blocked or removed according to operation table | No automatic retry | Clear diagnostic failure |
-
-Backoff metadata is stored in SQLDelight so process death cannot reset a failing operation into a tight loop.
+| Delete already absent | DELETE HTTP 404 | Row removed | No retry; treated as success | Normal completed deletion |
+| Permanent client/invariant | Malformed payload, impossible mapping, unsupported request | Operation stopped; cached state preserved | Explicit user action starts a new request | Clear diagnostic failure |
 
 ## Refresh and snapshot
 
@@ -21,10 +19,10 @@ Backoff metadata is stored in SQLDelight so process death cannot reset a failing
 | --- | --- | --- | --- | --- |
 | Empty, idle | Initial load | Fetch and commit the initial `/users` snapshot; emit visible users and enable the `X-Links-Next` cursor when available | Remain empty; show offline/retry state | Show authentication or data-contract error; no loop |
 | Cached, idle | Initial load/refresh | Commit snapshot; keep original `observedAt` | Keep cached users; show non-blocking stale/offline state | Keep cached users; show blocking reason where relevant |
-| Refreshing | Another refresh trigger | Join/coalesce active sync | Same active result | Never start a second concurrent refresh |
+| Refreshing | Another refresh trigger | Ignore the duplicate trigger | Same active result | Never start a second concurrent refresh |
 | Any | Next-page link invalid | None | None | Keep cache; surface data-contract error; do not clear database |
 | Page loaded | Feed reaches end | Fetch and transactionally append the page named by `X-Links-Next` in display order | Keep loaded users; show explicit page Retry without advancing the cursor | Stop when `X-Links-Next` is absent; never loop or duplicate a page |
-| Any | Initial page is empty | Commit an empty remote snapshot while preserving pending delete state | Keep prior snapshot | Never delete pending local intent |
+| Any | Initial page is empty | Commit an empty remote snapshot | Keep prior snapshot | No local intent is retained because mutations are server-confirmed |
 
 Snapshot results affect UI only after their database transaction commits.
 
@@ -44,17 +42,14 @@ Snapshot results affect UI only after their database transaction commits.
 | Successfully deleted user | Undo | POST the saved user data, merge the response, and show the new remote ID | Keep the row deleted and show the failure | Authentication, validation, and permanent failures keep the row deleted |
 | Successfully deleted user | Snackbar dismissed or process restart | Keep the deletion; Undo is no longer available | Not applicable | Undo is an in-memory UI affordance, not a durable deletion state |
 
-## Synchronization coordinator
+## Repository serialization
 
 | Current state | Event | Outcome |
 | --- | --- | --- |
-| Idle | Startup, foreground, connectivity restored, refresh, or connected mutation | Under the coordination mutex, publish one active-run handle; execute the sync outside the mutex |
-| Running | Another trigger | Under the coordination mutex, capture the existing handle and await that same result; never queue a follow-up full sync |
-| Running | Connectivity lost | Stop after the current safe boundary; persist remaining intent |
-| Running | Retryable mutation failure | Persist retry schedule; continue only when ordering and dependency safety allow |
-| Running | Authentication blocked | Mark affected work blocked and stop remote processing |
-| Running | Outbox drained | Fetch and transactionally merge the initial `/users` page; subsequent pages load through the serialized pagination path |
-| Any | Process death | No create intent is lost because users, mutations, attempts, and retry times are persisted; a dismissed Undo is not restored |
+| Idle | Refresh, page load, create, delete, or restore | Acquire the repository operation mutex; complete the remote/database operation before releasing it |
+| Running | Another operation | Wait for the active operation, then perform the requested operation against its latest database state |
+| Running | Connectivity lost or remote failure | Preserve the completed cache and report the classified failure; no local mutation is queued |
+| Any | Process death | Committed database rows remain; a dismissed Undo is not restored |
 
 ## Presentation states
 

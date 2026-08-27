@@ -40,20 +40,4 @@ enum class UserStatus(
 
 data class UserRecord(
     val user: User,
-    val synchronization: UserSynchronization,
 )
-
-data class UndoableDeletion(
-    val user: User,
-    val deadline: Instant,
-)
-
-sealed interface UserSynchronization {
-    data object Synced : UserSynchronization
-
-    data object PendingCreate : UserSynchronization
-
-    data class CreateFailed(
-        val reason: String,
-    ) : UserSynchronization
-}

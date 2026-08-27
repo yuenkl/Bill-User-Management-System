@@ -102,45 +102,6 @@ class UserFeedScreenTest {
         }
 
     @Test
-    fun failedCreateOffersExplicitRetryForThatUser() =
-        runComposeUiTest {
-            var retriedId: String? = null
-            setContent {
-                UserManagementTheme {
-                    UserFeedScreen(
-                        state =
-                            UserFeedUiState(
-                                users =
-                                    listOf(
-                                        user().copy(
-                                            synchronization =
-                                                UserItemSynchronization.Failed(
-                                                    "email: already exists",
-                                                ),
-                                        ),
-                                    ),
-                                initialLoading = false,
-                            ),
-                        onRefresh = {},
-                        onRetry = {},
-                        onAddUser = {},
-                        onAddUserDismissed = {},
-                        onAddUserNameChanged = {},
-                        onAddUserEmailChanged = {},
-                        onAddUserGenderSelected = {},
-                        onAddUserStatusSelected = {},
-                        onAddUserSubmitted = {},
-                        onRetryUserCreation = { retriedId = it },
-                        onMessageConsumed = {},
-                    )
-                }
-            }
-
-            onNodeWithText("Retry sync").performClick()
-            assertEquals("local-1", retriedId)
-        }
-
-    @Test
     fun retryAndAccessibleRefreshActionsForwardEvents() =
         runComposeUiTest {
             var retryCalls = 0
@@ -162,7 +123,6 @@ class UserFeedScreenTest {
                         onAddUserGenderSelected = {},
                         onAddUserStatusSelected = {},
                         onAddUserSubmitted = {},
-                        onRetryUserCreation = {},
                         onMessageConsumed = {},
                     )
                 }
@@ -192,7 +152,6 @@ class UserFeedScreenTest {
                         onAddUserGenderSelected = {},
                         onAddUserStatusSelected = {},
                         onAddUserSubmitted = {},
-                        onRetryUserCreation = {},
                         onMessageConsumed = {},
                     )
                 }
@@ -374,29 +333,6 @@ class UserFeedScreenTest {
         )
 
     @Test
-    fun pendingAndFailedSyncStatesHaveReadableText() =
-        runComposeUiTest {
-            setContent {
-                screen(
-                    UserFeedUiState(
-                        users =
-                            listOf(
-                                user().copy(synchronization = UserItemSynchronization.Pending),
-                                user(localId = "local-2", name = "Grace Hopper").copy(
-                                    synchronization = UserItemSynchronization.Failed("email: already exists"),
-                                ),
-                            ),
-                        initialLoading = false,
-                    ),
-                )
-            }
-
-            onNodeWithText("Pending sync").fetchSemanticsNode()
-            onNodeWithText("Sync failed: email: already exists").fetchSemanticsNode()
-            onNodeWithText("Retry sync").fetchSemanticsNode()
-        }
-
-    @Test
     @Config(qualifiers = "w500dp-h800dp")
     fun reachingTheEndOfTheFeedRequestsTheNextPageOnce() =
         runComposeUiTest {
@@ -494,7 +430,6 @@ class UserFeedScreenTest {
                         onAddUserGenderSelected = {},
                         onAddUserStatusSelected = {},
                         onAddUserSubmitted = {},
-                        onRetryUserCreation = {},
                         onMessageConsumed = {},
                         onUserLongClick = { localId ->
                             state =
@@ -559,7 +494,6 @@ class UserFeedScreenTest {
                         onAddUserGenderSelected = {},
                         onAddUserStatusSelected = {},
                         onAddUserSubmitted = {},
-                        onRetryUserCreation = {},
                         onMessageConsumed = {},
                         onUndoDelete = { restoredInput = it },
                     )
@@ -593,7 +527,6 @@ class UserFeedScreenTest {
                 onAddUserStatusSelected = {},
                 onAddUserSubmitted = onAddUserSubmitted,
                 onAddUserValidationAlertDismissed = onAddUserValidationAlertDismissed,
-                onRetryUserCreation = {},
                 onMessageConsumed = {},
                 onLoadNextPage = onLoadNextPage,
                 onRetryNextPage = onRetryNextPage,
@@ -612,7 +545,6 @@ class UserFeedScreenTest {
         gender = Gender.Female,
         status = UserStatus.Active,
         relativeTime = "2 minutes ago",
-        synchronization = UserItemSynchronization.Synced,
     )
 
     private fun threeUsers(): List<UserItemUiModel> =

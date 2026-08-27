@@ -6,32 +6,12 @@ CREATE TABLE users (
     gender TEXT NOT NULL,
     status TEXT NOT NULL,
     observed_at_epoch_ms INTEGER NOT NULL,
-    server_position INTEGER,
-    sync_status TEXT NOT NULL CHECK (
-        sync_status IN ('SYNCED', 'PENDING_CREATE', 'CREATE_FAILED', 'PENDING_DELETE')
-    ),
-    hidden INTEGER NOT NULL DEFAULT 0,
-    undo_deadline_epoch_ms INTEGER,
-    last_sync_error TEXT
+    server_position INTEGER
 );
 
-CREATE TABLE pending_mutations (
-    mutation_id TEXT NOT NULL PRIMARY KEY,
-    user_local_id INTEGER NOT NULL,
-    kind TEXT NOT NULL CHECK (kind IN ('CREATE', 'DELETE')),
-    created_at_epoch_ms INTEGER NOT NULL,
-    attempt_count INTEGER NOT NULL DEFAULT 0,
-    state TEXT NOT NULL CHECK (state IN ('PENDING', 'RETRYABLE_WAIT', 'BLOCKED')),
-    retry_at_epoch_ms INTEGER,
-    last_error TEXT,
-    FOREIGN KEY (user_local_id) REFERENCES users(local_id) ON DELETE CASCADE,
-    UNIQUE (user_local_id, kind)
-);
-
-selectVisibleUsers:
+selectUsers:
 SELECT *
 FROM users
-WHERE hidden = 0
 ORDER BY
     CASE WHEN server_position IS NULL THEN 0 ELSE 1 END,
     CASE WHEN server_position IS NULL THEN observed_at_epoch_ms END DESC,
@@ -43,103 +23,10 @@ SELECT *
 FROM users
 WHERE local_id = ?;
 
-selectUndoableUsers:
-SELECT *
-FROM users
-WHERE
-    hidden = 1
-    AND sync_status = 'SYNCED'
-    AND undo_deadline_epoch_ms IS NOT NULL
-ORDER BY undo_deadline_epoch_ms ASC, local_id ASC;
-
-selectSyncedRemoteUsers:
+selectRemoteUsers:
 SELECT local_id, remote_id
 FROM users
-WHERE
-    sync_status = 'SYNCED'
-    AND remote_id IS NOT NULL;
-
-selectDueMutations:
-SELECT
-    pending_mutations.mutation_id,
-    pending_mutations.user_local_id,
-    pending_mutations.kind,
-    pending_mutations.created_at_epoch_ms,
-    pending_mutations.attempt_count,
-    pending_mutations.state,
-    pending_mutations.retry_at_epoch_ms,
-    pending_mutations.last_error,
-    users.remote_id,
-    users.name,
-    users.email,
-    users.gender,
-    users.status
-FROM pending_mutations
-JOIN users ON users.local_id = pending_mutations.user_local_id
-WHERE
-    pending_mutations.state = 'PENDING'
-    OR (
-        pending_mutations.state = 'RETRYABLE_WAIT'
-        AND pending_mutations.retry_at_epoch_ms IS NOT NULL
-        AND pending_mutations.retry_at_epoch_ms <= :now_epoch_ms
-    )
-ORDER BY pending_mutations.created_at_epoch_ms ASC, pending_mutations.mutation_id ASC;
-
-selectAllMutations:
-SELECT *
-FROM pending_mutations
-ORDER BY created_at_epoch_ms ASC, mutation_id ASC;
-
-selectExpiredUndoableUsers:
-SELECT local_id
-FROM users
-WHERE
-    hidden = 1
-    AND sync_status = 'SYNCED'
-    AND undo_deadline_epoch_ms IS NOT NULL
-    AND undo_deadline_epoch_ms <= :now_epoch_ms;
-
-insertPendingUser:
-INSERT INTO users (
-    remote_id,
-    name,
-    email,
-    gender,
-    status,
-    observed_at_epoch_ms,
-    server_position,
-    sync_status,
-    hidden,
-    undo_deadline_epoch_ms,
-    last_sync_error
-) VALUES (NULL, ?, ?, ?, ?, ?, NULL, 'PENDING_CREATE', 0, NULL, NULL);
-
-selectLastInsertedUserId:
-SELECT last_insert_rowid();
-
-insertMutation:
-INSERT INTO pending_mutations (
-    mutation_id,
-    user_local_id,
-    kind,
-    created_at_epoch_ms,
-    attempt_count,
-    state,
-    retry_at_epoch_ms,
-    last_error
-) VALUES (?, ?, ?, ?, 0, 'PENDING', NULL, NULL);
-
-insertMutationIfAbsent:
-INSERT OR IGNORE INTO pending_mutations (
-    mutation_id,
-    user_local_id,
-    kind,
-    created_at_epoch_ms,
-    attempt_count,
-    state,
-    retry_at_epoch_ms,
-    last_error
-) VALUES (?, ?, ?, ?, 0, 'PENDING', NULL, NULL);
+WHERE remote_id IS NOT NULL;
 
 insertRemoteUserIfAbsent:
 INSERT OR IGNORE INTO users (
@@ -149,12 +36,8 @@ INSERT OR IGNORE INTO users (
     gender,
     status,
     observed_at_epoch_ms,
-    server_position,
-    sync_status,
-    hidden,
-    undo_deadline_epoch_ms,
-    last_sync_error
-) VALUES (?, ?, ?, ?, ?, ?, ?, 'SYNCED', 0, NULL, NULL);
+    server_position
+) VALUES (?, ?, ?, ?, ?, ?, ?);
 
 updatePagedRemoteUser:
 UPDATE users
@@ -164,7 +47,7 @@ SET
     gender = ?,
     status = ?,
     server_position = ?
-WHERE remote_id = ? AND sync_status = 'SYNCED' AND server_position IS NOT NULL;
+WHERE remote_id = ? AND server_position IS NOT NULL;
 
 updateLocallyCreatedUser:
 UPDATE users
@@ -174,90 +57,7 @@ SET
     gender = ?,
     status = ?,
     server_position = ?
-WHERE remote_id = ? AND sync_status = 'SYNCED' AND server_position IS NULL;
-
-completeCreate:
-UPDATE users
-SET
-    remote_id = ?,
-    name = ?,
-    email = ?,
-    gender = ?,
-    status = ?,
-    server_position = ?,
-    sync_status = 'SYNCED',
-    last_sync_error = NULL
-WHERE local_id = ? AND sync_status = 'PENDING_CREATE';
-
-markCreateFailed:
-UPDATE users
-SET sync_status = 'CREATE_FAILED', last_sync_error = ?
-WHERE local_id = ? AND sync_status = 'PENDING_CREATE';
-
-retryCreate:
-UPDATE users
-SET sync_status = 'PENDING_CREATE', last_sync_error = NULL
-WHERE local_id = ? AND sync_status = 'CREATE_FAILED';
-
-hideSyncedUser:
-UPDATE users
-SET hidden = 1, undo_deadline_epoch_ms = ?, last_sync_error = NULL
-WHERE local_id = ? AND sync_status = 'SYNCED' AND hidden = 0;
-
-restoreUndoableUser:
-UPDATE users
-SET hidden = 0, undo_deadline_epoch_ms = NULL
-WHERE local_id = ? AND sync_status = 'SYNCED' AND hidden = 1;
-
-markPendingDelete:
-UPDATE users
-SET sync_status = 'PENDING_DELETE', undo_deadline_epoch_ms = NULL
-WHERE local_id = ? AND sync_status = 'SYNCED' AND hidden = 1;
-
-restoreFailedDelete:
-UPDATE users
-SET
-    sync_status = 'SYNCED',
-    hidden = 0,
-    undo_deadline_epoch_ms = NULL,
-    last_sync_error = ?
-WHERE local_id = ? AND sync_status = 'PENDING_DELETE';
-
-updateMutationRetryable:
-UPDATE pending_mutations
-SET
-    attempt_count = attempt_count + 1,
-    state = 'RETRYABLE_WAIT',
-    retry_at_epoch_ms = ?,
-    last_error = ?
-WHERE mutation_id = ?;
-
-updateMutationBlocked:
-UPDATE pending_mutations
-SET state = 'BLOCKED', retry_at_epoch_ms = NULL, last_error = ?
-WHERE mutation_id = ?;
-
-resetMutationForExplicitRetry:
-UPDATE pending_mutations
-SET state = 'PENDING', retry_at_epoch_ms = NULL, last_error = NULL
-WHERE mutation_id = ? AND state = 'BLOCKED';
-
-retryAuthenticationBlockedMutations:
-UPDATE pending_mutations
-SET state = 'PENDING', retry_at_epoch_ms = NULL, last_error = NULL
-WHERE state = 'BLOCKED' AND last_error = 'Authentication is required.';
-
-deleteMutation:
-DELETE FROM pending_mutations
-WHERE mutation_id = ?;
-
-deleteMutationForUserKind:
-DELETE FROM pending_mutations
-WHERE user_local_id = ? AND kind = ?;
-
-deleteMutationsForUser:
-DELETE FROM pending_mutations
-WHERE user_local_id = ?;
+WHERE remote_id = ? AND server_position IS NULL;
 
 deleteUser:
 DELETE FROM users

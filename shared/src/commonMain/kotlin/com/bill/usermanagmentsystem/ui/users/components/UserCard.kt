@@ -18,7 +18,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,13 +30,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.bill.usermanagmentsystem.domain.model.Gender
 import com.bill.usermanagmentsystem.domain.model.UserStatus
-import com.bill.usermanagmentsystem.ui.users.UserItemSynchronization
 import com.bill.usermanagmentsystem.ui.users.UserItemUiModel
 
 @Composable
 fun UserCard(
     user: UserItemUiModel,
-    onRetryCreation: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -47,7 +44,7 @@ fun UserCard(
                 .fillMaxWidth()
                 .semantics {
                     contentDescription = "${user.name}, ${user.email}, ${user.relativeTime}"
-                    stateDescription = user.synchronization.accessibilityDescription()
+                    stateDescription = "Synchronized"
                 }.combinedClickable(
                     onClick = {},
                     onLongClickLabel = "Delete user",
@@ -112,28 +109,6 @@ fun UserCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelMedium,
                 )
-                when (val synchronization = user.synchronization) {
-                    UserItemSynchronization.Synced -> Unit
-                    UserItemSynchronization.Pending ->
-                        SyncStatus(
-                            text = "Pending sync",
-                            failed = false,
-                        )
-                    is UserItemSynchronization.Failed ->
-                        SyncStatus(
-                            text = "Sync failed: ${synchronization.reason}",
-                            failed = true,
-                        )
-                }
-                val failure = user.synchronization as? UserItemSynchronization.Failed
-                if (failure != null) {
-                    TextButton(
-                        onClick = onRetryCreation,
-                        enabled = !failure.retrying,
-                    ) {
-                        Text(if (failure.retrying) "Retrying…" else "Retry sync")
-                    }
-                }
             }
         }
     }
@@ -153,43 +128,6 @@ private fun UserTag(text: String) {
         )
     }
 }
-
-@Composable
-private fun SyncStatus(
-    text: String,
-    failed: Boolean,
-) {
-    Surface(
-        color =
-            if (failed) {
-                MaterialTheme.colorScheme.errorContainer
-            } else {
-                MaterialTheme.colorScheme.tertiaryContainer
-            },
-        contentColor =
-            if (failed) {
-                MaterialTheme.colorScheme.onErrorContainer
-            } else {
-                MaterialTheme.colorScheme.onTertiaryContainer
-            },
-        shape = RoundedCornerShape(8.dp),
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.labelMedium,
-        )
-    }
-}
-
-private fun UserItemSynchronization.accessibilityDescription(): String =
-    when (this) {
-        UserItemSynchronization.Synced -> "Synchronized"
-        UserItemSynchronization.Pending -> "Pending synchronization"
-        is UserItemSynchronization.Failed -> "Synchronization failed: $reason"
-    }
 
 private fun Gender.displayName(): String =
     when (this) {

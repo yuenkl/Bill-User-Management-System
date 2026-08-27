@@ -84,7 +84,6 @@ fun UserFeedRoute(
         onAddUserStatusSelected = viewModel::selectAddUserStatus,
         onAddUserSubmitted = viewModel::submitAddUser,
         onAddUserValidationAlertDismissed = viewModel::dismissAddUserValidationAlert,
-        onRetryUserCreation = viewModel::retryUserCreation,
         onMessageConsumed = viewModel::consumeMessage,
         onUserLongClick = viewModel::selectUserForDeletion,
         onDeleteCancel = viewModel::cancelDelete,
@@ -110,7 +109,6 @@ fun UserFeedScreen(
     onAddUserGenderSelected: (Gender) -> Unit,
     onAddUserStatusSelected: (UserStatus) -> Unit,
     onAddUserSubmitted: () -> Unit,
-    onRetryUserCreation: (String) -> Unit,
     onMessageConsumed: (Long) -> Unit,
     onAddUserValidationAlertDismissed: () -> Unit = {},
     onUserLongClick: (String) -> Unit = {},
@@ -213,7 +211,6 @@ fun UserFeedScreen(
                             loadingMore = state.loadingMore,
                             canLoadMore = state.canLoadMore,
                             loadMoreError = state.loadMoreError,
-                            onRetryUserCreation = onRetryUserCreation,
                             onUserLongClick = onUserLongClick,
                             onLoadNextPage = onLoadNextPage,
                             onRetryNextPage = onRetryNextPage,
@@ -381,7 +378,6 @@ private fun UserList(
     loadingMore: Boolean,
     canLoadMore: Boolean,
     loadMoreError: String?,
-    onRetryUserCreation: (String) -> Unit,
     onUserLongClick: (String) -> Unit,
     onLoadNextPage: () -> Unit,
     onRetryNextPage: () -> Unit,
@@ -410,7 +406,6 @@ private fun UserList(
                     items(users, key = UserItemUiModel::localId) { user ->
                         FeedUserCard(
                             user = user,
-                            onRetryUserCreation = onRetryUserCreation,
                             onUserLongClick = onUserLongClick,
                             modifier = Modifier.animateItem(),
                         )
@@ -449,7 +444,6 @@ private fun UserList(
                     items(users, key = UserItemUiModel::localId) { user ->
                         FeedUserCard(
                             user = user,
-                            onRetryUserCreation = onRetryUserCreation,
                             onUserLongClick = onUserLongClick,
                             modifier = Modifier.animateItem(),
                         )
@@ -522,13 +516,11 @@ private fun PaginationFooter(
 @Composable
 private fun FeedUserCard(
     user: UserItemUiModel,
-    onRetryUserCreation: (String) -> Unit,
     onUserLongClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     UserCard(
         user = user,
-        onRetryCreation = { onRetryUserCreation(user.localId) },
         onLongClick = { onUserLongClick(user.localId) },
         modifier = modifier,
     )

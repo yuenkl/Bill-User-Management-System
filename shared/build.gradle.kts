@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jlleitschuh.gradle.ktlint.tasks.BaseKtLintCheckTask
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -113,7 +114,9 @@ sqldelight {
 }
 
 ktlint {
-    filter {
-        exclude { element -> element.file.path.contains("/build/generated/") }
-    }
+    filter {}
+}
+
+tasks.withType<BaseKtLintCheckTask>().configureEach {
+    exclude { element -> element.file.invariantSeparatorsPath.contains("/build/generated/") }
 }

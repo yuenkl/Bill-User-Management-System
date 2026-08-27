@@ -4,26 +4,19 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bill.usermanagmentsystem.domain.model.AddUserInput
 import com.bill.usermanagmentsystem.domain.model.Gender
-import com.bill.usermanagmentsystem.domain.model.SyncState
-import com.bill.usermanagmentsystem.domain.model.UndoableDeletion
 import com.bill.usermanagmentsystem.domain.model.UserDataError
 import com.bill.usermanagmentsystem.domain.model.UserRecord
 import com.bill.usermanagmentsystem.domain.model.UserStatus
-import com.bill.usermanagmentsystem.domain.model.UserSynchronization
 import com.bill.usermanagmentsystem.domain.model.userDataErrorOrNull
 import com.bill.usermanagmentsystem.domain.usecase.AddUser
 import com.bill.usermanagmentsystem.domain.usecase.AddUserValidator
 import com.bill.usermanagmentsystem.domain.usecase.DeleteUserWithUndo
 import com.bill.usermanagmentsystem.domain.usecase.EmailValidationError
-import com.bill.usermanagmentsystem.domain.usecase.FinalizeExpiredDeletions
 import com.bill.usermanagmentsystem.domain.usecase.LoadNextUsersPage
 import com.bill.usermanagmentsystem.domain.usecase.NameValidationError
-import com.bill.usermanagmentsystem.domain.usecase.ObserveSyncState
-import com.bill.usermanagmentsystem.domain.usecase.ObserveUndoableDeletions
 import com.bill.usermanagmentsystem.domain.usecase.ObserveUsers
 import com.bill.usermanagmentsystem.domain.usecase.RefreshUsers
 import com.bill.usermanagmentsystem.domain.usecase.RelativeTimeFormatter
-import com.bill.usermanagmentsystem.domain.usecase.RetryUserCreation
 import com.bill.usermanagmentsystem.domain.usecase.UndoUserDeletion
 import com.bill.usermanagmentsystem.platform.AppLifecycleObserver
 import com.bill.usermanagmentsystem.platform.AppLifecycleState
@@ -36,8 +29,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flow
@@ -46,22 +37,17 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
 class UserFeedViewModel(
     observeUsers: ObserveUsers,
-    observeSyncState: ObserveSyncState,
-    observeUndoableDeletions: ObserveUndoableDeletions,
     private val refreshUsers: RefreshUsers,
     private val loadNextUsersPage: LoadNextUsersPage,
     private val addUser: AddUser,
-    private val retryUserCreationUseCase: RetryUserCreation,
     private val addUserValidator: AddUserValidator,
     private val deleteUserWithUndo: DeleteUserWithUndo,
     private val undoUserDeletion: UndoUserDeletion,
-    private val finalizeExpiredDeletions: FinalizeExpiredDeletions,
     private val connectivityObserver: ConnectivityObserver,
     private val lifecycleObserver: AppLifecycleObserver,
     private val timeProvider: TimeProvider,
@@ -73,39 +59,32 @@ class UserFeedViewModel(
     private var pageLoadJob: Job? = null
     private var deletionJob: Job? = null
     private var undoJob: Job? = null
-    private var undoDeadlineJob: Job? = null
-    private var scheduledDeletion: UndoableDeletion? = null
 
     private val feedData =
-        combine(
-            observeUsers(),
-            observeUndoableDeletions(),
-            ::FeedData,
-        ).stateIn(
+        observeUsers().stateIn(
             scope = viewModelScope,
             started = SharingStarted.Eagerly,
-            initialValue = FeedData(),
+            initialValue = emptyList(),
         )
 
     val uiState =
-        combine(
-            feedData,
-            observeSyncState(),
-            connectivityObserver.status,
-            minuteTicker(),
-            presentation,
-        ) { data, syncState, connectivity, now, presentationState ->
-            buildUiState(data, syncState, connectivity, now, presentationState)
-        }.stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.Eagerly,
-            initialValue = UserFeedUiState(),
-        )
+        kotlinx.coroutines.flow
+            .combine(
+                feedData,
+                connectivityObserver.status,
+                minuteTicker(),
+                presentation,
+            ) { users, connectivity, now, presentationState ->
+                buildUiState(users, connectivity, now, presentationState)
+            }.stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.Eagerly,
+                initialValue = UserFeedUiState(),
+            )
 
     init {
         requestSynchronization(manual = false)
         observeAutomaticTriggers()
-        observeUndoDeadlines()
     }
 
     fun refresh() {
@@ -262,29 +241,6 @@ class UserFeedViewModel(
         }
     }
 
-    fun retryUserCreation(localId: String) {
-        if (localId in presentation.value.retryingUserIds) return
-        presentation.update { state ->
-            state.copy(
-                retryingUserIds = presentation.value.retryingUserIds + localId,
-            )
-        }
-        viewModelScope.launch(dispatcher) {
-            val result = retryUserCreationUseCase(localId)
-            presentation.update { current ->
-                val retryFinished =
-                    current.copy(
-                        retryingUserIds = current.retryingUserIds - localId,
-                    )
-                if (result.isFailure) {
-                    retryFinished.withFailureMessage(result.exceptionOrNull())
-                } else {
-                    retryFinished
-                }
-            }
-        }
-    }
-
     fun consumeMessage(id: Long) {
         presentation.update { current ->
             if (current.message?.id == id) current.copy(message = null) else current
@@ -292,7 +248,7 @@ class UserFeedViewModel(
     }
 
     fun selectUserForDeletion(localId: String) {
-        if (feedData.value.users.none { it.user.localId == localId }) return
+        if (feedData.value.none { it.user.localId == localId }) return
         presentation.update { it.copy(selectedUserId = localId) }
     }
 
@@ -304,7 +260,7 @@ class UserFeedViewModel(
     fun confirmDelete() {
         if (deletionJob?.isActive == true) return
         val localId = presentation.value.selectedUserId ?: return
-        if (feedData.value.users.none { it.user.localId == localId }) {
+        if (feedData.value.none { it.user.localId == localId }) {
             presentation.update { it.copy(selectedUserId = null) }
             return
         }
@@ -361,22 +317,19 @@ class UserFeedViewModel(
                 presentation.update { it.copy(refreshing = manual) }
                 val result = refreshUsers()
                 presentation.update { current ->
-                    if (manual && result.isFailure) {
-                        current.withFailureMessage(result.exceptionOrNull()).copy(
-                            initialAttemptFinished = true,
-                            refreshing = false,
-                            loadingNextPage = false,
-                            canLoadNextPage = false,
-                            nextPageError = null,
-                        )
-                    } else {
+                    val refreshed =
                         current.copy(
                             initialAttemptFinished = true,
                             refreshing = false,
                             loadingNextPage = false,
                             canLoadNextPage = result.isSuccess,
                             nextPageError = null,
+                            refreshError = result.exceptionOrNull()?.userDataErrorOrNull(),
                         )
+                    if (manual && result.isFailure) {
+                        refreshed.withFailureMessage(result.exceptionOrNull())
+                    } else {
+                        refreshed
                     }
                 }
             }
@@ -443,45 +396,15 @@ class UserFeedViewModel(
             }
         }.flowOn(dispatcher)
 
-    private fun observeUndoDeadlines() {
-        viewModelScope.launch(dispatcher) {
-            feedData
-                .map { it.undoableDeletions.firstOrNull() }
-                .distinctUntilChanged()
-                .collect(::scheduleDeletionFinalization)
-        }
-    }
-
-    private fun scheduleDeletionFinalization(deletion: UndoableDeletion?) {
-        if (scheduledDeletion == deletion) return
-        undoDeadlineJob?.cancel()
-        scheduledDeletion = deletion
-        if (deletion == null) {
-            undoDeadlineJob = null
-            return
-        }
-
-        undoDeadlineJob =
-            viewModelScope.launch(dispatcher) {
-                val remaining = (deletion.deadline - timeProvider.now()).coerceAtLeast(Duration.ZERO)
-                delay(remaining)
-                scheduledDeletion = null
-                undoDeadlineJob = null
-                val result = finalizeExpiredDeletions()
-                if (result.isFailure) publishFailure(result.exceptionOrNull())
-            }
-    }
-
     private fun buildUiState(
-        data: FeedData,
-        syncState: SyncState,
+        users: List<UserRecord>,
         connectivity: ConnectivityStatus,
         now: Instant,
         presentationState: PresentationState,
     ): UserFeedUiState {
-        val items = data.users.map { it.toUiModel(now, presentationState.retryingUserIds) }
+        val items = users.map { it.toUiModel(now) }
         val offline = connectivity == ConnectivityStatus.Unavailable
-        val error = (syncState as? SyncState.Failed)?.error
+        val error = presentationState.refreshError
         val initialLoading = items.isEmpty() && !presentationState.initialAttemptFinished
         val emptyState =
             when {
@@ -536,10 +459,7 @@ class UserFeedViewModel(
         )
     }
 
-    private fun UserRecord.toUiModel(
-        now: Instant,
-        retryingUserIds: Set<String>,
-    ): UserItemUiModel =
+    private fun UserRecord.toUiModel(now: Instant): UserItemUiModel =
         UserItemUiModel(
             localId = user.localId,
             name = user.name,
@@ -547,16 +467,6 @@ class UserFeedViewModel(
             gender = user.gender,
             status = user.status,
             relativeTime = relativeTimeFormatter.format(user.observedAt, now),
-            synchronization =
-                when (val state = synchronization) {
-                    UserSynchronization.Synced -> UserItemSynchronization.Synced
-                    UserSynchronization.PendingCreate -> UserItemSynchronization.Pending
-                    is UserSynchronization.CreateFailed ->
-                        UserItemSynchronization.Failed(
-                            reason = state.reason,
-                            retrying = user.localId in retryingUserIds,
-                        )
-                },
         )
 
     private fun updateForm(transform: (AddUserFormUiState) -> AddUserFormUiState) {
@@ -651,16 +561,11 @@ class UserFeedViewModel(
         val message: UserFeedMessage? = null,
         val addUserForm: AddUserFormUiState? = null,
         val addUserValidationAlert: AddUserValidationAlert? = null,
-        val retryingUserIds: Set<String> = emptySet(),
+        val refreshError: UserDataError? = null,
         val messageSequence: Long = 0,
         val selectedUserId: String? = null,
         val deleteInProgress: Boolean = false,
         val undoSnackbar: DeleteUndoUiModel? = null,
-    )
-
-    private data class FeedData(
-        val users: List<UserRecord> = emptyList(),
-        val undoableDeletions: List<UndoableDeletion> = emptyList(),
     )
 }
 

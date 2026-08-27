@@ -1,16 +1,16 @@
 # User Management System
 
-A production-minded Kotlin Multiplatform user directory for Android and iOS. The app shares its Compose UI, ViewModel, domain rules, repository, synchronization coordinator, Ktor client, SQLDelight schema, and dependency graph.
+A production-minded Kotlin Multiplatform user directory for Android and iOS. The app shares its Compose UI, ViewModel, domain rules, repository, Ktor client, SQLDelight schema, and dependency graph.
 
 The feed reads from the local database at all times. Network work refreshes that database in the background, so cached and locally created users remain useful through connectivity and server failures.
 
 ## What it demonstrates
 
 - Portrait uses a one-column feed; landscape uses an exact two-column grid.
-- Shared Material 3 light/dark presentation and accessible loading, empty, offline, error, pending, and failed states.
+- Shared Material 3 light/dark presentation and accessible loading, empty, offline, and error states.
 - Server-confirmed user creation: rows are added only after HTTP 201, and API validation errors are shown in the form.
 - Long-press delete that removes the remote user first, then offers Undo to recreate it.
-- Lifecycle- and connectivity-aware synchronization coalesced into one active run.
+- Lifecycle- and connectivity-aware refreshes with one serialized repository operation at a time.
 - Deterministic shared, persistence, Compose, and platform dependency-injection tests.
 
 ## Architecture
@@ -24,20 +24,18 @@ flowchart TD
     C --> D[Domain use cases]
     D --> E[OfflineFirstUserRepository]
     E --> F[(SQLDelight database)]
-    E --> G[DefaultSyncCoordinator]
-    G --> F
-    G --> H[Ktor GoRest data source]
-    I[Startup / foreground / connectivity / refresh] --> G
+    E --> G[Ktor GoRest data source]
+    I[Startup / foreground / connectivity / refresh] --> C
     F -->|database flows| E
     E -->|immutable state| C
     C --> B
 ```
 
-The synchronization coordinator processes due delete mutations (and any legacy create mutations) in FIFO order, then transactionally merges the initial GoRest `/users` response. Reaching the feed end appends the page named by `X-Links-Next` (`page=2`, `page=3`, and so on) through the same serialized data path. Concurrent triggers join the active run instead of starting or queuing another full synchronization. The detailed contract is in [`docs/state-transitions.md`](docs/state-transitions.md); architectural boundaries are in [`docs/architecture.md`](docs/architecture.md).
+The repository serializes each refresh, page load, create, restore, and delete operation. A refresh transaction replaces the stored remote snapshot only after the initial GoRest `/users` response succeeds. Reaching the feed end appends the page named by `X-Links-Next` (`page=2`, `page=3`, and so on). The detailed contract is in [`docs/state-transitions.md`](docs/state-transitions.md); architectural boundaries are in [`docs/architecture.md`](docs/architecture.md).
 
 ## Most important class
 
-[`UserFeedViewModel`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedViewModel.kt) is the central coordinator for the user experience. It combines the database-backed feed, synchronization state, connectivity, and clock into one immutable UI state, and turns UI actions into explicit use-case calls for refresh, pagination, form submission, delete, and undo. Keeping that orchestration here lets the shared Compose UI remain declarative while the repository and sync coordinator remain responsible for persistence and network correctness.
+[`UserFeedViewModel`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/UserFeedViewModel.kt) is the central coordinator for the user experience. It combines the database-backed feed, connectivity, clock, and presentation state into one immutable UI state, and turns UI actions into explicit use-case calls for refresh, pagination, form submission, delete, and undo. The repository owns remote calls and SQLDelight updates; the ViewModel observes the database rather than holding another copy of the feed.
 
 ## Prerequisites
 
@@ -95,7 +93,7 @@ Run the required verification suite from the repository root:
 ./gradlew :androidApp:assembleDebug
 ```
 
-Coverage includes incremental pagination and Retry, the compact/wide breakpoint, light/dark tokens, accessibility semantics, ViewModel state, Ktor parsing and HTTP failure classes, retry/backoff, synchronization coalescing, SQLDelight transitions, process-reopen scenarios, and Android/iOS Koin graphs. Tests use controlled dispatchers, clocks, mock HTTP engines, fakes, and temporary databases rather than the live API or real delays.
+Coverage includes incremental pagination and Retry, the compact/wide breakpoint, light/dark tokens, accessibility semantics, ViewModel state, Ktor parsing and HTTP failure classes, repository/database transitions, and Android/iOS Koin graphs. Tests use controlled dispatchers, clocks, mock HTTP engines, fakes, and temporary databases rather than the live API or real delays.
 
 ## Offline synchronization and Undo
 
@@ -109,8 +107,8 @@ Coverage includes incremental pagination and Retry, the compact/wide breakpoint,
 ## Technology choices and tradeoffs
 
 - **Compose Multiplatform:** one adaptive feature UI and semantics model on Android and iOS. Native entry points remain intentionally thin.
-- **SQLDelight:** typed shared persistence and transactional state transitions. This adds schema/query code but makes the create outbox and restart behavior inspectable and deterministic.
-- **Ktor:** one strict GoRest contract with OkHttp and Darwin engines. HTTP logging is deliberately not installed so authorization headers cannot enter debug output.
+- **SQLDelight:** typed shared persistence and transactional snapshot/page updates. This makes the database the single source observed by the UI.
+- **Ktor:** one strict GoRest contract with OkHttp and Darwin engines. Debug header logging redacts authorization values.
 - **Koin:** constructor-injected shared modules with small platform composition roots and replaceable test doubles.
 - **Observed local time:** GoRest has no user creation/update timestamp, so the relative label records when a row was first observed locally rather than claiming a server event time.
 - **Fixed two-column wide layout:** this follows the product contract and keeps behavior predictable; it intentionally does not grow to three or more columns on very large displays.
@@ -128,7 +126,7 @@ AI assistance was used to explore implementation options, draft focused changes,
 
 ## Repository map
 
-- `shared/src/commonMain`: shared UI, ViewModel, domain, repository, sync, Ktor, SQLDelight-facing code, and Koin modules.
+- `shared/src/commonMain`: shared UI, ViewModel, domain, repository, Ktor, SQLDelight-facing code, and Koin modules.
 - `shared/src/androidMain` / `shared/src/iosMain`: platform implementations and composition roots.
 - `shared/src/commonTest`, `androidHostTest`, and `iosTest`: deterministic shared and platform verification.
 - `androidApp`: Android application entry point and local token injection.

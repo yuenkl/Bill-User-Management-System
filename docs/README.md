@@ -5,7 +5,7 @@ This directory is the implementation source of truth for the Sliide Kotlin Multi
 ## Document map
 
 - [Product requirements](product-requirements.md) defines user-visible behaviour and acceptance criteria.
-- [Architecture](architecture.md) defines boundaries, data flow, interfaces, persistence, synchronization, dependency injection, and testing strategy.
+- [Architecture](architecture.md) defines boundaries, data flow, interfaces, persistence, dependency injection, and testing strategy.
 - [State transitions](state-transitions.md) defines every business transition and its success, retryable failure, permanent failure, and edge-case outcome.
 - [Sprint 1 - Foundation](sprints/01-foundation.md)
 - [Sprint 2 - Offline data and synchronization](sprints/02-offline-data-and-sync.md)
@@ -20,14 +20,14 @@ This directory is the implementation source of truth for the Sliide Kotlin Multi
 | --- | --- |
 | Platforms | Android and iOS through Kotlin Multiplatform |
 | Shared UI | Compose Multiplatform with Material 3 |
-| Architecture | MVVM with UI, domain, repository, local, remote, sync, and DI boundaries |
+| Architecture | MVVM with UI, domain, repository, local, remote, and DI boundaries |
 | Gradle structure | One `shared` KMP module with strict packages; no premature multi-module split |
 | Dependency injection | Koin with constructor injection |
 | Networking | Ktor with platform engines |
 | Persistence | SQLDelight; the database is the UI source of truth |
-| Offline behaviour | Feed caching and delete synchronization use durable local state; creation is server-confirmed |
-| Synchronization | Startup, foreground, connectivity restoration, and manual refresh |
-| Delete undo | Hide locally, allow five seconds to undo, then queue the remote DELETE |
+| Offline behaviour | Feed caching; create and delete are server-confirmed before the database changes |
+| Refresh triggers | Startup, foreground, connectivity restoration, and manual refresh |
+| Delete undo | DELETE first, remove locally after 204/404, then offer an in-memory Undo that POSTs a new user |
 | Compact layout | Single `LazyColumn` |
 | Landscape layout | Two-column `LazyVerticalGrid` |
 | Relative timestamp | Time first observed locally, because GoRest supplies no creation timestamp |
@@ -37,11 +37,11 @@ This directory is the implementation source of truth for the Sliide Kotlin Multi
 
 1. SQLDelight is the single source of truth.
 2. UI observes database-derived state, never raw network responses.
-3. Delete mutations are local-first and durable; creation is committed only after HTTP 201.
-4. Synchronization reconciles persisted local intent with the server.
-5. Transient delete API and network failures remain durable and retryable.
-6. Permanent failures are surfaced clearly and are not retried automatically forever.
-7. Undo restores local state before remote deletion is finalized.
+3. Create and delete are server-confirmed before the database changes.
+4. The repository serializes remote calls and transactional database updates.
+5. Network and server failures preserve cached data and are retried explicitly.
+6. Permanent failures are surfaced clearly.
+7. Undo recreates a successfully deleted user through POST.
 8. Core domain models do not contain temporary UI or persistence lifecycle flags such as `isDeleted` or `hidden`.
 9. Shared logic stays in `commonMain` whenever platform APIs are not required.
 10. Every meaningful business rule is independently testable.
@@ -63,10 +63,9 @@ Each sprint is one logical Git unit. Before committing it:
 ## Project definition of done
 
 - All three capabilities work on Android and iOS: feed, add user, and delete with undo.
-- The UI displays cached data and accepts mutations without a network connection.
-- Pending operations reconcile automatically when connectivity returns.
+- The UI displays cached data when offline; mutations require a server response.
 - Compact and wider layouts meet their documented adaptive behaviour.
-- Loading, empty, offline, retry, validation, pending-sync, and failure states are accessible and polished.
+- Loading, empty, offline, retry, validation, and failure states are accessible and polished.
 - Shared logic has deterministic tests for success, boundaries, failures, cancellation, and recovery.
 - Android debug build, Android host tests, and iOS simulator tests pass.
 - No access token, local path, generated build output, or IDE state is committed.

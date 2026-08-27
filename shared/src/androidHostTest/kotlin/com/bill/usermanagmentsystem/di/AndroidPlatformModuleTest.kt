@@ -11,15 +11,12 @@ import com.bill.usermanagmentsystem.platform.AppLifecycleObserver
 import com.bill.usermanagmentsystem.platform.ConnectivityObserver
 import com.bill.usermanagmentsystem.platform.NetworkEngineFactory
 import com.bill.usermanagmentsystem.platform.SqlDriverFactory
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
 import org.junit.runner.RunWith
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
 import org.robolectric.RobolectricTestRunner
 import kotlin.test.Test
 import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
 class AndroidPlatformModuleTest {
@@ -53,7 +50,7 @@ class AndroidPlatformModuleTest {
     }
 
     @Test
-    fun platformGraphCreatesOfflineRepositoryAndClosesItsScope() {
+    fun platformGraphCreatesOfflineRepository() {
         val androidApplication = ApplicationProvider.getApplicationContext<Application>()
         val databaseName = "offline-data-graph-test.db"
         androidApplication.deleteDatabase(databaseName)
@@ -69,7 +66,6 @@ class AndroidPlatformModuleTest {
                 )
             }
 
-        val applicationScope = application.koin.get<CoroutineScope>()
         try {
             assertNotNull(application.koin.get<UserManagementDatabase>())
             assertNotNull(application.koin.get<UserRepository>())
@@ -77,7 +73,5 @@ class AndroidPlatformModuleTest {
             application.close()
             androidApplication.deleteDatabase(databaseName)
         }
-
-        assertTrue(applicationScope.coroutineContext[Job]?.isCancelled == true)
     }
 }

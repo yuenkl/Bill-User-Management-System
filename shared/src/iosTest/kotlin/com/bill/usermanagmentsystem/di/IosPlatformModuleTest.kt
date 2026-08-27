@@ -7,13 +7,10 @@ import com.bill.usermanagmentsystem.domain.repository.UserRepository
 import com.bill.usermanagmentsystem.platform.AppConfig
 import com.bill.usermanagmentsystem.platform.NetworkEngineFactory
 import com.bill.usermanagmentsystem.platform.SqlDriverFactory
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
 import kotlin.test.Test
 import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
 
 class IosPlatformModuleTest {
     @Test
@@ -41,7 +38,7 @@ class IosPlatformModuleTest {
     }
 
     @Test
-    fun platformGraphCreatesOfflineRepositoryAndClosesItsScope() {
+    fun platformGraphCreatesOfflineRepository() {
         val application =
             koinApplication {
                 modules(
@@ -54,14 +51,11 @@ class IosPlatformModuleTest {
                 )
             }
 
-        val applicationScope = application.koin.get<CoroutineScope>()
         try {
             assertNotNull(application.koin.get<UserManagementDatabase>())
             assertNotNull(application.koin.get<UserRepository>())
         } finally {
             application.close()
         }
-
-        assertTrue(applicationScope.coroutineContext[Job]?.isCancelled == true)
     }
 }

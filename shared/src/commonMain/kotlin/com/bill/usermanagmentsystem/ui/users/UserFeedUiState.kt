@@ -84,19 +84,7 @@ data class UserItemUiModel(
     val gender: Gender,
     val status: UserStatus,
     val relativeTime: String,
-    val synchronization: UserItemSynchronization,
 )
-
-sealed interface UserItemSynchronization {
-    data object Synced : UserItemSynchronization
-
-    data object Pending : UserItemSynchronization
-
-    data class Failed(
-        val reason: String,
-        val retrying: Boolean = false,
-    ) : UserItemSynchronization
-}
 
 sealed interface UserFeedEmptyState {
     data object Empty : UserFeedEmptyState

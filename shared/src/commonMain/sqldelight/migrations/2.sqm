@@ -1,0 +1,37 @@
+DROP TABLE pending_mutations;
+
+CREATE TABLE users_new (
+    local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    remote_id INTEGER UNIQUE,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    gender TEXT NOT NULL,
+    status TEXT NOT NULL,
+    observed_at_epoch_ms INTEGER NOT NULL,
+    server_position INTEGER
+);
+
+INSERT INTO users_new (
+    local_id,
+    remote_id,
+    name,
+    email,
+    gender,
+    status,
+    observed_at_epoch_ms,
+    server_position
+)
+SELECT
+    local_id,
+    remote_id,
+    name,
+    email,
+    gender,
+    status,
+    observed_at_epoch_ms,
+    server_position
+FROM users
+WHERE remote_id IS NOT NULL;
+
+DROP TABLE users;
+ALTER TABLE users_new RENAME TO users;

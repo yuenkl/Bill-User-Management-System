@@ -32,7 +32,7 @@ class SqlDelightUserLocalDataSourceTest {
                     observedAt = instant(2_000),
                 )
 
-                val visible = source.observeVisibleUsers().first()
+                val visible = source.observeUsers().first()
                 assertEquals(listOf("First page", "Next page"), visible.map { it.user.name })
                 assertEquals(instant(1_000), visible.first().user.observedAt)
                 assertEquals(instant(2_000), visible.last().user.observedAt)
@@ -40,7 +40,29 @@ class SqlDelightUserLocalDataSourceTest {
         }
 
     @Test
-    fun deleteImmediatelyRemovesTheConfirmedUser() =
+    fun refreshSnapshotReplacesPreviouslyLoadedPages() =
+        runTest {
+            withFixture("snapshot-replacement") { source ->
+                source.mergeSnapshot(
+                    users = listOf(snapshot(remoteId = 41, name = "Initial", position = 0)),
+                    observedAt = instant(1_000),
+                )
+                source.mergePage(
+                    users = listOf(snapshot(remoteId = 21, name = "Old next page", position = 1)),
+                    observedAt = instant(1_000),
+                )
+
+                source.mergeSnapshot(
+                    users = listOf(snapshot(remoteId = 7, name = "Refreshed", position = 0)),
+                    observedAt = instant(2_000),
+                )
+
+                assertEquals(listOf("Refreshed"), source.observeUsers().first().map { it.user.name })
+            }
+        }
+
+    @Test
+    fun deleteRemovesTheConfirmedUser() =
         runTest {
             withFixture("confirmed-delete") { source ->
                 source.mergeSnapshot(
@@ -49,14 +71,14 @@ class SqlDelightUserLocalDataSourceTest {
                 )
                 val localId =
                     source
-                        .observeVisibleUsers()
+                        .observeUsers()
                         .first()
                         .single()
                         .user.localId
 
-                source.deleteImmediately(localId)
+                source.deleteUser(localId)
 
-                assertEquals(emptyList(), source.observeVisibleUsers().first())
+                assertEquals(emptyList(), source.observeUsers().first())
                 assertEquals(null, source.getUser(localId))
             }
         }
@@ -73,10 +95,6 @@ class SqlDelightUserLocalDataSourceTest {
             block(
                 SqlDelightUserLocalDataSource(
                     database = UserManagementDatabase(driver),
-                    idGenerator =
-                        object : IdGenerator {
-                            override fun nextId(): String = "unused"
-                        },
                     queryDispatcher = UnconfinedTestDispatcher(testScheduler),
                 ),
             )
