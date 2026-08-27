@@ -2,7 +2,7 @@
 
 ## Goal
 
-Build a production-minded Kotlin Multiplatform user directory that demonstrates shared architecture, offline-first behaviour, adaptive Compose UI, and clear recovery from network failures. The intended audience is a technical evaluator reviewing Android/KMP quality, UX polish, and AI-assisted engineering discipline.
+Build a production-minded Kotlin Multiplatform user directory that demonstrates shared architecture, database-backed cached viewing, adaptive Compose UI, and clear recovery from network failures. The intended audience is a technical evaluator reviewing Android/KMP quality, UX polish, and AI-assisted engineering discipline.
 
 There are three primary capabilities:
 
@@ -27,7 +27,7 @@ All behaviour must preserve the [engineering invariants](README.md#engineering-i
 
 - Show shimmer placeholders only when the database has no visible users and the initial refresh is running.
 - If cached users exist, keep them visible during refresh and use a non-blocking refresh indicator.
-- With no cache and no network, show a full offline state with Retry.
+- With no cache and no network, show a full offline state. A later connectivity restoration or pull-to-refresh retries the initial request.
 - With cached users and no network, show a compact offline banner or supporting message without blocking the feed.
 - Empty data is distinct from loading and failure.
 - Authentication, rate-limit, validation, server, and connectivity failures map to user-readable messages while retaining diagnostic detail for logs.
@@ -75,19 +75,18 @@ All behaviour must preserve the [engineering invariants](README.md#engineering-i
 ### Behaviour
 
 - Long-pressing a user opens a confirmation dialog containing enough identity information to avoid deleting the wrong row.
-- Confirming hides the row with an animation and persists an undoable-delete state with a five-second deadline.
-- Show a Snackbar with Undo for the same five-second window.
-- Undo before the deadline restores the row and prevents a remote DELETE.
-- When the deadline expires, create a `DELETE` outbox entry. Synchronize immediately if online or later if offline.
-- HTTP 204 and 404 both complete deletion. A permanent authentication failure restores the row and reports the failure; transient failures remain queued.
+- Confirming calls DELETE immediately. Only HTTP 204 or an already-absent HTTP 404 removes the local row, with an item-removal animation.
+- After a successful deletion, show a Snackbar with Undo. Dismissing the Snackbar leaves the deletion complete.
+- Undo creates a replacement user through POST and inserts that server-confirmed response at the top of the feed.
+- If DELETE fails, keep the row visible and show the classified failure.
 - New users are displayed only after HTTP 201, so every visible user has a remote ID and deletion calls the remote endpoint.
 
 ### Acceptance criteria
 
-- Undo produces no remote DELETE.
-- No Undo produces exactly one DELETE after the deadline.
-- The deadline survives process death; expired deletions finalize on the next startup.
-- Offline deletion remains hidden, survives restart, and completes after reconnection.
+- Confirmation produces one DELETE request.
+- HTTP 204 and HTTP 404 remove the local row; any other failure leaves it visible.
+- Undo produces a new POST request and scrolls the feed to the new top row on success.
+- The Undo affordance is transient and does not survive process death.
 
 ## Adaptive layout and shared UI
 
@@ -101,13 +100,12 @@ All behaviour must preserve the [engineering invariants](README.md#engineering-i
 ## Offline and synchronization contract
 
 - SQLDelight is authoritative for visible state.
-- Mutations follow one local-first code path regardless of current connectivity.
-- Synchronization runs at app startup, return to foreground, connectivity restoration, and manual refresh.
+- Feed synchronization runs at app startup, return to foreground, connectivity restoration, and pull-to-refresh. There is no top-bar Refresh button.
+- Create, delete, and Undo are direct server-confirmed operations. Offline mutations do not create a local row or durable outbox entry.
 - Only one synchronization run may execute at a time.
-- Pending mutations are processed FIFO before fetching the latest remote snapshot.
 - Database updates for each remote result are transactional, and database flows update the UI automatically afterward.
-- Retryable operations remain durable rather than being lost with a coroutine or process.
-- Permanent failures leave the automatic retry set, surface a clear reason, and require configuration change or explicit user action before another attempt.
+- A failed initial snapshot preserves the current cache and can be retried by pull-to-refresh or the next lifecycle/connectivity synchronization. A failed next page exposes an explicit Retry without advancing its cursor.
+- Permanent failures preserve the cache and surface a clear reason. Create failures keep the form open for correction or resubmission.
 - Core `User` domain data never carries `isDeleted`, `hidden`, dialog, Snackbar, or other temporary lifecycle flags.
 - Compose renders state and forwards actions; validation, mutation, synchronization, and retry decisions remain in shared ViewModel/domain/data code.
 

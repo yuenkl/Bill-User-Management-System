@@ -6,9 +6,9 @@ This document is the normative business-state contract. Implementations may rena
 
 | Class | Examples | Persistence | Retry policy | User visibility |
 | --- | --- | --- | --- | --- |
-| Retryable | Offline, timeout, I/O, HTTP 5xx | Existing cache remains unchanged | Explicit retry | Non-blocking error when useful |
-| Rate limited | HTTP 429 | Existing cache remains unchanged | Explicit retry after the limit clears | Rate-limit message without losing local state |
-| Authentication | HTTP 401/403 | Existing cache remains unchanged | Correct token and retry | Clear configuration error |
+| Retryable | Offline, timeout, I/O, HTTP 5xx | Existing cache remains unchanged | Pull-to-refresh, foreground, or restored connectivity retries the initial snapshot; a failed page has an explicit Retry | Non-blocking error when useful |
+| Rate limited | HTTP 429 | Existing cache remains unchanged | A later pull-to-refresh or automatic synchronization may retry | Rate-limit message without losing local state |
+| Authentication | HTTP 401/403 | Existing cache remains unchanged | Correct token, rebuild, then pull-to-refresh or resume the app | Clear configuration error |
 | Validation permanent | CREATE HTTP 422 | No local row is written | Correct and resubmit manually | Alert lists the API field and message |
 | Delete already absent | DELETE HTTP 404 | Row removed | No retry; treated as success | Normal completed deletion |
 | Permanent client/invariant | Malformed payload, impossible mapping, unsupported request | Operation stopped; cached state preserved | Explicit user action starts a new request | Clear diagnostic failure |
@@ -57,7 +57,7 @@ Snapshot results affect UI only after their database transaction commits.
 - Shimmer exists only for empty database plus active initial load.
 - Cached users remain visible during refresh and failures.
 - Dialog, sheet, focus, and Snackbar visibility are UI state; they do not change domain models.
-- User actions call ViewModel methods. Composables do not validate business rules, write SQLDelight, call Ktor, or coordinate retries.
+- Pull-to-refresh, next-page retry, and mutation actions call ViewModel methods. Composables do not validate business rules, write SQLDelight, call Ktor, or coordinate retries.
 - One-off messages are consumed explicitly and do not become durable business truth.
 
 ## Required transition tests

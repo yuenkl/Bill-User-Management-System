@@ -12,6 +12,9 @@ shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/
 |   |-- theme/
 |   `-- users/
 |       |-- components/
+|       |-- AddUserFormState.kt
+|       |-- UserFeedContent.kt
+|       |-- UserFeedDialogs.kt
 |       |-- UserFeedScreen.kt
 |       |-- UserFeedEvent.kt
 |       |-- UserFeedUiState.kt
@@ -29,7 +32,10 @@ shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/
 |   |-- remote/
 |   |-- repository/
 |-- di/
-`-- platform/
+|-- platform/
+`-- utils/
+    |-- AddUserValidator.kt
+    `-- RelativeTimeFormatter.kt
 ```
 
 Android and iOS source sets contain SQLDelight drivers, Ktor engines, lifecycle/connectivity adapters, and platform configuration. Platform types must not leak into common domain or UI contracts.
@@ -94,7 +100,7 @@ interface UserRepository {
 }
 ```
 
-Use cases wrap these operations where they contain business rules: validation, refresh, pagination, relative time, immediate deletion, and restoration.
+Use cases wrap repository operations. `AddUserValidator` and `RelativeTimeFormatter` are pure shared utilities used by the ViewModel and are supplied through Koin.
 
 The UI only receives repository flows derived from SQLDelight queries. Ktor responses are mapped and committed in the data layer before database emissions can change UI state.
 
@@ -107,14 +113,17 @@ data class UserFeedUiState(
     val users: List<UserItemUiModel>,
     val initialLoading: Boolean,
     val refreshing: Boolean,
-    val offline: Boolean,
-    val emptyState: EmptyState?,
-    val addForm: AddUserFormUiState?,
+    val loadingMore: Boolean,
+    val canLoadMore: Boolean,
+    val loadMoreError: String?,
+    val emptyState: UserFeedEmptyState?,
+    val banner: UserFeedBanner?,
+    val addUserForm: AddUserFormUiState?,
     val deleteConfirmation: UserItemUiModel?,
 )
 ```
 
-The screen automatically synchronizes at startup, foreground, and restored connectivity. User actions include pull-to-refresh, add-form open/close, field changes, submit, user long-press, delete confirm/cancel, Undo, and next-page Retry. One-off Snackbar effects are emitted as `SharedFlow<UserFeedEvent>` values, so they are not replayed by the screen state after recomposition. The ViewModel keeps only the current Undo input needed to validate a restore action.
+The screen automatically synchronizes at startup, foreground, and restored connectivity. Pull-to-refresh invokes the same synchronization path; the top app bar has no Refresh button. User actions also include add-form open/close, field changes, submit, user long-press, delete confirm/cancel, Undo, and next-page Retry. One-off Snackbar effects are emitted as `SharedFlow<UserFeedEvent>` values, so they are not replayed by the screen state after recomposition. The ViewModel keeps only the current Undo input needed to validate a restore action.
 
 ## SQLDelight design
 
@@ -155,6 +164,10 @@ The complete transition contract is defined in [state-transitions.md](state-tran
 - Android provides the OkHttp engine; iOS provides Darwin.
 - The initial `/users` response returns typed next-page metadata. Header parsing is case-insensitive; an absent `X-Links-Next` ends pagination and an invalid link is a controlled data-contract error. The initial response and all subsequent pages retain server display order.
 - Network logging is debug-only and must redact `Authorization`.
+
+## Threading
+
+`UserFeedViewModel` uses its default main `viewModelScope` for state transitions, job handles, and event emission. The remote source wraps HTTP calls in the injected I/O dispatcher; the SQLDelight source performs queries and writes on that dispatcher. The combined feed-to-UI mapping runs on the injected default dispatcher before publishing immutable state, so UI collection is not blocked by network, database, or list-mapping work.
 
 ## Connectivity and lifecycle
 

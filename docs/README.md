@@ -4,15 +4,17 @@ This directory is the implementation source of truth for the Sliide Kotlin Multi
 
 ## Document map
 
-- [Product requirements](product-requirements.md) defines user-visible behaviour and acceptance criteria.
-- [Architecture](architecture.md) defines boundaries, data flow, interfaces, persistence, dependency injection, and testing strategy.
-- [State transitions](state-transitions.md) defines every business transition and its success, retryable failure, permanent failure, and edge-case outcome.
+- [Product requirements](product-requirements.md) defines the implemented user-visible behaviour and acceptance criteria.
+- [Architecture](architecture.md) defines current boundaries, data flow, interfaces, persistence, dependency injection, threading, and testing strategy.
+- [State transitions](state-transitions.md) defines the implemented business transitions and their success, retryable failure, permanent failure, and edge-case outcomes.
 - [Sprint 1 - Foundation](sprints/01-foundation.md)
 - [Sprint 2 - Offline data and synchronization](sprints/02-offline-data-and-sync.md)
 - [Sprint 3 - Smart user feed](sprints/03-smart-user-feed.md)
 - [Sprint 4 - Adaptive add user](sprints/04-adaptive-add-user.md)
 - [Sprint 5 - Delete and undo](sprints/05-delete-and-undo.md)
 - [Sprint 6 - Adaptive polish and delivery](sprints/06-adaptive-polish-and-delivery.md)
+
+The sprint documents preserve the original delivery plan. When a plan differs from the final implementation, this README, the product requirements, architecture, and state transitions describe the current behaviour.
 
 ## Fixed decisions
 
@@ -39,7 +41,7 @@ This directory is the implementation source of truth for the Sliide Kotlin Multi
 2. UI observes database-derived state, never raw network responses.
 3. Create and delete are server-confirmed before the database changes.
 4. The repository serializes remote calls and transactional database updates.
-5. Network and server failures preserve cached data and are retried explicitly.
+5. Network and server failures preserve cached data; pull-to-refresh and lifecycle/connectivity synchronization can retry a feed request, while a failed next page has its own Retry action.
 6. Permanent failures are surfaced clearly.
 7. Undo recreates a successfully deleted user through POST.
 8. Core domain models do not contain temporary UI or persistence lifecycle flags such as `isDeleted` or `hidden`.
@@ -65,7 +67,7 @@ Each sprint is one logical Git unit. Before committing it:
 - All three capabilities work on Android and iOS: feed, add user, and delete with undo.
 - The UI displays cached data when offline; mutations require a server response.
 - Compact and wider layouts meet their documented adaptive behaviour.
-- Loading, empty, offline, retry, validation, and failure states are accessible and polished.
+- Loading, empty, offline, pull-to-refresh, pagination retry, validation, and failure states are accessible and polished.
 - Shared logic has deterministic tests for success, boundaries, failures, cancellation, and recovery.
 - Android debug build, Android host tests, and iOS simulator tests pass.
 - No access token, local path, generated build output, or IDE state is committed.
