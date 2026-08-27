@@ -511,19 +511,6 @@ The repository owns remote calls and SQLDelight updates. The ViewModel observes 
 | [`AddUserFormState.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/AddUserFormState.kt)                        | Form updates, validation, API-error parsing                     |
 | [`UserFeedUiStateMapper.kt`](shared/src/commonMain/kotlin/com/bill/usermanagmentsystem/ui/users/presentation/UserFeedUiStateMapper.kt) | Maps persisted users into immutable UI state                    |
 
----
-
-# ⚠️ Known Limitations
-
-* 🌐 GoRest is a public demonstration service and may reset or change its data independently of the app.
-* 🔑 The token is compiled into each demo binary. Ignored local files prevent source-control leakage, but this is not appropriate secret storage for a production-distributed client.
-* 🕐 Relative user time is based on local observation because the API provides no timestamp.
-* 📱 The product intentionally targets Android and iOS only.
-* 🚫 Desktop, web, user editing, and production deployment are out of scope.
-
-For a production system, privileged credentials should be owned by a backend rather than embedded in the client.
-
----
 
 # 🗺️ Repository Map
 
