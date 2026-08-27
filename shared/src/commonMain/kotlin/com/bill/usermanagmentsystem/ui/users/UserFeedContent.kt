@@ -92,16 +92,16 @@ internal fun UserList(
             AdaptiveLayoutMode.Wide -> gridState.animateScrollToItem(index = 0)
         }
     }
-    LaunchedEffect(listState, canLoadMore, loadingMore, loadMoreError) {
-        snapshotFlow { listState.isPaginationFooterVisible() }
+    val lastUserIndex = users.lastIndex + if (banner == null) 0 else 1
+    LaunchedEffect(layoutMode, listState, gridState, lastUserIndex, canLoadMore, loadingMore, loadMoreError) {
+        snapshotFlow {
+            when (layoutMode) {
+                AdaptiveLayoutMode.Compact -> listState.lastVisibleItemIndex() >= lastUserIndex
+                AdaptiveLayoutMode.Wide -> gridState.lastVisibleItemIndex() >= lastUserIndex
+            }
+        }
             .distinctUntilChanged()
-            .filter { footerVisible -> footerVisible && canLoadMore && !loadingMore && loadMoreError == null }
-            .collect { onLoadMore() }
-    }
-    LaunchedEffect(gridState, canLoadMore, loadingMore, loadMoreError) {
-        snapshotFlow { gridState.isPaginationFooterVisible() }
-            .distinctUntilChanged()
-            .filter { footerVisible -> footerVisible && canLoadMore && !loadingMore && loadMoreError == null }
+            .filter { lastUserVisible -> lastUserVisible && canLoadMore && !loadingMore && loadMoreError == null }
             .collect { onLoadMore() }
     }
     Box(
@@ -227,11 +227,11 @@ private fun PaginationFooter(
     }
 }
 
-private fun androidx.compose.foundation.lazy.LazyListState.isPaginationFooterVisible(): Boolean =
-    layoutInfo.visibleItemsInfo.any { item -> item.index == layoutInfo.totalItemsCount - 1 }
+private fun androidx.compose.foundation.lazy.LazyListState.lastVisibleItemIndex(): Int =
+    layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
 
-private fun androidx.compose.foundation.lazy.grid.LazyGridState.isPaginationFooterVisible(): Boolean =
-    layoutInfo.visibleItemsInfo.any { item -> item.index == layoutInfo.totalItemsCount - 1 }
+private fun androidx.compose.foundation.lazy.grid.LazyGridState.lastVisibleItemIndex(): Int =
+    layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
 
 @Composable
 private fun FeedUserCard(
