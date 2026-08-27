@@ -33,7 +33,6 @@ internal class FakeUserLocalDataSource : UserLocalDataSource {
     val storedUsers = mutableMapOf<String, StoredUser>()
     val storedMutations = mutableListOf<StoredMutation>()
     val dueMutations = mutableListOf<DueMutation>()
-    val insertedCreates = mutableListOf<InsertedCreate>()
     val completedCreates = mutableListOf<Pair<String, String>>()
     val failedCreates = mutableListOf<Triple<String, String, String>>()
     val completedDeletes = mutableListOf<Pair<String, String>>()
@@ -48,9 +47,7 @@ internal class FakeUserLocalDataSource : UserLocalDataSource {
     var retriedAuthenticationBlockedMutations = 0
     var finalizedDeleteCalls = 0
     var finalizedDeleteResult = 0
-    var insertFailure: Throwable? = null
     var mergePageFailure: Throwable? = null
-    var nextInsertedLocalId: String = "1"
 
     override fun observeVisibleUsers(): Flow<List<UserRecord>> = visibleUsers
 
@@ -62,17 +59,6 @@ internal class FakeUserLocalDataSource : UserLocalDataSource {
         storedUsers.remove(localId) ?: error("No stored user for $localId")
 
     override suspend fun getAllMutations(): List<StoredMutation> = storedMutations.toList()
-
-    override suspend fun insertPendingCreate(
-        mutationId: String,
-        input: AddUserInput,
-        observedAt: Instant,
-    ): String {
-        insertFailure?.let { throw it }
-        return nextInsertedLocalId.also { localId ->
-            insertedCreates += InsertedCreate(localId, mutationId, input, observedAt)
-        }
-    }
 
     override suspend fun requestDelete(localId: String, undoDeadline: Instant) {
         deleteRequests += localId to undoDeadline
@@ -267,13 +253,6 @@ internal class FakeSyncCoordinator(
         return pageResult
     }
 }
-
-internal data class InsertedCreate(
-    val localId: String,
-    val mutationId: String,
-    val input: AddUserInput,
-    val observedAt: Instant,
-)
 
 internal data class RetrySchedule(
     val mutationId: String,

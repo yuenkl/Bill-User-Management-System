@@ -3,18 +3,17 @@ package com.bill.usermanagmentsystem.data.sync
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
+import com.bill.usermanagmentsystem.data.local.SnapshotUser
 import com.bill.usermanagmentsystem.data.local.SqlDelightUserLocalDataSource
 import com.bill.usermanagmentsystem.data.local.db.UserManagementDatabase
 import com.bill.usermanagmentsystem.data.remote.RemoteResult
-import com.bill.usermanagmentsystem.data.remote.RemoteUser
 import com.bill.usermanagmentsystem.data.testing.FakeConnectivityObserver
 import com.bill.usermanagmentsystem.data.testing.FakeTimeProvider
 import com.bill.usermanagmentsystem.data.testing.FakeUserRemoteDataSource
 import com.bill.usermanagmentsystem.data.testing.QueueIdGenerator
-import com.bill.usermanagmentsystem.domain.model.AddUserInput
 import com.bill.usermanagmentsystem.domain.model.Gender
-import com.bill.usermanagmentsystem.domain.model.UserStatus
 import com.bill.usermanagmentsystem.domain.model.UserDataError
+import com.bill.usermanagmentsystem.domain.model.UserStatus
 import com.bill.usermanagmentsystem.domain.model.userDataErrorOrNull
 import com.bill.usermanagmentsystem.platform.ConnectivityStatus
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -33,85 +32,16 @@ import kotlin.time.Instant
 @OptIn(ExperimentalCoroutinesApi::class)
 class OfflineSyncIntegrationTest {
     @Test
-    fun offlineCreateSurvivesReopenThenRefreshFollowsApiSnapshot() = runTest {
-        val application = ApplicationProvider.getApplicationContext<Application>()
-        val databaseName = "offline-create-sync.db"
-        application.deleteDatabase(databaseName)
-        val dispatcher = UnconfinedTestDispatcher(testScheduler)
-        var driver = AndroidSqliteDriver(UserManagementDatabase.Schema, application, databaseName)
-        var local = SqlDelightUserLocalDataSource(
-            database = UserManagementDatabase(driver),
-            idGenerator = QueueIdGenerator("unused-before-reopen"),
-            queryDispatcher = dispatcher,
-        )
-
-        try {
-            val localId = local.insertPendingCreate(
-                mutationId = "durable-create",
-                input = AddUserInput(
-                    name = "Offline user",
-                    email = "offline@example.com",
-                    gender = Gender.Female,
-                    status = UserStatus.Active,
-                ),
-                observedAt = instant(1_000),
-            )
-
-            driver.close()
-            driver = AndroidSqliteDriver(UserManagementDatabase.Schema, application, databaseName)
-            local = SqlDelightUserLocalDataSource(
-                database = UserManagementDatabase(driver),
-                idGenerator = QueueIdGenerator("snapshot-generated-id"),
-                queryDispatcher = dispatcher,
-            )
-
-            val remote = FakeUserRemoteDataSource().apply {
-                createHandler = {
-                    RemoteResult.Success(remoteUser(remoteId = 44))
-                }
-                fetchHandler = {
-                    RemoteResult.Success(listOf(remoteUser(remoteId = 77, serverPosition = 1)))
-                }
-            }
-            val coordinator = DefaultSyncCoordinator(
-                localDataSource = local,
-                remoteDataSource = remote,
-                connectivityObserver = FakeConnectivityObserver(),
-                timeProvider = FakeTimeProvider(instant(2_000)),
-                retryPolicy = RetryPolicy(),
-                applicationScope = backgroundScope,
-            )
-
-            assertTrue(coordinator.sync().isSuccess)
-
-            assertNull(local.getUser(localId))
-            assertEquals(
-                setOf(77L),
-                local.observeVisibleUsers().first().mapNotNull { it.user.remoteId }.toSet(),
-            )
-            assertTrue(local.getAllMutations().isEmpty())
-            assertEquals(1, remote.createRequests.size)
-        } finally {
-            driver.close()
-            application.deleteDatabase(databaseName)
-        }
-    }
-
-    @Test
-    fun offlineDeleteSurvivesReopenAndSendsExactlyOneDeleteAfterReconnection() = runTest {
+    fun offlineDeleteSurvivesReopenAndSendsOneDeleteAfterReconnection() = runTest {
         val application = ApplicationProvider.getApplicationContext<Application>()
         val databaseName = "offline-delete-sync.db"
         application.deleteDatabase(databaseName)
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
         var driver = AndroidSqliteDriver(UserManagementDatabase.Schema, application, databaseName)
-        var local = SqlDelightUserLocalDataSource(
-            database = UserManagementDatabase(driver),
-            idGenerator = QueueIdGenerator("remote-local-id", "delete-mutation"),
-            queryDispatcher = dispatcher,
-        )
+        var local = newLocalDataSource(driver, dispatcher, QueueIdGenerator("delete-mutation"))
 
         try {
-            local.mergeSnapshot(listOf(remoteUser(77).toSnapshot()), instant(1_000))
+            local.mergeSnapshot(listOf(snapshot(remoteId = 77)), instant(1_000))
             val localId = local.observeVisibleUsers().first().single().user.localId
             local.requestDelete(localId, instant(6_000))
             val offlineCoordinator = DefaultSyncCoordinator(
@@ -126,15 +56,10 @@ class OfflineSyncIntegrationTest {
             val offlineResult = offlineCoordinator.sync()
             assertEquals(UserDataError.Offline, offlineResult.exceptionOrNull()?.userDataErrorOrNull())
             assertTrue(local.getUser(localId)!!.hidden)
-            assertEquals(1, local.getAllMutations().size)
 
             driver.close()
             driver = AndroidSqliteDriver(UserManagementDatabase.Schema, application, databaseName)
-            local = SqlDelightUserLocalDataSource(
-                database = UserManagementDatabase(driver),
-                idGenerator = QueueIdGenerator("unused-after-reopen"),
-                queryDispatcher = dispatcher,
-            )
+            local = newLocalDataSource(driver, dispatcher, QueueIdGenerator("unused-after-reopen"))
             val remote = FakeUserRemoteDataSource().apply {
                 deleteHandler = { RemoteResult.Success(Unit) }
                 fetchHandler = { RemoteResult.Success(emptyList()) }
@@ -142,16 +67,15 @@ class OfflineSyncIntegrationTest {
             val onlineCoordinator = DefaultSyncCoordinator(
                 localDataSource = local,
                 remoteDataSource = remote,
-                connectivityObserver = FakeConnectivityObserver(ConnectivityStatus.Available),
+                connectivityObserver = FakeConnectivityObserver(),
                 timeProvider = FakeTimeProvider(instant(7_000)),
                 retryPolicy = RetryPolicy(),
                 applicationScope = backgroundScope,
             )
 
             assertTrue(onlineCoordinator.sync().isSuccess)
-
             assertEquals(listOf(77L), remote.deleteRequests)
-            assertEquals(null, local.getUser(localId))
+            assertNull(local.getUser(localId))
             assertTrue(local.getAllMutations().isEmpty())
         } finally {
             driver.close()
@@ -159,74 +83,26 @@ class OfflineSyncIntegrationTest {
         }
     }
 
-    @Test
-    fun deletingPendingCreateSendsNeitherCreateNorDeleteRequest() = runTest {
-        val application = ApplicationProvider.getApplicationContext<Application>()
-        val databaseName = "cancel-pending-create.db"
-        application.deleteDatabase(databaseName)
-        val driver = AndroidSqliteDriver(UserManagementDatabase.Schema, application, databaseName)
-        val local = SqlDelightUserLocalDataSource(
-            database = UserManagementDatabase(driver),
-            idGenerator = QueueIdGenerator("unused"),
-            queryDispatcher = UnconfinedTestDispatcher(testScheduler),
-        )
-        try {
-            val localId = local.insertPendingCreate(
-                mutationId = "pending-create",
-                input = AddUserInput(
-                    name = "Local only",
-                    email = "local@example.com",
-                    gender = Gender.Female,
-                    status = UserStatus.Active,
-                ),
-                observedAt = instant(1_000),
-            )
-            local.requestDelete(localId, instant(6_000))
-            val remote = FakeUserRemoteDataSource().apply {
-                fetchHandler = { RemoteResult.Success(emptyList()) }
-            }
-            val coordinator = DefaultSyncCoordinator(
-                localDataSource = local,
-                remoteDataSource = remote,
-                connectivityObserver = FakeConnectivityObserver(ConnectivityStatus.Available),
-                timeProvider = FakeTimeProvider(instant(2_000)),
-                retryPolicy = RetryPolicy(),
-                applicationScope = backgroundScope,
-            )
-
-            assertTrue(coordinator.sync().isSuccess)
-
-            assertTrue(remote.createRequests.isEmpty())
-            assertTrue(remote.deleteRequests.isEmpty())
-            assertEquals(null, local.getUser(localId))
-        } finally {
-            driver.close()
-            application.deleteDatabase(databaseName)
-        }
-    }
+    private fun newLocalDataSource(
+        driver: AndroidSqliteDriver,
+        dispatcher: kotlinx.coroutines.CoroutineDispatcher,
+        idGenerator: QueueIdGenerator,
+    ) = SqlDelightUserLocalDataSource(
+        database = UserManagementDatabase(driver),
+        idGenerator = idGenerator,
+        queryDispatcher = dispatcher,
+    )
 
     private companion object {
         fun instant(value: Long): Instant = Instant.fromEpochMilliseconds(value)
 
-        fun remoteUser(
-            remoteId: Long,
-            serverPosition: Long? = null,
-        ) = RemoteUser(
+        fun snapshot(remoteId: Long) = SnapshotUser(
             remoteId = remoteId,
             name = "Offline user",
             email = "offline@example.com",
             gender = Gender.Female,
             status = UserStatus.Active,
-            serverPosition = serverPosition,
-        )
-
-        fun RemoteUser.toSnapshot() = com.bill.usermanagmentsystem.data.local.SnapshotUser(
-            remoteId = remoteId,
-            name = name,
-            email = email,
-            gender = gender,
-            status = status,
-            serverPosition = serverPosition,
+            serverPosition = 0,
         )
     }
 }

@@ -61,31 +61,6 @@ internal class SqlDelightUserLocalDataSource(
         queries.selectAllMutations().executeAsList().map(Pending_mutations::toStoredMutation)
     }
 
-    override suspend fun insertPendingCreate(
-        mutationId: String,
-        input: com.bill.usermanagmentsystem.domain.model.AddUserInput,
-        observedAt: Instant,
-    ): String = withContext(queryDispatcher) {
-        var localId: Long? = null
-        queries.transaction {
-            queries.insertPendingUser(
-                name = input.name,
-                email = input.email,
-                gender = input.gender.apiValue,
-                status = input.status.apiValue,
-                observed_at_epoch_ms = observedAt.toEpochMilliseconds(),
-            )
-            localId = queries.selectLastInsertedUserId().executeAsOne()
-            queries.insertMutation(
-                mutation_id = mutationId,
-                user_local_id = requireNotNull(localId),
-                kind = MutationKind.Create.databaseValue,
-                created_at_epoch_ms = observedAt.toEpochMilliseconds(),
-            )
-        }
-        requireNotNull(localId).toString()
-    }
-
     override suspend fun requestDelete(
         localId: String,
         undoDeadline: Instant,

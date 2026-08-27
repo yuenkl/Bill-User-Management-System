@@ -41,7 +41,6 @@ class OfflineFirstUserRepositoryTest {
         runCurrent()
 
         assertEquals("99", result.getOrNull())
-        assertTrue(local.insertedCreates.isEmpty())
         assertEquals(99, local.mergedPages.single().single().remoteId)
         assertEquals(0, sync.syncCalls)
     }
@@ -62,7 +61,6 @@ class OfflineFirstUserRepositoryTest {
             UserDataError.ValidationRejected("email: has already been taken"),
             result.exceptionOrNull()?.userDataErrorOrNull(),
         )
-        assertTrue(local.insertedCreates.isEmpty())
         assertTrue(local.mergedPages.isEmpty())
         assertEquals(0, sync.syncCalls)
     }

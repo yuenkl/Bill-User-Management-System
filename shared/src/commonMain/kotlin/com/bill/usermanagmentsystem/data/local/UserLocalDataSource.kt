@@ -1,6 +1,5 @@
 package com.bill.usermanagmentsystem.data.local
 
-import com.bill.usermanagmentsystem.domain.model.AddUserInput
 import com.bill.usermanagmentsystem.domain.model.UserRecord
 import com.bill.usermanagmentsystem.domain.model.UndoableDeletion
 import kotlinx.coroutines.flow.Flow
@@ -16,12 +15,6 @@ internal interface UserLocalDataSource {
     suspend fun deleteImmediately(localId: String): StoredUser
 
     suspend fun getAllMutations(): List<StoredMutation>
-
-    suspend fun insertPendingCreate(
-        mutationId: String,
-        input: AddUserInput,
-        observedAt: Instant,
-    ): String
 
     suspend fun requestDelete(
         localId: String,
