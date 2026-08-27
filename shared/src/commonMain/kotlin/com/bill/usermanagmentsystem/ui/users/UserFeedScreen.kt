@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,6 +31,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -171,7 +173,24 @@ fun UserFeedScreen(
                         Modifier
                             .navigationBarsPadding()
                             .padding(horizontal = 16.dp),
-                )
+                ) { snackbarData ->
+                    Snackbar(
+                        action = {
+                            snackbarData.visuals.actionLabel?.let { actionLabel ->
+                                Row {
+                                    TextButton(onClick = snackbarData::performAction) {
+                                        Text(actionLabel)
+                                    }
+                                    TextButton(onClick = snackbarData::dismiss) {
+                                        Text("Dismiss")
+                                    }
+                                }
+                            }
+                        },
+                    ) {
+                        Text(snackbarData.visuals.message)
+                    }
+                }
             },
             floatingActionButton = {
                 FloatingActionButton(

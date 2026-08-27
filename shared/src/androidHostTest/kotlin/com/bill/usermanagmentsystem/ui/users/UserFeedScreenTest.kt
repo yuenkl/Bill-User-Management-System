@@ -506,6 +506,33 @@ class UserFeedScreenTest {
             assertEquals("ada@example.com", restoredInput?.email)
         }
 
+    @Test
+    fun undoSnackbarProvidesAnExplicitDismissAction() =
+        runComposeUiTest {
+            var dismissedInput: AddUserInput? = null
+            val input =
+                AddUserInput(
+                    name = "Ada Lovelace",
+                    email = "ada@example.com",
+                    gender = Gender.Female,
+                    status = UserStatus.Active,
+                )
+            setContent {
+                screen(
+                    state =
+                        UserFeedUiState(
+                            initialLoading = false,
+                            undoSnackbar = DeleteUndoUiModel(userName = "Ada Lovelace", input = input),
+                        ),
+                    onUndoDeleteDismissed = { dismissedInput = it },
+                )
+            }
+
+            onNodeWithText("Dismiss").performClick()
+
+            assertEquals(input, dismissedInput)
+        }
+
     @Composable
     private fun screen(
         state: UserFeedUiState,
@@ -513,6 +540,7 @@ class UserFeedScreenTest {
         onRetryNextPage: () -> Unit = {},
         onAddUserSubmitted: () -> Unit = {},
         onAddUserValidationAlertDismissed: () -> Unit = {},
+        onUndoDeleteDismissed: (AddUserInput) -> Unit = {},
     ) {
         UserManagementTheme {
             UserFeedScreen(
@@ -528,6 +556,7 @@ class UserFeedScreenTest {
                 onAddUserSubmitted = onAddUserSubmitted,
                 onAddUserValidationAlertDismissed = onAddUserValidationAlertDismissed,
                 onMessageConsumed = {},
+                onUndoDeleteDismissed = onUndoDeleteDismissed,
                 onLoadNextPage = onLoadNextPage,
                 onRetryNextPage = onRetryNextPage,
             )
