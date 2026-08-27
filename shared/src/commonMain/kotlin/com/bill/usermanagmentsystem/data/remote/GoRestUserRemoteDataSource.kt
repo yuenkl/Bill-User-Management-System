@@ -40,6 +40,7 @@ private const val PAGE_SIZE = 10
 private const val MAX_PAGE_NUMBER = Long.MAX_VALUE / PAGE_SIZE
 private const val LINKS_NEXT_HEADER = "X-Links-Next"
 private const val RATE_LIMIT_RESET_HEADER = "X-RateLimit-Reset"
+private const val DEFAULT_VALIDATION_FAILURE_MESSAGE = "The server rejected the user details."
 
 internal fun createGoRestHttpClient(
     engineFactory: NetworkEngineFactory,
@@ -205,13 +206,18 @@ internal class GoRestUserRemoteDataSource(
         return try {
             goRestJson
                 .decodeFromString<List<GoRestFieldErrorDto>>(payload)
-                .joinToString(separator = "; ") { error -> "${error.field}: ${error.message}" }
-                .ifBlank { "The server rejected the user details." }
+                .mapNotNull(GoRestFieldErrorDto::toValidationMessage)
+                .joinToString(separator = "; ")
+                .ifBlank { DEFAULT_VALIDATION_FAILURE_MESSAGE }
         } catch (_: SerializationException) {
             try {
-                goRestJson.decodeFromString<GoRestMessageErrorDto>(payload).message
+                goRestJson
+                    .decodeFromString<GoRestMessageErrorDto>(payload)
+                    .message
+                    ?.takeIf(String::isNotBlank)
+                    ?: DEFAULT_VALIDATION_FAILURE_MESSAGE
             } catch (_: SerializationException) {
-                "The server rejected the user details."
+                DEFAULT_VALIDATION_FAILURE_MESSAGE
             }
         }
     }
@@ -277,17 +283,22 @@ private inline fun <T> remoteCall(block: () -> RemoteResult<T>): RemoteResult<T>
     }
 
 private fun GoRestUserDto.toRemoteUser(serverPosition: Long?): RemoteUser {
-    require(id > 0) { "The service returned an invalid user ID." }
+    val responseId = requireNotNull(id) { "The service returned a user without an ID." }
+    require(responseId > 0) { "The service returned an invalid user ID." }
+    val responseName = requireNotNull(name) { "The service returned a user without a name." }
+    val responseEmail = requireNotNull(email) { "The service returned a user without an email." }
+    val responseGender = requireNotNull(gender) { "The service returned a user without a gender." }
+    val responseStatus = requireNotNull(status) { "The service returned a user without a status." }
     val parsedGender =
-        Gender.entries.firstOrNull { it.apiValue == gender }
+        Gender.entries.firstOrNull { it.apiValue == responseGender }
             ?: throw IllegalArgumentException("The service returned an unsupported gender value.")
     val parsedStatus =
-        UserStatus.entries.firstOrNull { it.apiValue == status }
+        UserStatus.entries.firstOrNull { it.apiValue == responseStatus }
             ?: throw IllegalArgumentException("The service returned an unsupported status value.")
     return RemoteUser(
-        remoteId = id,
-        name = name,
-        email = email,
+        remoteId = responseId,
+        name = responseName,
+        email = responseEmail,
         gender = parsedGender,
         status = parsedStatus,
         serverPosition = serverPosition,
@@ -299,6 +310,17 @@ private fun List<GoRestUserDto>.toRemoteUsers(page: Long): List<RemoteUser> =
         val serverPosition = ((page - 1) * PAGE_SIZE) + index
         user.toRemoteUser(serverPosition)
     }
+
+private fun GoRestFieldErrorDto.toValidationMessage(): String? {
+    val responseField = field?.trim().orEmpty()
+    val responseMessage = message?.trim().orEmpty()
+    return when {
+        responseField.isNotEmpty() && responseMessage.isNotEmpty() -> "$responseField: $responseMessage"
+        responseMessage.isNotEmpty() -> responseMessage
+        responseField.isNotEmpty() -> responseField
+        else -> null
+    }
+}
 
 private val goRestJson =
     Json {

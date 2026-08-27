@@ -142,7 +142,7 @@ class GoRestUserRemoteDataSourceTest {
         }
 
     @Test
-    fun malformedRequiredFieldIsAControlledPermanentFailure() =
+    fun missingUserFieldIsAControlledPermanentFailure() =
         runRemoteTest { _ ->
             val source =
                 source(
@@ -150,6 +150,22 @@ class GoRestUserRemoteDataSourceTest {
                         engine {
                             jsonResponse(
                                 """[{"id":1,"name":"Ada","email":"ada@example.com","gender":"female"}]""",
+                            )
+                        },
+                )
+
+            assertIs<RemoteResult.PermanentFailure>(source.fetchInitialPage())
+        }
+
+    @Test
+    fun nullUserFieldIsAControlledPermanentFailure() =
+        runRemoteTest { _ ->
+            val source =
+                source(
+                    engine =
+                        engine {
+                            jsonResponse(
+                                """[{"id":1,"name":"Ada","email":"ada@example.com","gender":"female","status":null}]""",
                             )
                         },
                 )
@@ -286,6 +302,26 @@ class GoRestUserRemoteDataSourceTest {
             val result = assertIs<RemoteResult.ValidationFailure>(source.createUser(createRequest()))
 
             assertEquals("The email is invalid", result.reason)
+        }
+
+    @Test
+    fun nullableValidationErrorFieldsUseTheGenericMessage() =
+        runRemoteTest { _ ->
+            val source =
+                source(
+                    engine =
+                        engine {
+                            respond(
+                                content = """[{"field":null,"message":null}]""",
+                                status = HttpStatusCode.UnprocessableEntity,
+                                headers = jsonHeaders(),
+                            )
+                        },
+                )
+
+            val result = assertIs<RemoteResult.ValidationFailure>(source.createUser(createRequest()))
+
+            assertEquals("The server rejected the user details.", result.reason)
         }
 
     @Test

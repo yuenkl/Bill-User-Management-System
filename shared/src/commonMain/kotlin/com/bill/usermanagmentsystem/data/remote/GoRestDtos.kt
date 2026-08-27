@@ -5,11 +5,11 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 internal data class GoRestUserDto(
-    val id: Long,
-    val name: String,
-    val email: String,
-    val gender: String,
-    val status: String,
+    val id: Long? = null,
+    val name: String? = null,
+    val email: String? = null,
+    val gender: String? = null,
+    val status: String? = null,
 )
 
 @Serializable
@@ -22,11 +22,11 @@ internal data class GoRestCreateUserDto(
 
 @Serializable
 internal data class GoRestFieldErrorDto(
-    val field: String,
-    val message: String,
+    val field: String? = null,
+    val message: String? = null,
 )
 
 @Serializable
 internal data class GoRestMessageErrorDto(
-    @SerialName("message") val message: String,
+    @SerialName("message") val message: String? = null,
 )
