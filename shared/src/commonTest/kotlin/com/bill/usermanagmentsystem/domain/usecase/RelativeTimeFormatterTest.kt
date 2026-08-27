@@ -1,5 +1,6 @@
 package com.bill.usermanagmentsystem.domain.usecase
 
+import com.bill.usermanagmentsystem.utils.RelativeTimeFormatter
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.days

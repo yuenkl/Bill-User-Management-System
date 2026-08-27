@@ -3,13 +3,13 @@ package com.bill.usermanagmentsystem.di
 import com.bill.usermanagmentsystem.data.remote.GoRestUserRemoteDataSource
 import com.bill.usermanagmentsystem.data.remote.UserRemoteDataSource
 import com.bill.usermanagmentsystem.data.remote.createGoRestHttpClient
-import com.bill.usermanagmentsystem.domain.usecase.RelativeTimeFormatter
 import com.bill.usermanagmentsystem.platform.AppConfig
 import com.bill.usermanagmentsystem.platform.AppDispatchers
 import com.bill.usermanagmentsystem.platform.ConfigurationState
 import com.bill.usermanagmentsystem.platform.NetworkEngineFactory
 import com.bill.usermanagmentsystem.platform.SystemTimeProvider
 import com.bill.usermanagmentsystem.platform.TimeProvider
+import com.bill.usermanagmentsystem.utils.RelativeTimeFormatter
 import io.ktor.client.HttpClient
 import org.koin.core.module.Module
 import org.koin.dsl.module

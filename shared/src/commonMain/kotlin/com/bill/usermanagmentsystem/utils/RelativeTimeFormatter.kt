@@ -1,4 +1,4 @@
-package com.bill.usermanagmentsystem.domain.usecase
+package com.bill.usermanagmentsystem.utils
 
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours

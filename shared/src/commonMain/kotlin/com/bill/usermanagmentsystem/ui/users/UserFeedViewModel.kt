@@ -7,12 +7,10 @@ import com.bill.usermanagmentsystem.domain.model.Gender
 import com.bill.usermanagmentsystem.domain.model.UserStatus
 import com.bill.usermanagmentsystem.domain.model.userDataErrorOrNull
 import com.bill.usermanagmentsystem.domain.usecase.AddUser
-import com.bill.usermanagmentsystem.domain.usecase.AddUserValidator
 import com.bill.usermanagmentsystem.domain.usecase.DeleteUser
 import com.bill.usermanagmentsystem.domain.usecase.LoadNextUsersPage
 import com.bill.usermanagmentsystem.domain.usecase.ObserveUsers
 import com.bill.usermanagmentsystem.domain.usecase.RefreshUsers
-import com.bill.usermanagmentsystem.domain.usecase.RelativeTimeFormatter
 import com.bill.usermanagmentsystem.domain.usecase.UndoUserDeletion
 import com.bill.usermanagmentsystem.platform.AppLifecycleObserver
 import com.bill.usermanagmentsystem.platform.AppLifecycleState
@@ -22,6 +20,8 @@ import com.bill.usermanagmentsystem.platform.TimeProvider
 import com.bill.usermanagmentsystem.ui.users.presentation.UserFeedPresentationState
 import com.bill.usermanagmentsystem.ui.users.presentation.buildUserFeedUiState
 import com.bill.usermanagmentsystem.ui.users.presentation.toUserMessage
+import com.bill.usermanagmentsystem.utils.AddUserValidator
+import com.bill.usermanagmentsystem.utils.RelativeTimeFormatter
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay

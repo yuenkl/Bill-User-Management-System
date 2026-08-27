@@ -2,12 +2,12 @@ package com.bill.usermanagmentsystem.ui.users.presentation
 
 import com.bill.usermanagmentsystem.domain.model.UserDataError
 import com.bill.usermanagmentsystem.domain.model.UserRecord
-import com.bill.usermanagmentsystem.domain.usecase.RelativeTimeFormatter
 import com.bill.usermanagmentsystem.platform.ConnectivityStatus
 import com.bill.usermanagmentsystem.ui.users.UserFeedBanner
 import com.bill.usermanagmentsystem.ui.users.UserFeedEmptyState
 import com.bill.usermanagmentsystem.ui.users.UserFeedUiState
 import com.bill.usermanagmentsystem.ui.users.UserItemUiModel
+import com.bill.usermanagmentsystem.utils.RelativeTimeFormatter
 import kotlin.time.Instant
 
 internal fun buildUserFeedUiState(

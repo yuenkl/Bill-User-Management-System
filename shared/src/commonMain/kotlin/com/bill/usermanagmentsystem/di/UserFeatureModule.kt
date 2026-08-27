@@ -7,7 +7,6 @@ import com.bill.usermanagmentsystem.data.local.db.UserManagementDatabase
 import com.bill.usermanagmentsystem.data.repository.UserRepositoryImpl
 import com.bill.usermanagmentsystem.domain.repository.UserRepository
 import com.bill.usermanagmentsystem.domain.usecase.AddUser
-import com.bill.usermanagmentsystem.domain.usecase.AddUserValidator
 import com.bill.usermanagmentsystem.domain.usecase.DefaultDeleteUser
 import com.bill.usermanagmentsystem.domain.usecase.DeleteUser
 import com.bill.usermanagmentsystem.domain.usecase.LoadNextUsersPage
@@ -17,6 +16,7 @@ import com.bill.usermanagmentsystem.domain.usecase.UndoUserDeletion
 import com.bill.usermanagmentsystem.platform.AppDispatchers
 import com.bill.usermanagmentsystem.platform.SqlDriverFactory
 import com.bill.usermanagmentsystem.ui.users.UserFeedViewModel
+import com.bill.usermanagmentsystem.utils.AddUserValidator
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module

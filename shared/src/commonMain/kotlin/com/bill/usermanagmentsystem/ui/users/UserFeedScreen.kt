@@ -236,11 +236,9 @@ fun UserFeedScreen(
     }
 }
 
-internal enum class AdaptiveLayoutMode(
-    val columns: Int,
-) {
-    Compact(columns = 1),
-    Wide(columns = 2),
+internal enum class AdaptiveLayoutMode {
+    Compact,
+    Wide,
 }
 
 /**

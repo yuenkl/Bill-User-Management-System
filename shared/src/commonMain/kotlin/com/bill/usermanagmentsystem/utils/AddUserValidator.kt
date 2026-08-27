@@ -1,4 +1,4 @@
-package com.bill.usermanagmentsystem.domain.usecase
+package com.bill.usermanagmentsystem.utils
 
 class AddUserValidator {
     fun validateName(value: String): NameValidationError? {
