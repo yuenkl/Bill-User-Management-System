@@ -195,12 +195,15 @@ class UserFeedViewModelTest {
                 viewModel.updateAddUserName("  Ada Lovelace  ")
                 viewModel.updateAddUserEmail(" ada@example.com ")
                 viewModel.selectAddUserGender(Gender.Female)
+                val event = async { viewModel.events.first() }
+                runCurrent()
                 viewModel.submitAddUser()
                 runCurrent()
 
                 assertEquals("Ada Lovelace", addInputs.single().name)
                 assertEquals("ada@example.com", addInputs.single().email)
                 assertNull(viewModel.uiState.value.addUserForm)
+                assertEquals(UserFeedEvent.ScrollToTop, event.await())
             }
         }
 
@@ -252,11 +255,14 @@ class UserFeedViewModelTest {
                 val input =
                     (event.await() as UserFeedEvent.ShowDeleteUndoSnackbar)
                         .input
+                val scrollEvent = async { viewModel.events.first() }
+                runCurrent()
                 viewModel.undoDelete(input)
                 viewModel.undoDelete(input)
                 runCurrent()
 
                 assertEquals(listOf(input), undoRequests)
+                assertEquals(UserFeedEvent.ScrollToTop, scrollEvent.await())
             }
         }
 

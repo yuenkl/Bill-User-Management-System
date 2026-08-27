@@ -74,6 +74,7 @@ internal fun UserList(
     users: List<UserItemUiModel>,
     banner: UserFeedBanner?,
     layoutMode: AdaptiveLayoutMode,
+    scrollToTopRequest: Int,
     loadingMore: Boolean,
     canLoadMore: Boolean,
     loadMoreError: String?,
@@ -83,6 +84,13 @@ internal fun UserList(
 ) {
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
+    LaunchedEffect(scrollToTopRequest) {
+        if (scrollToTopRequest == 0) return@LaunchedEffect
+        when (layoutMode) {
+            AdaptiveLayoutMode.Compact -> listState.animateScrollToItem(index = 0)
+            AdaptiveLayoutMode.Wide -> gridState.animateScrollToItem(index = 0)
+        }
+    }
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter,

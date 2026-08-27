@@ -11,6 +11,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
@@ -102,6 +103,23 @@ class UserFeedScreenTest {
 
             onNodeWithText("Offline · showing saved users").fetchSemanticsNode()
             onNodeWithText("Ada Lovelace").fetchSemanticsNode()
+        }
+
+    @Test
+    fun scrollToTopEventAnimatesTheFeedToItsFirstUser() =
+        runComposeUiTest {
+            val events = MutableSharedFlow<UserFeedEvent>(extraBufferCapacity = 1)
+            setContent {
+                screen(
+                    state = UserFeedUiState(users = users(30), initialLoading = false),
+                    events = events,
+                )
+            }
+
+            onNodeWithContentDescription("Users").performScrollToIndex(29)
+            runOnIdle { events.tryEmit(UserFeedEvent.ScrollToTop) }
+
+            onNodeWithText("User 1").assertIsDisplayed()
         }
 
     @Test

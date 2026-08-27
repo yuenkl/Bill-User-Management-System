@@ -251,6 +251,7 @@ class UserFeedViewModel(
                     )
                 }
             }
+            if (result.isSuccess) mutableEvents.emit(UserFeedEvent.ScrollToTop)
         }
     }
 
@@ -305,7 +306,11 @@ class UserFeedViewModel(
         undoJob =
             viewModelScope.launch(dispatcher) {
                 val result = undoUserDeletion(input)
-                if (result.isFailure) emitFailure(result.exceptionOrNull())
+                if (result.isSuccess) {
+                    mutableEvents.emit(UserFeedEvent.ScrollToTop)
+                } else {
+                    emitFailure(result.exceptionOrNull())
+                }
             }
     }
 

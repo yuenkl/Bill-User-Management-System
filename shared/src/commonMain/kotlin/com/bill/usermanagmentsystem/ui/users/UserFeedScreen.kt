@@ -21,7 +21,9 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -93,9 +95,11 @@ fun UserFeedScreen(
     modifier: Modifier = Modifier,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
+    var scrollToTopRequest by remember { mutableIntStateOf(0) }
     LaunchedEffect(events) {
         events.collect { event ->
             when (event) {
+                UserFeedEvent.ScrollToTop -> scrollToTopRequest += 1
                 is UserFeedEvent.ShowSnackbar -> snackbarHostState.showSnackbar(event.message)
                 is UserFeedEvent.ShowDeleteUndoSnackbar -> {
                     snackbarHostState.currentSnackbarData?.dismiss()
@@ -193,6 +197,7 @@ fun UserFeedScreen(
                             users = state.users,
                             banner = state.banner,
                             layoutMode = layoutMode,
+                            scrollToTopRequest = scrollToTopRequest,
                             loadingMore = state.loadingMore,
                             canLoadMore = state.canLoadMore,
                             loadMoreError = state.loadMoreError,
