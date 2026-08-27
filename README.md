@@ -22,7 +22,7 @@ flowchart TD
     A[Android Activity / iOS UIViewController] --> B[Shared Compose UI]
     B -->|user actions| C[UserFeedViewModel]
     C --> D[Domain use cases]
-    D --> E[OfflineFirstUserRepository]
+    D --> E[Data UserRepository]
     E --> F[(SQLDelight database)]
     E --> G[Ktor GoRest data source]
     I[Startup / foreground / connectivity / refresh] --> C

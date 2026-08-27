@@ -4,7 +4,6 @@ import app.cash.sqldelight.db.SqlDriver
 import com.bill.usermanagmentsystem.data.local.SqlDelightUserLocalDataSource
 import com.bill.usermanagmentsystem.data.local.UserLocalDataSource
 import com.bill.usermanagmentsystem.data.local.db.UserManagementDatabase
-import com.bill.usermanagmentsystem.data.repository.OfflineFirstUserRepository
 import com.bill.usermanagmentsystem.domain.repository.UserRepository
 import com.bill.usermanagmentsystem.domain.usecase.AddUser
 import com.bill.usermanagmentsystem.domain.usecase.AddUserValidator
@@ -22,6 +21,7 @@ import org.koin.core.module.Module
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
 import org.koin.dsl.onClose
+import com.bill.usermanagmentsystem.data.repository.UserRepository as UserRepositoryImplementation
 
 private const val USER_DATABASE_NAME = "user-management.db"
 
@@ -44,7 +44,7 @@ internal fun offlineDataModule(databaseName: String = USER_DATABASE_NAME): Modul
             )
         }
         single<UserRepository> {
-            OfflineFirstUserRepository(
+            UserRepositoryImplementation(
                 localDataSource = get(),
                 remoteDataSource = get(),
                 connectivityObserver = get(),

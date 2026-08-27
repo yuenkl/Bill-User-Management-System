@@ -19,7 +19,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
-class OfflineFirstUserRepositoryTest {
+class UserRepositoryTest {
     @Test
     fun refreshStoresTheInitialApiPageAndInitializesPagination() =
         runTest {
@@ -168,7 +168,7 @@ class OfflineFirstUserRepositoryTest {
         local: FakeUserLocalDataSource,
         remote: FakeUserRemoteDataSource,
         connectivity: FakeConnectivityObserver = FakeConnectivityObserver(),
-    ) = OfflineFirstUserRepository(
+    ) = UserRepository(
         localDataSource = local,
         remoteDataSource = remote,
         connectivityObserver = connectivity,

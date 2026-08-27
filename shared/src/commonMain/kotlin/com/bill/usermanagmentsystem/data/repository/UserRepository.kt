@@ -12,7 +12,6 @@ import com.bill.usermanagmentsystem.domain.model.UserDataError
 import com.bill.usermanagmentsystem.domain.model.UserDataException
 import com.bill.usermanagmentsystem.domain.model.UserRecord
 import com.bill.usermanagmentsystem.domain.repository.PageLoadResult
-import com.bill.usermanagmentsystem.domain.repository.UserRepository
 import com.bill.usermanagmentsystem.platform.ConnectivityObserver
 import com.bill.usermanagmentsystem.platform.ConnectivityStatus
 import com.bill.usermanagmentsystem.platform.TimeProvider
@@ -20,13 +19,14 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import com.bill.usermanagmentsystem.domain.repository.UserRepository as UserRepositoryContract
 
-internal class OfflineFirstUserRepository(
+internal class UserRepository(
     private val localDataSource: UserLocalDataSource,
     private val remoteDataSource: UserRemoteDataSource,
     private val connectivityObserver: ConnectivityObserver,
     private val timeProvider: TimeProvider,
-) : UserRepository {
+) : UserRepositoryContract {
     private val operationMutex = Mutex()
     private var nextPage: Long? = null
 
