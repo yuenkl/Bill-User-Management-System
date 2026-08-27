@@ -26,26 +26,46 @@ data class AddUserFormUiState(
     val email: String = "",
     val gender: Gender? = null,
     val status: UserStatus = UserStatus.Active,
-    val nameTouched: Boolean = false,
-    val emailTouched: Boolean = false,
-    val genderTouched: Boolean = false,
-    val nameError: String? = null,
-    val emailError: String? = null,
-    val genderError: String? = null,
-    val nameApiError: String? = null,
-    val emailApiError: String? = null,
-    val submissionError: String? = null,
+    val touchedFields: Set<AddUserField> = emptySet(),
+    val errors: List<UserDetail> = emptyList(),
     val isValid: Boolean = false,
     val submitting: Boolean = false,
 ) {
+    fun errorMessage(field: AddUserField): String? =
+        errors
+            .filter { it.type == field }
+            .minByOrNull { it.source.priority }
+            ?.error
+
     val canSubmit: Boolean
-        get() = isValid && nameApiError == null && emailApiError == null && !submitting
+        get() = isValid && errors.none { it.source == AddUserErrorSource.Api } && !submitting
 }
 
 enum class AddUserField {
     Name,
     Email,
+    Gender,
+    Status,
+    Form,
+    ;
+
+    companion object {
+        fun fromApiName(value: String): AddUserField? =
+            entries.firstOrNull { it.name.equals(value, ignoreCase = true) && it != Form }
+    }
 }
+
+enum class AddUserErrorSource(val priority: Int) {
+    Validation(priority = 0),
+    Api(priority = 1),
+    Submission(priority = 2),
+}
+
+data class UserDetail(
+    val type: AddUserField,
+    val error: String? = null,
+    val source: AddUserErrorSource = AddUserErrorSource.Validation,
+)
 
 data class AddUserValidationAlert(
     val errors: List<AddUserApiFieldError>,

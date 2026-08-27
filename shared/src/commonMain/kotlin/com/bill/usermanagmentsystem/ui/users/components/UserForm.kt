@@ -39,6 +39,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.bill.usermanagmentsystem.domain.model.Gender
 import com.bill.usermanagmentsystem.domain.model.UserStatus
+import com.bill.usermanagmentsystem.ui.users.AddUserField
 import com.bill.usermanagmentsystem.ui.users.AddUserFormUiState
 
 @Composable
@@ -55,8 +56,9 @@ fun UserForm(
     val emailFocusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     val fieldsEnabled = !state.submitting
-    val nameErrorMessage = state.nameError ?: state.nameApiError
-    val emailErrorMessage = state.emailError ?: state.emailApiError
+    val nameErrorMessage = state.errorMessage(AddUserField.Name)
+    val emailErrorMessage = state.errorMessage(AddUserField.Email)
+    val genderErrorMessage = state.errorMessage(AddUserField.Gender)
 
     Column(
         modifier = modifier
@@ -131,7 +133,7 @@ fun UserForm(
 
             Column(
                 modifier = Modifier.semantics {
-                    state.genderError?.let { error(it) }
+                    genderErrorMessage?.let { error(it) }
                 },
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -150,7 +152,7 @@ fun UserForm(
                         )
                     }
                 }
-                state.genderError?.let { SupportingError(it) }
+                genderErrorMessage?.let { SupportingError(it) }
             }
 
             Row(
@@ -190,7 +192,7 @@ fun UserForm(
                 )
             }
 
-            state.submissionError?.let { SupportingError(it) }
+            state.errorMessage(AddUserField.Form)?.let { SupportingError(it) }
         }
 
         Row(

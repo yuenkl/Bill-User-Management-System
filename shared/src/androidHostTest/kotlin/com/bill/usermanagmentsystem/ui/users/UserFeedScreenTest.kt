@@ -294,8 +294,13 @@ class UserFeedScreenTest {
                         initialLoading = false,
                         addUserForm = AddUserFormUiState(
                             name = "A",
-                            nameTouched = true,
-                            nameError = "Name must be at least 2 characters.",
+                            errors = listOf(
+                                UserDetail(
+                                    type = AddUserField.Name,
+                                    error = "Name must be at least 2 characters.",
+                                    source = AddUserErrorSource.Validation,
+                                ),
+                            ),
                         ),
                     ),
                 )

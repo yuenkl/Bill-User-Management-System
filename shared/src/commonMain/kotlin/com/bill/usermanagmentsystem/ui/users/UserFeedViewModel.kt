@@ -150,10 +150,11 @@ class UserFeedViewModel(
             if (current.submitting) current else createFormState(
                 current.copy(
                     name = name,
-                    nameTouched = true,
-                    nameApiError = null,
-                    submissionError = null,
-                ),
+                    touchedFields = current.touchedFields + AddUserField.Name,
+                ).withoutErrors(
+                    field = AddUserField.Name,
+                    source = AddUserErrorSource.Api,
+                ).withoutErrors(source = AddUserErrorSource.Submission),
             )
         }
     }
@@ -163,10 +164,11 @@ class UserFeedViewModel(
             if (current.submitting) current else createFormState(
                 current.copy(
                     email = email,
-                    emailTouched = true,
-                    emailApiError = null,
-                    submissionError = null,
-                ),
+                    touchedFields = current.touchedFields + AddUserField.Email,
+                ).withoutErrors(
+                    field = AddUserField.Email,
+                    source = AddUserErrorSource.Api,
+                ).withoutErrors(source = AddUserErrorSource.Submission),
             )
         }
     }
@@ -176,9 +178,11 @@ class UserFeedViewModel(
             if (current.submitting) current else createFormState(
                 current.copy(
                     gender = gender,
-                    genderTouched = true,
-                    submissionError = null,
-                ),
+                    touchedFields = current.touchedFields + AddUserField.Gender,
+                ).withoutErrors(
+                    field = AddUserField.Gender,
+                    source = AddUserErrorSource.Api,
+                ).withoutErrors(source = AddUserErrorSource.Submission),
             )
         }
     }
@@ -186,18 +190,18 @@ class UserFeedViewModel(
     fun selectAddUserStatus(status: UserStatus) {
         updateForm { current ->
             if (current.submitting) current else createFormState(
-                current.copy(status = status, submissionError = null),
+                current.copy(status = status)
+                    .withoutErrors(
+                        field = AddUserField.Status,
+                        source = AddUserErrorSource.Api,
+                    )
+                    .withoutErrors(source = AddUserErrorSource.Submission),
             )
         }
     }
 
     fun consumeAddUserApiError(field: AddUserField) {
-        updateForm { current ->
-            when (field) {
-                AddUserField.Name -> current.copy(nameApiError = null)
-                AddUserField.Email -> current.copy(emailApiError = null)
-            }
-        }
+        updateForm { current -> current.withoutErrors(field, AddUserErrorSource.Api) }
     }
 
     fun submitAddUser() {
@@ -206,11 +210,12 @@ class UserFeedViewModel(
 
         val validated = createFormState(
             current.copy(
-                nameTouched = true,
-                emailTouched = true,
-                genderTouched = true,
-                submissionError = null,
-            ),
+                touchedFields = current.touchedFields + setOf(
+                    AddUserField.Name,
+                    AddUserField.Email,
+                    AddUserField.Gender,
+                ),
+            ).withoutErrors(source = AddUserErrorSource.Submission),
         )
         if (!validated.canSubmit) {
             presentation.update { state ->
@@ -543,31 +548,59 @@ class UserFeedViewModel(
     ): AddUserFormUiState {
         val nameValidation = addUserValidator.validateName(current.name)
         val emailValidation = addUserValidator.validateEmail(current.email)
+        val validationErrors = buildList {
+            if (AddUserField.Name in current.touchedFields) {
+                nameValidation?.userMessage()?.let { message ->
+                    add(UserDetail(AddUserField.Name, message, AddUserErrorSource.Validation))
+                }
+            }
+            if (AddUserField.Email in current.touchedFields) {
+                emailValidation?.userMessage()?.let { message ->
+                    add(UserDetail(AddUserField.Email, message, AddUserErrorSource.Validation))
+                }
+            }
+            if (AddUserField.Gender in current.touchedFields && current.gender == null) {
+                add(UserDetail(AddUserField.Gender, "Choose a gender.", AddUserErrorSource.Validation))
+            }
+        }
         return current.copy(
-            nameError = if (current.nameTouched) nameValidation?.userMessage() else null,
-            emailError = if (current.emailTouched) emailValidation?.userMessage() else null,
-            genderError = if (current.genderTouched && current.gender == null) {
-                "Choose a gender."
-            } else {
-                null
-            },
+            errors = current.errors.filterNot { it.source == AddUserErrorSource.Validation } + validationErrors,
             isValid = nameValidation == null && emailValidation == null && current.gender != null,
         )
     }
 
     private fun AddUserFormUiState.withSubmissionFailure(failure: Throwable?): AddUserFormUiState {
         val fieldErrors = failure.toAddUserApiFieldErrors()
-        val errorsByField = fieldErrors.associateBy(AddUserApiFieldError::field)
-        return if (errorsByField.keys.any { it == "name" || it == "email" }) {
-            copy(
+        val apiErrors = fieldErrors.mapNotNull { error ->
+            AddUserField.fromApiName(error.field)?.let { field ->
+                UserDetail(field, error.message, AddUserErrorSource.Api)
+            }
+        }
+        return if (apiErrors.isNotEmpty()) {
+            withoutErrors(source = AddUserErrorSource.Api).copy(
                 submitting = false,
-                nameApiError = errorsByField["name"]?.message,
-                emailApiError = errorsByField["email"]?.message,
+                errors = errors.filterNot { it.source == AddUserErrorSource.Api } + apiErrors,
             )
         } else {
-            copy(submitting = false, submissionError = failure.toAddUserMessage())
+            withoutErrors(field = AddUserField.Form, source = AddUserErrorSource.Submission).copy(
+                submitting = false,
+                errors = errors + UserDetail(
+                    type = AddUserField.Form,
+                    error = failure.toAddUserMessage(),
+                    source = AddUserErrorSource.Submission,
+                ),
+            )
         }
     }
+
+    private fun AddUserFormUiState.withoutErrors(
+        field: AddUserField? = null,
+        source: AddUserErrorSource,
+    ): AddUserFormUiState = copy(
+        errors = errors.filterNot { error ->
+            error.source == source && (field == null || error.type == field)
+        },
+    )
 
     private data class PresentationState(
         val initialAttemptFinished: Boolean = false,

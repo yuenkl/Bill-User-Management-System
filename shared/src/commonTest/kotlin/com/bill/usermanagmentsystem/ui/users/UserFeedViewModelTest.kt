@@ -243,15 +243,15 @@ class UserFeedViewModelTest {
         withFixture {
             viewModel.openAddUserForm()
             runCurrent()
-            assertNull(viewModel.uiState.value.addUserForm?.nameError)
+            assertNull(viewModel.uiState.value.addUserForm?.errorMessage(AddUserField.Name))
 
             viewModel.updateAddUserName(" ")
             runCurrent()
-            assertEquals("Enter a name.", viewModel.uiState.value.addUserForm?.nameError)
+            assertEquals("Enter a name.", viewModel.uiState.value.addUserForm?.errorMessage(AddUserField.Name))
 
             viewModel.updateAddUserName("Ada Lovelace")
             runCurrent()
-            assertNull(viewModel.uiState.value.addUserForm?.nameError)
+            assertNull(viewModel.uiState.value.addUserForm?.errorMessage(AddUserField.Name))
         }
     }
 
@@ -301,8 +301,15 @@ class UserFeedViewModelTest {
             runCurrent()
 
             val failed = assertNotNull(viewModel.uiState.value.addUserForm)
-            assertNull(failed.emailError)
-            assertEquals("has already been taken", failed.emailApiError)
+            assertEquals("has already been taken", failed.errorMessage(AddUserField.Email))
+            assertEquals(
+                UserDetail(
+                    type = AddUserField.Email,
+                    error = "has already been taken",
+                    source = AddUserErrorSource.Api,
+                ),
+                failed.errors.single(),
+            )
             assertEquals(false, failed.canSubmit)
             assertEquals(
                 AddUserApiFieldError(field = "email", message = "has already been taken"),
@@ -315,7 +322,7 @@ class UserFeedViewModelTest {
 
             viewModel.updateAddUserEmail("ada2@example.com")
             runCurrent()
-            assertNull(viewModel.uiState.value.addUserForm?.emailApiError)
+            assertNull(viewModel.uiState.value.addUserForm?.errorMessage(AddUserField.Email))
             assertTrue(viewModel.uiState.value.addUserForm?.canSubmit == true)
         }
     }
