@@ -10,10 +10,13 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.TextContent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.io.IOException
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
@@ -196,6 +199,46 @@ class GoRestUserRemoteDataSourceTest {
         }
 
     @Test
+    fun rateLimitResetTakesPrecedenceOverRetryAfter() =
+        runRemoteTest { _ ->
+            val source =
+                source(
+                    engine =
+                        engine {
+                            respond(
+                                content = "{}",
+                                status = HttpStatusCode.TooManyRequests,
+                                headers =
+                                    Headers.build {
+                                        append("X-RateLimit-Reset", "2000")
+                                        append(HttpHeaders.RetryAfter, "7")
+                                    },
+                            )
+                        },
+                )
+
+            val result = assertIs<RemoteResult.RetryableFailure>(source.fetchInitialPage())
+
+            assertEquals(Instant.fromEpochSeconds(2_000), result.serverRetryAt)
+        }
+
+    @Test
+    fun networkIoFailureIsClassifiedAsRetryable() =
+        runRemoteTest { _ ->
+            val source = source(engine = engine { throw IOException("No connection") })
+
+            assertIs<RemoteResult.RetryableFailure>(source.fetchInitialPage())
+        }
+
+    @Test
+    fun cancellationIsPropagatedWithoutBeingConvertedToAFailure() =
+        runRemoteTest { _ ->
+            val source = source(engine = engine { throw CancellationException("Cancelled") })
+
+            assertFailsWith<CancellationException> { source.fetchInitialPage() }
+        }
+
+    @Test
     fun validationPayloadIsRetainedForCreateFailure() =
         runRemoteTest { _ ->
             val source =
@@ -223,6 +266,26 @@ class GoRestUserRemoteDataSourceTest {
                 )
 
             assertEquals("email: has already been taken", result.reason)
+        }
+
+    @Test
+    fun messageValidationPayloadIsRetainedForCreateFailure() =
+        runRemoteTest { _ ->
+            val source =
+                source(
+                    engine =
+                        engine {
+                            respond(
+                                content = """{"message":"The email is invalid"}""",
+                                status = HttpStatusCode.UnprocessableEntity,
+                                headers = jsonHeaders(),
+                            )
+                        },
+                )
+
+            val result = assertIs<RemoteResult.ValidationFailure>(source.createUser(createRequest()))
+
+            assertEquals("The email is invalid", result.reason)
         }
 
     @Test
@@ -313,6 +376,14 @@ class GoRestUserRemoteDataSourceTest {
         }
 
     @Test
+    fun deleteServerFailureIsClassifiedAsRetryable() =
+        runRemoteTest { _ ->
+            val source = source(engine = engine { respond("", HttpStatusCode.ServiceUnavailable) })
+
+            assertIs<RemoteResult.RetryableFailure>(source.deleteUser(7))
+        }
+
+    @Test
     fun publicFetchOmitsBlankTokenWhileWritesFailFastForAuthentication() =
         runRemoteTest { _ ->
             var requestCount = 0
@@ -339,6 +410,7 @@ class GoRestUserRemoteDataSourceTest {
                     ),
                 ),
             )
+            assertEquals(RemoteResult.AuthenticationFailure, source.deleteUser(7))
             assertEquals(1, requestCount)
         }
 
@@ -432,6 +504,14 @@ class GoRestUserRemoteDataSourceTest {
 
     private fun userJson(id: Long): String =
         """{"id":$id,"name":"User $id","email":"user$id@example.com","gender":"female","status":"active"}"""
+
+    private fun createRequest() =
+        CreateUserRequest(
+            name = "Ada",
+            email = "ada@example.com",
+            gender = com.bill.usermanagmentsystem.domain.model.Gender.Female,
+            status = com.bill.usermanagmentsystem.domain.model.UserStatus.Active,
+        )
 
     private class RecordingLogger : Logger {
         val messages = mutableListOf<String>()

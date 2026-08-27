@@ -36,7 +36,6 @@ internal class UserRepositoryImpl(
         operationMutex.withLock {
             runRepositoryOperation {
                 requireConnection()
-                nextPage = null
                 when (val result = remoteDataSource.fetchInitialPage()) {
                     is RemoteResult.Success -> {
                         localDataSource.mergeSnapshot(

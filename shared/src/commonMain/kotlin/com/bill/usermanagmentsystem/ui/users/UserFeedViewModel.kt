@@ -326,13 +326,13 @@ class UserFeedViewModel(
                 presentation.update { it.copy(refreshing = manual) }
                 val result = refreshUsers()
                 val failure = result.exceptionOrNull()
-                presentation.update {
-                    it.copy(
+                presentation.update { current ->
+                    current.copy(
                         initialAttemptFinished = true,
                         refreshing = false,
                         loadingNextPage = false,
-                        canLoadNextPage = result.isSuccess,
-                        nextPageError = null,
+                        canLoadNextPage = if (result.isSuccess) true else current.canLoadNextPage,
+                        nextPageError = if (result.isSuccess) null else current.nextPageError,
                         refreshError = failure?.userDataErrorOrNull(),
                     )
                 }

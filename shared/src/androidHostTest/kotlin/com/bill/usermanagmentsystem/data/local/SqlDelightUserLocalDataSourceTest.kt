@@ -62,6 +62,51 @@ class SqlDelightUserLocalDataSourceTest {
         }
 
     @Test
+    fun existingRemoteUserIsUpdatedWithoutChangingItsFirstObservedTime() =
+        runTest {
+            withFixture("remote-upsert") { source ->
+                source.mergeSnapshot(
+                    users = listOf(snapshot(remoteId = 41, name = "Before", position = 0)),
+                    observedAt = instant(1_000),
+                )
+
+                source.mergeSnapshot(
+                    users = listOf(snapshot(remoteId = 41, name = "After", position = 0)),
+                    observedAt = instant(2_000),
+                )
+
+                val user =
+                    source
+                        .observeUsers()
+                        .first()
+                        .single()
+                        .user
+                assertEquals("After", user.name)
+                assertEquals(instant(1_000), user.observedAt)
+            }
+        }
+
+    @Test
+    fun locallyCreatedUsersWithEqualTimestampsUseDescendingLocalId() =
+        runTest {
+            withFixture("local-create-order") { source ->
+                source.mergePage(
+                    users = listOf(snapshot(remoteId = 41, name = "Older", position = null)),
+                    observedAt = instant(1_000),
+                )
+                source.mergePage(
+                    users = listOf(snapshot(remoteId = 42, name = "Newer", position = null)),
+                    observedAt = instant(1_000),
+                )
+
+                assertEquals(
+                    listOf("Newer", "Older"),
+                    source.observeUsers().first().map { it.user.name },
+                )
+            }
+        }
+
+    @Test
     fun deleteRemovesTheConfirmedUser() =
         runTest {
             withFixture("confirmed-delete") { source ->
@@ -110,7 +155,7 @@ class SqlDelightUserLocalDataSourceTest {
         fun snapshot(
             remoteId: Long,
             name: String,
-            position: Long,
+            position: Long?,
         ) = SnapshotUser(
             remoteId = remoteId,
             name = name,

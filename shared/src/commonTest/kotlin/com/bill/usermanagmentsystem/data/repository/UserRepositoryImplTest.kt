@@ -13,12 +13,17 @@ import com.bill.usermanagmentsystem.domain.model.UserDataError
 import com.bill.usermanagmentsystem.domain.model.UserStatus
 import com.bill.usermanagmentsystem.domain.model.userDataErrorOrNull
 import com.bill.usermanagmentsystem.platform.ConnectivityStatus
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class UserRepositoryImplTest {
     @Test
     fun refreshStoresTheInitialApiPageAndInitializesPagination() =
@@ -59,20 +64,46 @@ class UserRepositoryImplTest {
         }
 
     @Test
+    fun failedRefreshPreservesTheExistingNextPageCursor() =
+        runTest {
+            val remote =
+                FakeUserRemoteDataSource().apply {
+                    totalPages = 2
+                    fetchHandler = { RemoteResult.Success(emptyList()) }
+                    pageHandler = { RemoteResult.Success(listOf(remoteUser(remoteId = 7))) }
+                }
+            val repository = repository(FakeUserLocalDataSource(), remote)
+
+            assertTrue(repository.refresh().isSuccess)
+            remote.fetchHandler = { RemoteResult.RetryableFailure("Service unavailable") }
+
+            assertTrue(repository.refresh().isFailure)
+            assertTrue(repository.loadNextPage().isSuccess)
+            assertEquals(listOf(2L), remote.pageRequests)
+        }
+
+    @Test
     fun refreshAndPagingRejectOfflineWorkWithoutCallingTheApi() =
         runTest {
-            val remote = FakeUserRemoteDataSource()
+            val remote = FakeUserRemoteDataSource().apply { totalPages = 2 }
+            val connectivity = FakeConnectivityObserver()
             val repository =
                 repository(
                     local = FakeUserLocalDataSource(),
                     remote = remote,
-                    connectivity = FakeConnectivityObserver(ConnectivityStatus.Unavailable),
+                    connectivity = connectivity,
                 )
 
+            assertTrue(repository.refresh().isSuccess)
+            connectivity.mutableStatus.value = ConnectivityStatus.Unavailable
+
             val refresh = repository.refresh()
+            val page = repository.loadNextPage()
 
             assertEquals(UserDataError.Offline, refresh.exceptionOrNull()?.userDataErrorOrNull())
-            assertEquals(0, remote.fetchCalls)
+            assertEquals(UserDataError.Offline, page.exceptionOrNull()?.userDataErrorOrNull())
+            assertEquals(1, remote.fetchCalls)
+            assertTrue(remote.pageRequests.isEmpty())
         }
 
     @Test
@@ -139,6 +170,66 @@ class UserRepositoryImplTest {
 
             assertTrue(result.isFailure)
             assertEquals(stored, local.storedUsers["1"])
+        }
+
+    @Test
+    fun deleteAlreadyAbsentOnTheServerStillRemovesTheLocalUser() =
+        runTest {
+            val local = FakeUserLocalDataSource().apply { storedUsers["1"] = storedUser() }
+            val remote = FakeUserRemoteDataSource().apply { deleteHandler = { RemoteResult.NotFound } }
+
+            assertTrue(repository(local, remote).deleteImmediately("1").isSuccess)
+            assertTrue("1" !in local.storedUsers)
+        }
+
+    @Test
+    fun localWriteFailureAfterCreateIsReturnedAsPersistenceFailure() =
+        runTest {
+            val local =
+                FakeUserLocalDataSource().apply {
+                    mergePageFailure = IllegalStateException("Database is full")
+                }
+            val remote =
+                FakeUserRemoteDataSource().apply {
+                    createHandler = { RemoteResult.Success(remoteUser(remoteId = 99)) }
+                }
+
+            val result = repository(local, remote).addUser(input())
+
+            assertEquals(
+                UserDataError.Persistence("Database is full"),
+                result.exceptionOrNull()?.userDataErrorOrNull(),
+            )
+            assertEquals(1, remote.createRequests.size)
+        }
+
+    @Test
+    fun repositorySerializesOverlappingRefreshes() =
+        runTest {
+            val firstRequest = CompletableDeferred<Unit>()
+            val releaseFirstRequest = CompletableDeferred<Unit>()
+            val remote =
+                FakeUserRemoteDataSource().apply {
+                    fetchHandler = {
+                        firstRequest.complete(Unit)
+                        releaseFirstRequest.await()
+                        RemoteResult.Success(emptyList())
+                    }
+                }
+            val repository = repository(FakeUserLocalDataSource(), remote)
+
+            val firstRefresh = async { repository.refresh() }
+            runCurrent()
+            firstRequest.await()
+            val secondRefresh = async { repository.refresh() }
+            runCurrent()
+
+            assertEquals(1, remote.fetchCalls)
+
+            releaseFirstRequest.complete(Unit)
+            assertTrue(firstRefresh.await().isSuccess)
+            assertTrue(secondRefresh.await().isSuccess)
+            assertEquals(2, remote.fetchCalls)
         }
 
     @Test

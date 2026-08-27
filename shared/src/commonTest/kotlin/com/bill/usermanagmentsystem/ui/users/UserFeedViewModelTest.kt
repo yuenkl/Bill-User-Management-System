@@ -64,6 +64,7 @@ class UserFeedViewModelTest {
     fun pullToRefreshKeepsCachedUsersAndShowsAFailureMessage() =
         runTest {
             withFixture {
+                runCurrent()
                 users.value = listOf(userRecord())
                 refreshHandler = {
                     Result.failure(UserDataException(UserDataError.RemoteContract("Unavailable")))
@@ -82,6 +83,7 @@ class UserFeedViewModelTest {
                         .name,
                 )
                 assertNotNull(viewModel.uiState.value.banner)
+                assertTrue(viewModel.uiState.value.canLoadMore)
                 assertEquals(
                     UserFeedEvent.ShowSnackbar(
                         message = "The service returned unexpected data. Unavailable",
